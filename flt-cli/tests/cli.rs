@@ -18,7 +18,7 @@ async fn the_command_is_run(world: &mut CliWorld, cmd: String) {
     assert!(!parts.is_empty(), "No command provided");
     println!("run_command: {}", cmd);
     let mut args: Vec<&str> = parts[1..].to_vec();
-    let executable = if parts[0] == "fnlt" {
+    let executable = if parts[0] == "flt" {
         args.insert(0, "--");
         args.insert(0, "run");
         "cargo"

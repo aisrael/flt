@@ -410,7 +410,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fnlt"
+name = "flt"
 version = "0.0.1"
 dependencies = [
  "bigdecimal",
@@ -425,7 +425,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fnlt-cli"
+name = "flt-cli"
 version = "0.0.1"
 dependencies = [
  "clap",

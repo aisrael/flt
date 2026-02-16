@@ -1,4 +1,4 @@
-//! The fnlt::Error enum
+//! The flt::Error enum
 use thiserror::Error;
 
 #[derive(Debug, Error)]

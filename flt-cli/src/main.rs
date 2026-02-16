@@ -5,5 +5,5 @@ pub fn version() -> String {
 
 // Main function
 fn main() {
-    println!("fnlt version {}", version());
+    println!("flt version {}", version());
 }

@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [
-  "fnlt",
-  "fnlt-cli"
+  "flt",
+  "flt-cli"
 ]

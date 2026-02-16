@@ -1,4 +1,4 @@
-//! The fnlt Parser
+//! The flt Parser
 
 mod boolean;
 mod expr;

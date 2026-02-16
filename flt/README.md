@@ -1,10 +1,10 @@
-# fnlt
+# flt
 
 A simple, functional programming language.
 
 ## Overview
 
-fnlt (pronounced "functional") is a lightweight functional language implementation. It provides an expression parser and abstract syntax tree (AST) for a language with literals, identifiers, operators, function calls, and an Elixir-style pipe operator.
+flt (pronounced "functional") is a lightweight functional language implementation. It provides an expression parser and abstract syntax tree (AST) for a language with literals, identifiers, operators, function calls, and an Elixir-style pipe operator.
 
 ## Features
 
@@ -22,13 +22,13 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fnlt = "0.0.1"
+flt = "0.0.1"
 ```
 
 ## Usage
 
 ```rust
-use fnlt::parser::parse_expr;
+use flt::parser::parse_expr;
 
 fn main() {
     let input = "1 + 2 * 3";
@@ -48,7 +48,7 @@ fn main() {
 ### Parsing expressions
 
 ```rust
-use fnlt::parser::parse_expr;
+use flt::parser::parse_expr;
 
 // Numbers
 parse_expr("42");        // Literal number

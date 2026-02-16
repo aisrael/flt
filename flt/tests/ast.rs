@@ -6,9 +6,9 @@ use cucumber::then;
 use cucumber::when;
 use cucumber::World;
 
-use fnlt::ast::Expr;
-use fnlt::ast::Literal;
-use fnlt::parser::parse_expr;
+use flt::ast::Expr;
+use flt::ast::Literal;
+use flt::parser::parse_expr;
 
 #[derive(Debug, Default, World)]
 pub struct AstWorld {

@@ -1,4 +1,4 @@
-//! The fnlt abstract syntax tree
+//! The flt abstract syntax tree
 
 mod expr;
 mod identifier;

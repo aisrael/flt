@@ -1,4 +1,4 @@
-# fnlt - a 'lite' Functional Language
+# flt - a 'lite' Functional Language
 
 ## Example
 
