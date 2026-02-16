@@ -1,10 +1,10 @@
 # flt
 
-A simple, functional programming language.
+A simple functional programming language.
 
 ## Overview
 
-flt (pronounced "functional") is a lightweight functional language implementation. It provides an expression parser and abstract syntax tree (AST) for a language with literals, identifiers, operators, function calls, and an Elixir-style pipe operator.
+flt (pronounced "flight") is a lightweight functional language implementation. It provides an expression parser and abstract syntax tree (AST) for a language with literals, identifiers, operators, function calls, and an Elixir-style pipe operator.
 
 ## Features
 
@@ -69,6 +69,52 @@ parse_expr("add(1, 2)");
 // Pipe operator
 parse_expr("1 |> add(2)");
 parse_expr(r#"READ("input") |> SELECT(:id) |> WRITE("output")"#);
+```
+
+### Unary operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `!` | Logical not | `!true`, `!x` |
+| `+` | Unary plus | `+42` |
+| `-` | Unary minus / negation | `-x`, `-(1 + 2)` |
+
+```rust
+parse_expr("!true");      // Not
+parse_expr("-42");        // Negation
+parse_expr("+x");         // Unary plus
+```
+
+### Binary operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `+`, `-`, `*`, `/` | Arithmetic | `1 + 2`, `10 - 3`, `4 * 5`, `8 / 2` |
+| `&&`, `\|\|`, `^^` | Logical and, or, xor | `a && b`, `x \|\| y` |
+| `&`, `\|`, `^` | Bitwise and, or, xor | `1 & 2`, `1 \| 2`, `1 ^ 2` |
+| `\|>` | Pipe (pass left as first arg to right) | `x |> f()`, `1 |> add(2)` |
+
+```rust
+parse_expr("1 + 2 * 3");           // Arithmetic (precedence: * before +)
+parse_expr("a && b || c");         // Logical
+parse_expr("1 |> add(2)");         // Pipe
+parse_expr("(1 + 2) * 3");         // Parentheses override precedence
+```
+
+### Other `Expr` forms
+
+| Form | Example |
+|------|---------|
+| Literal | `42`, `3.14`, `"hello"`, `true`, `false`, `:foo` |
+| Identifier | `x`, `myVar` |
+| Function call | `foo()`, `add(1, 2)` |
+| Parenthesized | `(1 + 2)` |
+
+```rust
+parse_expr("42");           // Literal number
+parse_expr("foo");          // Identifier
+parse_expr("add(1, 2)");    // Function call
+parse_expr("(1 + 2)");      // Parenthesized expression
 ```
 
 ## Public API
