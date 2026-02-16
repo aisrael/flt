@@ -80,6 +80,8 @@ parse_expr(r#"READ("input") |> SELECT(:id) |> WRITE("output")"#);
 | `-` | Unary minus / negation | `-x`, `-(1 + 2)` |
 
 ```rust
+use flt::parser::parse_expr;
+
 parse_expr("!true");      // Not
 parse_expr("-42");        // Negation
 parse_expr("+x");         // Unary plus
@@ -95,6 +97,8 @@ parse_expr("+x");         // Unary plus
 | `\|>` | Pipe (pass left as first arg to right) | `x |> f()`, `1 |> add(2)` |
 
 ```rust
+use flt::parser::parse_expr;
+
 parse_expr("1 + 2 * 3");           // Arithmetic (precedence: * before +)
 parse_expr("a && b || c");         // Logical
 parse_expr("1 |> add(2)");         // Pipe
@@ -111,6 +115,8 @@ parse_expr("(1 + 2) * 3");         // Parentheses override precedence
 | Parenthesized | `(1 + 2)` |
 
 ```rust
+use flt::parser::parse_expr;
+
 parse_expr("42");           // Literal number
 parse_expr("foo");          // Identifier
 parse_expr("add(1, 2)");    // Function call
