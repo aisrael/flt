@@ -2,12 +2,12 @@
 name = "flt-cli"
 version = "0.0.1"
 edition = "2021"
-description = "a 'lite' functional language implementation"
+description = "the flt CLI"
 license = "MIT"
 
 [dependencies]
 clap = { version = "4.5.23", features = ["cargo", "derive"] }
-flt = { path = "../flt" }
+flt = "0.0.1"
 rustyline = "17.0"
 env_logger = "0.11.6"
 eyre = "0.6.12"
