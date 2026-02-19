@@ -76,6 +76,6 @@ fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
 
 #[tokio::main]
 async fn main() {
-    let features = Path::new(env!("CARGO_MANIFEST_DIR")).join("../features/ast.feature");
+    let features = Path::new(env!("CARGO_MANIFEST_DIR")).join("features/ast.feature");
     AstWorld::run(features).await;
 }
