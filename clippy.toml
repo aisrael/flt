@@ -1,0 +1,2 @@
+# Allow .unwrap() in test functions and #[cfg(test)] code
+allow-unwrap-in-tests = true

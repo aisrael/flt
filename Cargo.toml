@@ -5,3 +5,6 @@ members = [
   "flt",
   "flt-cli"
 ]
+
+[workspace.lints.clippy]
+unwrap_used = "deny"

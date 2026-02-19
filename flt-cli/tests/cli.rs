@@ -1,3 +1,6 @@
+// allow-unwrap-in-tests in clippy.toml doesn't work in `tests/`
+#![allow(clippy::unwrap_used)]
+
 use std::path::Path;
 use std::process::Command;
 

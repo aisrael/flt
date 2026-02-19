@@ -5,6 +5,9 @@ edition = "2021"
 description = "a 'lite' functional language"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 bigdecimal = "0.4"
 env_logger = "0.11.6"

@@ -5,6 +5,9 @@ edition = "2021"
 description = "the flt CLI"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 clap = { version = "4.5.23", features = ["cargo", "derive"] }
 flt = "0.0.1"
