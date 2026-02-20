@@ -25,4 +25,8 @@ pub enum RuntimeError {
     CannotCompare(String, String),
     #[error("Division By Zero")]
     DivisionByZero,
+    #[error("Unbound identifier: {0}")]
+    UnboundIdentifier(String),
+    #[error("Function calls not yet supported")]
+    UnsupportedFunctionCall,
 }

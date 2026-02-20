@@ -9,8 +9,9 @@ license = "MIT"
 workspace = true
 
 [dependencies]
+bigdecimal = "0.4"
 clap = { version = "4.5.23", features = ["cargo", "derive"] }
-flt = "0.0.1"
+flt = { version = "0.0.1", path = "../flt" }
 rustyline = "17.0"
 env_logger = "0.11.6"
 eyre = "0.6.12"

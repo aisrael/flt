@@ -1,5 +1,8 @@
+mod eval;
+
 use std::process::ExitCode;
 
+use eval::eval;
 use flt::parser::parse_expr;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -21,7 +24,10 @@ fn run_repl() -> Result<(), ReadlineError> {
             Ok((remainder, expr)) => {
                 let remainder = remainder.trim();
                 if remainder.is_empty() {
-                    println!("{:?}", expr);
+                    match eval(&expr) {
+                        Ok(val) => println!("{}", val),
+                        Err(e) => eprintln!("eval error: {:?}", e),
+                    }
                 } else {
                     eprintln!(
                         "parse error: unexpected input after expression: {:?}",
