@@ -85,6 +85,7 @@ fn eval_binary_expr(left: &Expr, op: BinaryOp, right: &Expr) -> Result<Literal, 
         BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor => {
             Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
         }
+        BinaryOp::Concat => binary_string(&l, &r),
         BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
     }
 }
@@ -111,6 +112,15 @@ where
 {
     match (l, r) {
         (Literal::Boolean(a), Literal::Boolean(b)) => Ok(Literal::boolean(f(*a, *b))),
+        _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+    }
+}
+
+fn binary_string(l: &Literal, r: &Literal) -> Result<Literal, Error> {
+    match (l, r) {
+        (Literal::String(a), Literal::String(b)) => {
+            Ok(Literal::string(format!("{}{}", a, b)))
+        }
         _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
     }
 }
@@ -311,6 +321,44 @@ mod tests {
             Expr::literal_boolean(false),
         );
         assert_eq!(eval(&expr).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_eval_binary_concat() {
+        let expr = Expr::binary_expr(
+            Expr::literal_string("foo"),
+            BinaryOp::Concat,
+            Expr::literal_string("bar"),
+        );
+        assert_eq!(eval(&expr).unwrap(), "\"foobar\"");
+    }
+
+    #[test]
+    fn test_eval_binary_concat_chain() {
+        let expr = Expr::binary_expr(
+            Expr::binary_expr(
+                Expr::literal_string("hello"),
+                BinaryOp::Concat,
+                Expr::literal_string(" "),
+            ),
+            BinaryOp::Concat,
+            Expr::literal_string("world"),
+        );
+        assert_eq!(eval(&expr).unwrap(), "\"hello world\"");
+    }
+
+    #[test]
+    fn test_eval_binary_concat_invalid_type() {
+        let expr = Expr::binary_expr(
+            Expr::literal_string("foo"),
+            BinaryOp::Concat,
+            Expr::literal_number(42),
+        );
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::InvalidOperandType)
+        ));
     }
 
     #[test]

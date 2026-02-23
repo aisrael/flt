@@ -19,6 +19,7 @@ pub fn parse_unary_op(input: &str) -> IResult<&str, UnaryOp> {
 pub fn parse_binary_op(input: &str) -> IResult<&str, BinaryOp> {
     alt((
         value(BinaryOp::Pipe, tag("|>")),
+        value(BinaryOp::Concat, tag("<>")),
         value(BinaryOp::And, tag("&&")),
         value(BinaryOp::Or, tag("||")),
         value(BinaryOp::Xor, tag("^^")),
@@ -66,6 +67,7 @@ mod tests {
         assert_eq!(parse_binary_op("||"), Ok(("", BinaryOp::Or)));
         assert_eq!(parse_binary_op("^^"), Ok(("", BinaryOp::Xor)));
         assert_eq!(parse_binary_op("|>"), Ok(("", BinaryOp::Pipe)));
+        assert_eq!(parse_binary_op("<>"), Ok(("", BinaryOp::Concat)));
     }
 
     #[test]

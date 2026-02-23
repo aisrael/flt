@@ -6,7 +6,7 @@ pub enum UnaryOp {
     Minus,
 }
 
-/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`.
+/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -21,4 +21,6 @@ pub enum BinaryOp {
     Xor,
     /// Elixir-style pipe: passes left as first argument to right.
     Pipe,
+    /// String concatenation: concatenates two strings (e.g. `"foo" <> "bar"` → `"foobar"`).
+    Concat,
 }

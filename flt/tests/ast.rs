@@ -6,6 +6,7 @@ use cucumber::then;
 use cucumber::when;
 use cucumber::World;
 
+use flt::ast::BinaryOp;
 use flt::ast::Expr;
 use flt::ast::Literal;
 use flt::parser::parse_expr;
@@ -71,6 +72,37 @@ fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
             assert_eq!(*b, expected, "expected boolean {}", expected);
         }
         _ => panic!("expected boolean literal, got {:?}", expr),
+    }
+}
+
+#[then(expr = r"the output should parse to string concat {string} and {string}")]
+fn then_output_should_be_string_concat(
+    world: &mut AstWorld,
+    left: String,
+    right: String,
+) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::BinaryExpr(l, op, r) if *op == BinaryOp::Concat => {
+            match (l.as_ref(), r.as_ref()) {
+                (
+                    Expr::Literal(Literal::String(a)),
+                    Expr::Literal(Literal::String(b)),
+                ) => {
+                    assert_eq!(a.as_str(), left, "expected left operand {:?}", left);
+                    assert_eq!(b.as_str(), right, "expected right operand {:?}", right);
+                }
+                _ => panic!(
+                    "expected string literals in concat, got {:?} <> {:?}",
+                    l, r
+                ),
+            }
+        }
+        _ => panic!(
+            "expected string concatenation expression, got {:?}",
+            expr
+        ),
     }
 }
 

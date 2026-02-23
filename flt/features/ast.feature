@@ -14,3 +14,8 @@ Feature: AST
     Given the input "true"
     When I parse the input
     Then the output should be a `Literal::Boolean(true)`
+
+  Scenario: parsing string concatenation
+    Given the input '"foo" <> "bar"'
+    When I parse the input
+    Then the output should parse to string concat "foo" and "bar"

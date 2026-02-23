@@ -49,7 +49,7 @@ fn parse_unary(input: &str) -> IResult<&str, Expr> {
 
 /// Parses binary expressions: `Expr` then `BinaryOp` then `Expr`, with left-associative folding.
 /// `next` parses the higher-precedence operand; `allowed` restricts which operators this level accepts.
-/// Precedence (lowest to highest): ||, &&, ^^, |, ^, &, +/-, *, /
+/// Precedence (lowest to highest): ||, &&, ^^, |, ^, &, +/-/<> (add/sub/concat), *, /
 fn parse_binary_level<'a>(
     input: &'a str,
     next: fn(&str) -> IResult<&str, Expr>,
@@ -99,11 +99,15 @@ fn parse_bit_xor(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_bit_and(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_add_sub, &[BinaryOp::BitAnd])
+    parse_binary_level(input, parse_add_sub_concat, &[BinaryOp::BitAnd])
 }
 
-fn parse_add_sub(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_mul_div, &[BinaryOp::Add, BinaryOp::Sub])
+fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_mul_div,
+        &[BinaryOp::Add, BinaryOp::Sub, BinaryOp::Concat],
+    )
 }
 
 fn parse_mul_div(input: &str) -> IResult<&str, Expr> {
@@ -321,6 +325,36 @@ mod tests {
                     ),
                     BinaryOp::Pipe,
                     Expr::function_call("WRITE", vec![Expr::literal_string("output")])
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_string_concat() {
+        assert_eq!(
+            parse_expr(r#""foo" <> "bar""#),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::literal_string("foo"),
+                    BinaryOp::Concat,
+                    Expr::literal_string("bar")
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expr(r#""hello" <> " " <> "world""#),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::binary_expr(
+                        Expr::literal_string("hello"),
+                        BinaryOp::Concat,
+                        Expr::literal_string(" ")
+                    ),
+                    BinaryOp::Concat,
+                    Expr::literal_string("world")
                 )
             ))
         );
