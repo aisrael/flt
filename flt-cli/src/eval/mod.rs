@@ -5,6 +5,7 @@ use flt::ast::Literal;
 use flt::ast::UnaryOp;
 use flt::errors::Error;
 use flt::errors::RuntimeError;
+use flt::utils::escape_string;
 
 pub fn eval(expr: &Expr) -> Result<String, Error> {
     let lit = eval_to_literal(expr)?;
@@ -31,10 +32,6 @@ fn literal_to_string(lit: &Literal) -> String {
         Literal::Boolean(b) => b.to_string(),
         Literal::Symbol(s) => format!(":{}", s),
     }
-}
-
-fn escape_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn eval_literal(lit: &Literal) -> Result<Literal, Error> {
@@ -116,13 +113,19 @@ where
     }
 }
 
-fn binary_string(l: &Literal, r: &Literal) -> Result<Literal, Error> {
-    match (l, r) {
-        (Literal::String(a), Literal::String(b)) => {
-            Ok(Literal::string(format!("{}{}", a, b)))
-        }
-        _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+fn literal_to_concat_str(lit: &Literal) -> String {
+    match lit {
+        Literal::Number(n) => n.as_ref().to_string(),
+        Literal::String(s) => s.clone(),
+        Literal::Boolean(b) => b.to_string(),
+        Literal::Symbol(s) => s.clone(),
     }
+}
+
+fn binary_string(l: &Literal, r: &Literal) -> Result<Literal, Error> {
+    let a = literal_to_concat_str(l);
+    let b = literal_to_concat_str(r);
+    Ok(Literal::string(format!("{}{}", a, b)))
 }
 
 #[cfg(test)]
@@ -334,6 +337,24 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_string_interpolation() {
+        let expr = Expr::binary_expr(
+            Expr::binary_expr(
+                Expr::literal_string("Answer: "),
+                BinaryOp::Concat,
+                Expr::binary_expr(
+                    Expr::literal_number(1),
+                    BinaryOp::Add,
+                    Expr::literal_number(2),
+                ),
+            ),
+            BinaryOp::Concat,
+            Expr::literal_string("!"),
+        );
+        assert_eq!(eval(&expr).unwrap(), "\"Answer: 3!\"");
+    }
+
+    #[test]
     fn test_eval_binary_concat_chain() {
         let expr = Expr::binary_expr(
             Expr::binary_expr(
@@ -348,17 +369,13 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_binary_concat_invalid_type() {
+    fn test_eval_binary_concat_coerces_to_string() {
         let expr = Expr::binary_expr(
             Expr::literal_string("foo"),
             BinaryOp::Concat,
             Expr::literal_number(42),
         );
-        let err = eval(&expr).unwrap_err();
-        assert!(matches!(
-            err,
-            Error::RuntimeError(RuntimeError::InvalidOperandType)
-        ));
+        assert_eq!(eval(&expr).unwrap(), "\"foo42\"");
     }
 
     #[test]

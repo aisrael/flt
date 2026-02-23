@@ -75,34 +75,40 @@ fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
     }
 }
 
-#[then(expr = r"the output should parse to string concat {string} and {string}")]
-fn then_output_should_be_string_concat(
+#[then(expr = r"the output should parse to interpolated string {string} {word} {string}")]
+fn then_output_should_be_interpolated_string(
     world: &mut AstWorld,
-    left: String,
-    right: String,
+    before: String,
+    ident: String,
+    after: String,
 ) {
     let output = world.output.take().expect("output should be set");
     let expr = output.expect("parse should succeed");
-    match &expr {
-        Expr::BinaryExpr(l, op, r) if *op == BinaryOp::Concat => {
-            match (l.as_ref(), r.as_ref()) {
-                (
-                    Expr::Literal(Literal::String(a)),
-                    Expr::Literal(Literal::String(b)),
-                ) => {
-                    assert_eq!(a.as_str(), left, "expected left operand {:?}", left);
-                    assert_eq!(b.as_str(), right, "expected right operand {:?}", right);
-                }
-                _ => panic!(
-                    "expected string literals in concat, got {:?} <> {:?}",
-                    l, r
-                ),
-            }
-        }
-        _ => panic!(
-            "expected string concatenation expression, got {:?}",
-            expr
+    let expected = Expr::binary_expr(
+        Expr::binary_expr(
+            Expr::literal_string(before),
+            BinaryOp::Concat,
+            Expr::ident(ident),
         ),
+        BinaryOp::Concat,
+        Expr::literal_string(after),
+    );
+    assert_eq!(expr, expected, "expected interpolated string expr");
+}
+
+#[then(expr = r"the output should parse to string concat {string} and {string}")]
+fn then_output_should_be_string_concat(world: &mut AstWorld, left: String, right: String) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::BinaryExpr(l, op, r) if *op == BinaryOp::Concat => match (l.as_ref(), r.as_ref()) {
+            (Expr::Literal(Literal::String(a)), Expr::Literal(Literal::String(b))) => {
+                assert_eq!(a.as_str(), left, "expected left operand {:?}", left);
+                assert_eq!(b.as_str(), right, "expected right operand {:?}", right);
+            }
+            _ => panic!("expected string literals in concat, got {:?} <> {:?}", l, r),
+        },
+        _ => panic!("expected string concatenation expression, got {:?}", expr),
     }
 }
 

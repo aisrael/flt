@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use bigdecimal::BigDecimal;
 
 /// A numeric literal: optional `+` or `-`, digits, then optionally `.` followed by any number of decimal digits.
@@ -11,6 +13,12 @@ impl Numeric {
         Self {
             value: value.into(),
         }
+    }
+}
+
+impl Display for Numeric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 

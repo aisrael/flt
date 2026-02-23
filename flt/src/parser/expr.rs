@@ -13,12 +13,14 @@ use super::identifier::parse_identifier;
 use super::literal::parse_literal;
 use super::operands::parse_binary_op;
 use super::operands::parse_unary_op;
+use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 
 /// Parses a primary expression: literal, identifier, function call, or parenthesized expression.
 fn parse_primary(input: &str) -> IResult<&str, Expr> {
     alt((
+        parse_interpolated_string(parse_or),
         map(parse_literal, Expr::Literal),
         map(parse_function_call(parse_or), |(name, args)| {
             Expr::FunctionCall(name, args)
@@ -325,6 +327,40 @@ mod tests {
                     ),
                     BinaryOp::Pipe,
                     Expr::function_call("WRITE", vec![Expr::literal_string("output")])
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_string_interpolation() {
+        assert_eq!(
+            parse_expr(r#""Hello, {who}!""#),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::binary_expr(
+                        Expr::literal_string("Hello, "),
+                        BinaryOp::Concat,
+                        Expr::ident("who")
+                    ),
+                    BinaryOp::Concat,
+                    Expr::literal_string("!")
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expr(r#""Answer: {1 + 2}""#),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::literal_string("Answer: "),
+                    BinaryOp::Concat,
+                    Expr::binary_expr(
+                        Expr::literal_number(1),
+                        BinaryOp::Add,
+                        Expr::literal_number(2)
+                    )
                 )
             ))
         );

@@ -1,10 +1,13 @@
 use std::convert::TryFrom;
+use std::fmt::Display;
 
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 
-use super::number::Numeric;
 use crate::errors::Error;
+use crate::utils::escape_string;
+
+use super::number::Numeric;
 
 /// A literal value: number, string, boolean, or symbol.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +65,17 @@ impl TryFrom<f64> for Literal {
 impl From<String> for Literal {
     fn from(value: String) -> Self {
         Literal::String(value)
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Number(n) => write!(f, "{}", n),
+            Literal::String(s) => write!(f, "\"{}\"", escape_string(s)),
+            Literal::Boolean(b) => write!(f, "{}", b),
+            Literal::Symbol(s) => write!(f, "{}", s),
+        }
     }
 }
 

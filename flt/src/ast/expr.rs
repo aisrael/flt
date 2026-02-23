@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use bigdecimal::BigDecimal;
 
 use super::identifier::Identifier;
@@ -20,6 +22,26 @@ pub enum Expr {
     FunctionCall(Identifier, Vec<Expr>),
     /// A parenthesized expression.
     Parenthesized(Box<Expr>),
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Literal(literal) => write!(f, "{}", literal),
+            Expr::Ident(ident) => write!(f, "{}", ident),
+            Expr::UnaryExpr(op, expr) => write!(f, "{op}{expr}"),
+            Expr::BinaryExpr(left, op, right) => write!(f, "{left} {op} {right}"),
+            Expr::FunctionCall(name, args) => {
+                let args = args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "{name}({args})")
+            }
+            Expr::Parenthesized(expr) => write!(f, "({expr})"),
+        }
+    }
 }
 
 impl Expr {
@@ -69,5 +91,146 @@ impl Expr {
     /// Constructs a parenthesized expression.
     pub fn parenthesized(expr: Expr) -> Self {
         Expr::Parenthesized(Box::new(expr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use bigdecimal::BigDecimal;
+
+    use super::super::operands::BinaryOp;
+    use super::super::operands::UnaryOp;
+    use super::Expr;
+
+    fn n(s: &str) -> BigDecimal {
+        BigDecimal::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn test_display_literal_number() {
+        assert_eq!(Expr::literal_number(n("42")).to_string(), "42");
+        assert_eq!(Expr::literal_number(n("3.14")).to_string(), "3.14");
+    }
+
+    #[test]
+    fn test_display_literal_string() {
+        assert_eq!(Expr::literal_string("hello").to_string(), "\"hello\"");
+    }
+
+    #[test]
+    fn test_display_literal_boolean() {
+        assert_eq!(Expr::literal_boolean(true).to_string(), "true");
+        assert_eq!(Expr::literal_boolean(false).to_string(), "false");
+    }
+
+    #[test]
+    fn test_display_literal_symbol() {
+        assert_eq!(Expr::literal_symbol("foo").to_string(), "foo");
+    }
+
+    #[test]
+    fn test_display_ident() {
+        assert_eq!(Expr::ident("x").to_string(), "x");
+        assert_eq!(Expr::ident("foo-bar").to_string(), "foo-bar");
+    }
+
+    #[test]
+    fn test_display_unary_expr() {
+        assert_eq!(
+            Expr::unary_expr(UnaryOp::Not, Expr::literal_boolean(true)).to_string(),
+            "!true"
+        );
+        assert_eq!(
+            Expr::unary_expr(UnaryOp::Minus, Expr::literal_number(n("42"))).to_string(),
+            "-42"
+        );
+        assert_eq!(
+            Expr::unary_expr(UnaryOp::Plus, Expr::literal_number(n("1"))).to_string(),
+            "+1"
+        );
+    }
+
+    #[test]
+    fn test_display_binary_expr() {
+        assert_eq!(
+            Expr::binary_expr(
+                Expr::literal_number(n("1")),
+                BinaryOp::Add,
+                Expr::literal_number(n("2"))
+            )
+            .to_string(),
+            "1 + 2"
+        );
+        assert_eq!(
+            Expr::binary_expr(
+                Expr::literal_string("foo"),
+                BinaryOp::Concat,
+                Expr::literal_string("bar")
+            )
+            .to_string(),
+            "\"foo\" <> \"bar\""
+        );
+        assert_eq!(
+            Expr::binary_expr(Expr::ident("a"), BinaryOp::Pipe, Expr::ident("b")).to_string(),
+            "a |> b"
+        );
+    }
+
+    #[test]
+    fn test_display_function_call() {
+        assert_eq!(Expr::function_call("foo", vec![]).to_string(), "foo()");
+        assert_eq!(
+            Expr::function_call(
+                "add",
+                vec![Expr::literal_number(n("1")), Expr::literal_number(n("2"))]
+            )
+            .to_string(),
+            "add(1, 2)"
+        );
+        assert_eq!(
+            Expr::function_call(
+                "concat",
+                vec![
+                    Expr::literal_string("hello"),
+                    Expr::ident("name"),
+                    Expr::literal_string("!")
+                ]
+            )
+            .to_string(),
+            "concat(\"hello\", name, \"!\")"
+        );
+    }
+
+    #[test]
+    fn test_display_parenthesized() {
+        assert_eq!(
+            Expr::parenthesized(Expr::literal_number(n("42"))).to_string(),
+            "(42)"
+        );
+        assert_eq!(
+            Expr::parenthesized(Expr::binary_expr(
+                Expr::literal_number(n("1")),
+                BinaryOp::Add,
+                Expr::literal_number(n("2"))
+            ))
+            .to_string(),
+            "(1 + 2)"
+        );
+    }
+
+    #[test]
+    fn test_display_nested() {
+        let expr = Expr::binary_expr(
+            Expr::parenthesized(Expr::binary_expr(
+                Expr::literal_number(n("1")),
+                BinaryOp::Add,
+                Expr::literal_number(n("2")),
+            )),
+            BinaryOp::Mul,
+            Expr::literal_number(n("3")),
+        );
+        assert_eq!(expr.to_string(), "(1 + 2) * 3");
     }
 }

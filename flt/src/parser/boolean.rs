@@ -5,10 +5,7 @@ use nom::IResult;
 
 /// Parses a boolean literal: `true` or `false`.
 pub fn parse_boolean(input: &str) -> IResult<&str, bool> {
-    alt((
-        value(true, tag("true")),
-        value(false, tag("false")),
-    ))(input)
+    alt((value(true, tag("true")), value(false, tag("false"))))(input)
 }
 
 #[cfg(test)]
