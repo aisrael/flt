@@ -35,7 +35,7 @@ fn main() {
     match parse_expr(input) {
         Ok((remainder, expr)) => {
             if remainder.is_empty() {
-                println!("Parsed: {:?}", expr);
+                println!("Parsed: {expr}");
             } else {
                 eprintln!("Unconsumed input: {:?}", remainder);
             }
