@@ -263,12 +263,33 @@ mod tests {
                 )
             ))
         );
+        assert_eq!(
+            parse_expr("add 1, 2"),
+            Ok((
+                "",
+                Expr::FunctionCall(
+                    Identifier::try_from("add").expect("invalid identifier"),
+                    vec![Expr::literal_number(1), Expr::literal_number(2)]
+                )
+            ))
+        );
     }
 
     #[test]
     fn test_parse_pipe() {
         assert_eq!(
             parse_expr("1 |> add(2)"),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::literal_number(1),
+                    BinaryOp::Pipe,
+                    Expr::function_call("add", vec![Expr::literal_number(2)])
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expr("1 |> add 2"),
             Ok((
                 "",
                 Expr::binary_expr(
