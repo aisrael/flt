@@ -1,133 +1,170 @@
 # flt
 
-A simple functional programming language.
+A lightweight functional language and parser.
 
 ## Overview
 
-flt (pronounced "flight") is a lightweight functional language implementation. It provides an expression parser and abstract syntax tree (AST) for a language with literals, identifiers, operators, function calls, and an Elixir-style pipe operator.
+`flt` (pronounced "flight") is a Rust workspace with:
 
-## Features
+- `flt`: parser + AST library
+- `flt-cli`: REPL and expression evaluator
 
-- **Literals**: numbers (arbitrary precision via `BigDecimal`), strings, booleans, and symbols (`:foo`, `:"hello"`)
-- **Operators**:
-  - Unary: `!`, `+`, `-`
-  - Binary: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>` (pipe)
-- **Function calls**: `foo()`, `bar(1)`, `add(1, 2)`
-- **Pipe operator**: `a |> b |> c` — passes the left value as the first argument to the right
-- **Operator precedence** (lowest to highest): `||`, `&&`, `^^`, `|`, `^`, `&`, `+`/`-`, `*`, `/`
+The language supports literals, identifiers, unary/binary operators, function calls, interpolation, comments, and an Elixir-style pipe operator.
 
-## Installation
-
-Add to your `Cargo.toml`:
+## Crate version
 
 ```toml
 [dependencies]
-flt = "0.0.1"
+flt = "0.0.2"
 ```
 
-## Usage
+## Quick start
 
 ```rust
 use flt::parser::parse_expr;
 
 fn main() {
-    let input = "1 + 2 * 3";
+    let input = "1 + 2";
+
     match parse_expr(input) {
-        Ok((remainder, expr)) => {
-            if remainder.is_empty() {
-                println!("Parsed: {:?}", expr);
-            } else {
-                eprintln!("Unconsumed input: {:?}", remainder);
-            }
+        Ok((remainder, expr)) if remainder.trim().is_empty() => {
+            println!("Parsed expression: {expr}");
         }
-        Err(e) => eprintln!("Parse error: {}", e),
+        Ok((remainder, _)) => {
+            eprintln!("Unconsumed input: {:?}", remainder);
+        }
+        Err(err) => {
+            eprintln!("Parse error: {:?}", err);
+        }
     }
 }
 ```
 
-### Parsing expressions
+## Language syntax
+
+### Literals
+
+- Number: `42`, `3.14`, `+7`, `-2`
+- String: `"hello"`, `"path\\to\\file"`
+- Boolean: `true`, `false`
+- Symbol: `:name`, `:"display name"`
+
+### Identifiers
+
+Identifiers start with a letter, then can include letters, digits, `_`, or `-`.
+
+- Valid: `foo`, `foo_1`, `foo-1`, `READ`
+- Invalid: `_foo`, `-foo`, `123foo`
+
+### Function calls
+
+Both forms are supported:
+
+- Parenthesized: `add(1, 2)`
+- Without parentheses: `add 1, 2`
+
+### String interpolation
+
+Interpolated strings support `{expr}` and compile into concatenation (`<>`) expressions.
+
+```txt
+"Hello, {name}!"
+"Answer: {1 + 2}"
+```
+
+Inside interpolated strings, `\{` escapes a literal `{`.
+
+### Comments
+
+`#` starts a comment that runs to end-of-line.
+
+```txt
+1 + 2 # inline comment
+# full line comment
+```
+
+### Operators
+
+Unary operators:
+
+- `!` (logical not)
+- `+` (unary plus)
+- `-` (unary minus)
+
+Binary operators:
+
+- Arithmetic: `+`, `-`, `*`, `/`
+- String concat: `<>`
+- Logical: `&&`, `||`, `^^`
+- Bitwise: `&`, `|`, `^`
+- Pipe: `|>`
+
+### Precedence (lowest to highest)
+
+`|>` -> `||` -> `&&` -> `^^` -> `|` -> `^` -> `&` -> `+`/`-`/`<>` -> `*`/`/`
+
+Parentheses override precedence as expected.
+
+## Parse examples
 
 ```rust
 use flt::parser::parse_expr;
 
-// Numbers
-parse_expr("42");        // Literal number
-parse_expr("3.14");      // Decimal
-
-// Strings and symbols
-parse_expr(r#""hello""#);  // String literal
-parse_expr(":foo");        // Symbol
-
-// Booleans
-parse_expr("true");
-parse_expr("false");
-
-// Function calls
-parse_expr("foo()");
+parse_expr("42");
+parse_expr(r#""hello""#);
+parse_expr(":id");
 parse_expr("add(1, 2)");
-
-// Pipe operator
-parse_expr("1 |> add(2)");
-parse_expr(r#"READ("input") |> SELECT(:id) |> WRITE("output")"#);
+parse_expr("add 1, 2");
+parse_expr(r#""Hello, {who}!""#);
+parse_expr(r#""foo" <> "bar""#);
+parse_expr("1 + 2 * 3");
+parse_expr("(1 + 2) * 3");
+parse_expr("READ(\"input\") |> WRITE(\"output\")");
+parse_expr("1 # comment\n+ 2");
 ```
 
-### Unary operators
+## CLI (workspace binary)
 
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `!` | Logical not | `!true`, `!x` |
-| `+` | Unary plus | `+42` |
-| `-` | Unary minus / negation | `-x`, `-(1 + 2)` |
+Run the REPL:
 
-```rust
-use flt::parser::parse_expr;
-
-parse_expr("!true");      // Not
-parse_expr("-42");        // Negation
-parse_expr("+x");         // Unary plus
+```bash
+cargo run -p flt-cli
 ```
 
-### Binary operators
+Print version:
 
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `+`, `-`, `*`, `/` | Arithmetic | `1 + 2`, `10 - 3`, `4 * 5`, `8 / 2` |
-| `&&`, `\|\|`, `^^` | Logical and, or, xor | `a && b`, `x \|\| y` |
-| `&`, `\|`, `^` | Bitwise and, or, xor | `1 & 2`, `1 \| 2`, `1 ^ 2` |
-| `\|>` | Pipe (pass left as first arg to right) | `x |> f()`, `1 |> add(2)` |
-
-```rust
-use flt::parser::parse_expr;
-
-parse_expr("1 + 2 * 3");           // Arithmetic (precedence: * before +)
-parse_expr("a && b || c");         // Logical
-parse_expr("1 |> add(2)");         // Pipe
-parse_expr("(1 + 2) * 3");         // Parentheses override precedence
+```bash
+cargo run -p flt-cli -- version
 ```
 
-### Other `Expr` forms
-
-| Form | Example |
-|------|---------|
-| Literal | `42`, `3.14`, `"hello"`, `true`, `false`, `:foo` |
-| Identifier | `x`, `myVar` |
-| Function call | `foo()`, `add(1, 2)` |
-| Parenthesized | `(1 + 2)` |
-
-```rust
-use flt::parser::parse_expr;
-
-parse_expr("42");           // Literal number
-parse_expr("foo");          // Identifier
-parse_expr("add(1, 2)");    // Function call
-parse_expr("(1 + 2)");      // Parenthesized expression
-```
+The CLI evaluates literals and supported unary/binary expressions. Function calls and pipe execution are parsed but currently not executed by the evaluator.
 
 ## Public API
 
-- **`parser`**: `parse_expr`, `parse_literal`, `parse_identifier`, `parse_number`, `parse_string`, `parse_symbol`, `parse_binary_op`, `parse_unary_op`
-- **`ast`**: `Expr`, `Literal`, `Identifier`, `BinaryOp`, `UnaryOp`
-- **`Error`**: Error types for parsing and runtime
+- `flt::parser`:
+  - `parse_expr`
+  - `parse_literal`
+  - `parse_identifier`
+  - `parse_number`
+  - `parse_string`
+  - `parse_symbol`
+  - `parse_binary_op`
+  - `parse_unary_op`
+- `flt::ast`:
+  - `Expr`
+  - `Literal`
+  - `Identifier`
+  - `Numeric`
+  - `BinaryOp`
+  - `UnaryOp`
+- `flt::Error` and `flt::errors::RuntimeError`
+
+## Development
+
+```bash
+cargo test
+cargo clippy --all-targets --all-features
+```
 
 ## License
 
