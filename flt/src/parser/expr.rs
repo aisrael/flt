@@ -4,8 +4,8 @@ use nom::combinator::map;
 use nom::combinator::verify;
 use nom::multi::many0;
 use nom::sequence::delimited;
-use nom::sequence::tuple;
 use nom::IResult;
+use nom::Parser;
 
 use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
@@ -28,13 +28,14 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
         map(parse_identifier, Expr::ident),
         map(
             delimited(
-                tuple((multispace0_or_comment, tag("("), multispace0_or_comment)),
+                (multispace0_or_comment, tag("("), multispace0_or_comment),
                 parse_or,
-                tuple((multispace0_or_comment, tag(")"), multispace0_or_comment)),
+                (multispace0_or_comment, tag(")"), multispace0_or_comment),
             ),
             Expr::parenthesized,
         ),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 /// Parses a unary expression: optionally prefixed with `!`, `+`, or `-`.
@@ -42,11 +43,12 @@ fn parse_unary(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_or_comment(input)?;
     alt((
         map(
-            tuple((parse_unary_op, multispace0_or_comment, parse_unary)),
+            (parse_unary_op, multispace0_or_comment, parse_unary),
             |(op, _, e)| Expr::unary_expr(op, e),
         ),
         parse_primary,
-    ))(input)
+    ))
+    .parse(input)
 }
 
 /// Parses binary expressions: `Expr` then `BinaryOp` then `Expr`, with left-associative folding.
@@ -57,15 +59,15 @@ fn parse_binary_level<'a>(
     next: fn(&str) -> IResult<&str, Expr>,
     allowed: &[BinaryOp],
 ) -> IResult<&'a str, Expr> {
-    let parse_expr_binary_op_expr = tuple((
+    let parse_expr_binary_op_expr = (
         next,
-        many0(tuple((
+        many0((
             multispace0_or_comment,
             verify(parse_binary_op, |o: &BinaryOp| allowed.contains(o)),
             multispace0_or_comment,
             next,
-        ))),
-    ));
+        )),
+    );
     map(
         parse_expr_binary_op_expr,
         |(left, pairs): (Expr, Vec<(_, BinaryOp, _, Expr)>)| {
@@ -73,7 +75,8 @@ fn parse_binary_level<'a>(
                 Expr::binary_expr(acc, op, right)
             })
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_pipe(input: &str) -> IResult<&str, Expr> {
@@ -169,7 +172,10 @@ mod tests {
     #[test]
     fn test_parse_symbol() {
         assert_eq!(parse_expr(":foo"), Ok(("", Expr::literal_symbol("foo"))));
-        assert_eq!(parse_expr(":foo_bar"), Ok(("", Expr::literal_symbol("foo_bar"))));
+        assert_eq!(
+            parse_expr(":foo_bar"),
+            Ok(("", Expr::literal_symbol("foo_bar")))
+        );
         assert_eq!(
             parse_expr(r#":"hello world""#),
             Ok(("", Expr::literal_symbol("hello world")))

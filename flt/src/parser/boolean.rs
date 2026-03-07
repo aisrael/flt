@@ -2,10 +2,11 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::value;
 use nom::IResult;
+use nom::Parser;
 
 /// Parses a boolean literal: `true` or `false`.
 pub fn parse_boolean(input: &str) -> IResult<&str, bool> {
-    alt((value(true, tag("true")), value(false, tag("false"))))(input)
+    alt((value(true, tag("true")), value(false, tag("false")))).parse(input)
 }
 
 #[cfg(test)]

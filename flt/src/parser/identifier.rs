@@ -3,6 +3,7 @@ use nom::bytes::complete::take_while_m_n;
 use nom::combinator::recognize;
 use nom::sequence::pair;
 use nom::IResult;
+use nom::Parser;
 
 /// Parses an identifier: starts with a letter, followed by zero or more
 /// alphanumeric, hyphen, or underscore characters.
@@ -10,7 +11,8 @@ pub fn parse_identifier(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         take_while_m_n(1, 1, |c: char| c.is_alphabetic()),
         take_while(|c: char| c.is_alphanumeric() || c == '-' || c == '_'),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 #[cfg(test)]

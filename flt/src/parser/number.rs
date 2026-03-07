@@ -3,30 +3,42 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::character::complete::char;
 use nom::character::complete::digit0;
 use nom::character::complete::digit1;
-use nom::combinator::map_res;
 use nom::combinator::opt;
-use nom::combinator::recognize;
-use nom::sequence::tuple;
+use nom::sequence::preceded;
 use nom::IResult;
+use nom::Parser;
 
 use crate::ast::Numeric;
 
 /// Parses a numeric: optional `+` or `-`, digits, then optionally `.` followed by any number of decimal digits.
 pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
-    map_res(
-        recognize(tuple((
-            opt(alt((tag("-"), tag("+")))),
-            digit1,
-            opt(tuple((tag("."), digit0))),
+    let (input, (sign, integer, fractional)) = (
+        opt(alt((tag("-"), tag("+")))),
+        digit1,
+        opt(preceded(char('.'), digit0)),
+    )
+        .parse(input)?;
+
+    let mut number = String::new();
+    if let Some(sign) = sign {
+        number.push_str(sign);
+    }
+    number.push_str(integer);
+    if let Some(fractional) = fractional {
+        number.push('.');
+        number.push_str(fractional);
+    }
+
+    match BigDecimal::from_str(&number) {
+        Ok(value) => Ok((input, Numeric::new(value))),
+        Err(_) => Err(nom::Err::Failure(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Float,
         ))),
-        |s: &str| {
-            BigDecimal::from_str(s)
-                .map(Numeric::new)
-                .map_err(|e| format!("invalid number '{}': {}", s, e))
-        },
-    )(input)
+    }
 }
 
 #[cfg(test)]

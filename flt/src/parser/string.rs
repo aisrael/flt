@@ -8,6 +8,7 @@ use nom::combinator::value;
 use nom::multi::many0;
 use nom::sequence::delimited;
 use nom::IResult;
+use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
@@ -38,7 +39,8 @@ pub fn parse_interpolated_string<'a>(
                 map(delimited(tag("{"), expr_parser, tag("}")), Either::Expr),
             ))),
             tag("\""),
-        )(input)?;
+        )
+        .parse(input)?;
 
         let expr = segments_to_expr(&segments);
         Ok((input, expr))
@@ -82,7 +84,8 @@ pub fn parse_string(input: &str) -> IResult<&str, String> {
             value(String::new(), success(())),
         )),
         tag("\""),
-    )(input)
+    )
+    .parse(input)
 }
 
 #[cfg(test)]

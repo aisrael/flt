@@ -8,6 +8,7 @@ use nom::combinator::map;
 use nom::combinator::recognize;
 use nom::sequence::pair;
 use nom::IResult;
+use nom::Parser;
 
 use super::string::parse_string;
 
@@ -18,7 +19,7 @@ use super::string::parse_string;
 ///
 /// Returns `Cow<str>`: borrowed slice for identifiers (no allocation), owned for quoted strings (handles escapes).
 pub fn parse_symbol(input: &str) -> IResult<&str, Cow<'_, str>> {
-    let (input, _) = tag(":")(input)?;
+    let (input, _) = tag(":").parse(input)?;
     alt((
         map(parse_string, Cow::Owned),
         map(
@@ -28,7 +29,8 @@ pub fn parse_symbol(input: &str) -> IResult<&str, Cow<'_, str>> {
             )),
             Cow::Borrowed,
         ),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 #[cfg(test)]

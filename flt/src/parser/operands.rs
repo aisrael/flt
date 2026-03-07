@@ -2,6 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::value;
 use nom::IResult;
+use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::UnaryOp;
@@ -12,7 +13,8 @@ pub fn parse_unary_op(input: &str) -> IResult<&str, UnaryOp> {
         value(UnaryOp::Not, tag("!")),
         value(UnaryOp::Plus, tag("+")),
         value(UnaryOp::Minus, tag("-")),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 /// Parses a binary operand. Longer tokens must be tried first (`&&` before `&`, `||` before `|`, `^^` before `^`, `|>` before `|`).
@@ -30,7 +32,8 @@ pub fn parse_binary_op(input: &str) -> IResult<&str, BinaryOp> {
         value(BinaryOp::Add, tag("+")),
         value(BinaryOp::Div, tag("/")),
         value(BinaryOp::Sub, tag("-")),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 #[cfg(test)]
