@@ -75,6 +75,36 @@ fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
     }
 }
 
+#[then(regex = r#"^the output should be a `Literal::Symbol\("([^"]*)"\)`$"#)]
+fn then_output_should_be_symbol(world: &mut AstWorld, expected: String) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::Literal(Literal::Symbol(s)) => {
+            assert_eq!(s.as_str(), expected, "expected symbol {:?}", expected);
+        }
+        _ => panic!("expected symbol literal, got {:?}", expr),
+    }
+}
+
+#[then(expr = r#"the output should be an identifier {string}"#)]
+fn then_output_should_be_identifier(world: &mut AstWorld, expected: String) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::Ident(s) => {
+            assert_eq!(s.as_str(), expected, "expected identifier {:?}", expected);
+        }
+        _ => panic!("expected identifier, got {:?}", expr),
+    }
+}
+
+#[then(expr = "parsing should fail")]
+fn then_parsing_should_fail(world: &mut AstWorld) {
+    let output = world.output.take().expect("output should be set");
+    assert!(output.is_err(), "expected parsing to fail, got {:?}", output);
+}
+
 #[then(expr = r"the output should parse to interpolated string {string} {word} {string}")]
 fn then_output_should_be_interpolated_string(
     world: &mut AstWorld,

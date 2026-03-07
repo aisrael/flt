@@ -153,6 +153,9 @@ mod tests {
     #[test]
     fn test_parse_identifier() {
         assert_eq!(parse_expr("foo"), Ok(("", Expr::ident("foo"))));
+        assert_eq!(parse_expr("foo-1"), Ok(("", Expr::ident("foo-1"))));
+        assert_eq!(parse_expr("123abc"), Ok(("abc", Expr::literal_number(123))));
+        assert!(parse_expr("_foo").is_err());
     }
 
     #[test]
@@ -166,6 +169,24 @@ mod tests {
     #[test]
     fn test_parse_symbol() {
         assert_eq!(parse_expr(":foo"), Ok(("", Expr::literal_symbol("foo"))));
+        assert_eq!(parse_expr(":foo_bar"), Ok(("", Expr::literal_symbol("foo_bar"))));
+        assert_eq!(
+            parse_expr(r#":"hello world""#),
+            Ok(("", Expr::literal_symbol("hello world")))
+        );
+        assert_eq!(
+            parse_expr(":foo-bar"),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::literal_symbol("foo"),
+                    BinaryOp::Sub,
+                    Expr::ident("bar")
+                )
+            ))
+        );
+        assert!(parse_expr(":123").is_err());
+        assert!(parse_expr(":_tmp").is_err());
     }
 
     #[test]

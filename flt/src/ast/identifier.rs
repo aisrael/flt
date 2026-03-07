@@ -33,11 +33,12 @@ impl TryFrom<&str> for Identifier {
     type Error = crate::Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if !s.is_empty()
-            && s.chars()
-                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Ok(Identifier(s.to_string()));
+        let mut chars = s.chars();
+        if let Some(first) = chars.next() {
+            if first.is_alphabetic() && chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                return Ok(Identifier(s.to_string()));
+            }
         }
 
         Err(Error::SyntaxError("Invalid identifier".to_string()))
@@ -51,5 +52,15 @@ mod tests {
     #[test]
     fn test_identifier_eq_str() {
         assert!(Identifier("foo".to_string()) == "foo");
+    }
+
+    #[test]
+    fn test_identifier_validation() {
+        assert!(Identifier::try_from("foo").is_ok());
+        assert!(Identifier::try_from("foo-1").is_ok());
+        assert!(Identifier::try_from("foo_1").is_ok());
+        assert!(Identifier::try_from("123foo").is_err());
+        assert!(Identifier::try_from("_foo").is_err());
+        assert!(Identifier::try_from("-foo").is_err());
     }
 }

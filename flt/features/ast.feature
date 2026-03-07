@@ -15,6 +15,31 @@ Feature: AST
     When I parse the input
     Then the output should be a `Literal::Boolean(true)`
 
+  Scenario: parsing an identifier
+    Given the input "user_name"
+    When I parse the input
+    Then the output should be an identifier "user_name"
+
+  Scenario: parsing a symbol
+    Given the input ":user_name"
+    When I parse the input
+    Then the output should be a `Literal::Symbol("user_name")`
+
+  Scenario: parsing a quoted symbol
+    Given the input ':"hello world"'
+    When I parse the input
+    Then the output should be a `Literal::Symbol("hello world")`
+
+  Scenario: parsing an identifier that starts with digits fails
+    Given the input "123abc"
+    When I parse the input
+    Then parsing should fail
+
+  Scenario: parsing a symbol that starts with non-character fails
+    Given the input ":_foo"
+    When I parse the input
+    Then parsing should fail
+
   Scenario: parsing string concatenation
     Given the input '"foo" <> "bar"'
     When I parse the input
