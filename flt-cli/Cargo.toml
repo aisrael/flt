@@ -25,3 +25,7 @@ tokio = { version = "1.42.0", features = ["full"] }
 [[test]]
 name = "cli"
 harness = false
+
+[[test]]
+name = "repl"
+harness = false

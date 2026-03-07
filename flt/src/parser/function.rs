@@ -152,10 +152,7 @@ mod tests {
                 "",
                 (
                     Identifier::try_from("add").expect("invalid identifier"),
-                    vec![
-                        Expr::literal_number(1),
-                        Expr::literal_number(2)
-                    ]
+                    vec![Expr::literal_number(1), Expr::literal_number(2)]
                 )
             ))
         );

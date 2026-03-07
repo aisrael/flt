@@ -419,7 +419,10 @@ mod tests {
 
     #[test]
     fn test_parse_comments() {
-        assert_eq!(parse_expr("42 # comment"), Ok(("", Expr::literal_number(42))));
+        assert_eq!(
+            parse_expr("42 # comment"),
+            Ok(("", Expr::literal_number(42)))
+        );
         assert_eq!(
             parse_expr("# leading comment\n42"),
             Ok(("", Expr::literal_number(42)))
@@ -439,7 +442,10 @@ mod tests {
             parse_expr("add(1, # first\n 2)"),
             Ok((
                 "",
-                Expr::function_call("add", vec![Expr::literal_number(1), Expr::literal_number(2)])
+                Expr::function_call(
+                    "add",
+                    vec![Expr::literal_number(1), Expr::literal_number(2)]
+                )
             ))
         );
     }
