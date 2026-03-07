@@ -8,7 +8,7 @@ Feature: AST
   Scenario: parsing a string
     Given the input '"hello"'
     When I parse the input
-    Then the output should be a `Literal::String("hello")`
+    Then the output should be 'Literal(String("hello"))'
 
   Scenario: parsing a boolean
     Given the input "true"

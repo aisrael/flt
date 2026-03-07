@@ -6,54 +6,54 @@ Feature: Binary expressions
   Scenario: Addition
     Given the input "1 + 2"
     When I parse the input
-    Then the output should parse to addition of 1 and 2
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })))'
 
   Scenario: Subtraction
     Given the input "10 - 3"
     When I parse the input
-    Then the output should parse to subtraction of 10 and 3
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[10]) })), Sub, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) })))'
 
   Scenario: Multiplication
     Given the input "4 * 5"
     When I parse the input
-    Then the output should parse to multiplication of 4 and 5
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[4]) })), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[5]) })))'
 
   Scenario: Division
     Given the input "20 / 4"
     When I parse the input
-    Then the output should parse to division of 20 and 4
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[20]) })), Div, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[4]) })))'
 
   Scenario: Multiplication has higher precedence than addition
     Given the input "1 + 2 * 3"
     When I parse the input
-    Then the output should parse to addition with right side multiplied
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) }))))'
 
   Scenario: Parentheses override precedence
     Given the input "(1 + 2) * 3"
     When I parse the input
-    Then the output should parse to multiplication of parenthesized sum by 3
+    Then the output should be 'BinaryExpr(Parenthesized(BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })))), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) })))'
 
   Scenario: Logical and
     Given the input "true && false"
     When I parse the input
-    Then the output should parse to logical and of true and false
+    Then the output should be 'BinaryExpr(Literal(Boolean(true)), And, Literal(Boolean(false)))'
 
   Scenario: Logical or
     Given the input "true || false"
     When I parse the input
-    Then the output should parse to logical or of true and false
+    Then the output should be 'BinaryExpr(Literal(Boolean(true)), Or, Literal(Boolean(false)))'
 
   Scenario: Logical xor
     Given the input "true ^^ false"
     When I parse the input
-    Then the output should parse to logical xor of true and false
+    Then the output should be 'BinaryExpr(Literal(Boolean(true)), Xor, Literal(Boolean(false)))'
 
   Scenario: String concatenation
     Given the input '"foo" <> "bar"'
     When I parse the input
-    Then the output should parse to string concat "foo" and "bar"
+    Then the output should be 'BinaryExpr(Literal(String("foo")), Concat, Literal(String("bar")))'
 
   Scenario: Pipe operator
     Given the input "x |> f"
     When I parse the input
-    Then the output should parse to pipe of "x" into "f"
+    Then the output should be 'BinaryExpr(Ident("x"), Pipe, Ident("f"))'

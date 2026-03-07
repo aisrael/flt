@@ -2,6 +2,7 @@ use std::path::Path;
 
 use bigdecimal::BigDecimal;
 use cucumber::given;
+use cucumber::gherkin::Step;
 use cucumber::then;
 use cucumber::when;
 use cucumber::World;
@@ -19,6 +20,17 @@ pub struct AstWorld {
 
 #[given(expr = r"the input {string}")]
 fn given_the_input(world: &mut AstWorld, input: String) {
+    world.input = Some(input);
+}
+
+#[given(regex = r"^the multiline input$")]
+fn given_the_multiline_input(world: &mut AstWorld, step: &Step) {
+    let input = step
+        .docstring
+        .as_ref()
+        .expect("step requires a docstring")
+        .trim()
+        .to_string();
     world.input = Some(input);
 }
 
@@ -50,16 +62,16 @@ fn then_output_should_be_number(world: &mut AstWorld, expected: i64) {
     }
 }
 
-#[then(expr = r"the output should be a `Literal::String\({string}\)`")]
+#[then(expr = r#"the output should be {string}"#)]
 fn then_output_should_be_string(world: &mut AstWorld, expected: String) {
     let output = world.output.take().expect("output should be set");
     let expr = output.expect("parse should succeed");
-    match &expr {
-        Expr::Literal(Literal::String(s)) => {
-            assert_eq!(s.as_str(), expected, "expected string {:?}", expected);
-        }
-        _ => panic!("expected string literal, got {:?}", expr),
-    }
+    assert_eq!(
+        format!("{expr:?}"),
+        expected,
+        "expected expression string {:?}",
+        expected
+    );
 }
 
 #[then(expr = r"the output should be a `Literal::Boolean\({word}\)`")]
