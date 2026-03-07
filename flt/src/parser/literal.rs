@@ -1,6 +1,7 @@
 use nom::branch::alt;
 use nom::combinator::map;
 use nom::IResult;
+use nom::Parser;
 
 use super::boolean::parse_boolean;
 use super::number::parse_number;
@@ -15,7 +16,8 @@ pub fn parse_literal(input: &str) -> IResult<&str, Literal> {
         map(parse_symbol, Literal::symbol),
         map(parse_string, Literal::string),
         map(parse_number, Literal::Number),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 #[cfg(test)]

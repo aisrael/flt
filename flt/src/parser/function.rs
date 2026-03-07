@@ -5,8 +5,8 @@ use nom::multi::separated_list0;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::sequence::tuple;
 use nom::IResult;
+use nom::Parser;
 
 use crate::ast::Identifier;
 
@@ -18,12 +18,13 @@ use super::parse_identifier;
 /// Arguments are comma-separated. Returns `(name, args)`.
 pub fn parse_function_call<F, O>(
     parse_expr: F,
-) -> impl Fn(&str) -> IResult<&str, (Identifier, Vec<O>)>
+) -> impl FnMut(&str) -> IResult<&str, (Identifier, Vec<O>)>
 where
-    F: Fn(&str) -> IResult<&str, O>,
+    F: Fn(&str) -> IResult<&str, O> + Copy,
 {
     move |input: &str| {
-        let (input, name) = map(parse_identifier, |s: &str| Identifier(s.to_string()))(input)?;
+        let (input, name) =
+            map(parse_identifier, |s: &str| Identifier(s.to_string())).parse(input)?;
         let (input, args) = alt((
             preceded(
                 multispace0_or_comment,
@@ -32,8 +33,8 @@ where
                     delimited(
                         multispace0_or_comment,
                         separated_list0(
-                            tuple((multispace0_or_comment, tag(","), multispace0_or_comment)),
-                            &parse_expr,
+                            (multispace0_or_comment, tag(","), multispace0_or_comment),
+                            parse_expr,
                         ),
                         multispace0_or_comment,
                     ),
@@ -43,11 +44,12 @@ where
             preceded(
                 multispace1_or_comment,
                 separated_list1(
-                    tuple((multispace0_or_comment, tag(","), multispace0_or_comment)),
-                    &parse_expr,
+                    (multispace0_or_comment, tag(","), multispace0_or_comment),
+                    parse_expr,
                 ),
             ),
-        ))(input)?;
+        ))
+        .parse(input)?;
         Ok((input, (name, args)))
     }
 }
