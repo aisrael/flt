@@ -1,3 +1,8 @@
+Agent Guidelines
+----
+
+- When working in a Git worktree, as a final step make sure `cargo clippy` and `cargo test` both pass.
+
 Code Guidelines
 ----
 
