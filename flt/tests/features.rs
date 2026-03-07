@@ -114,6 +114,6 @@ fn then_output_should_be_string_concat(world: &mut AstWorld, left: String, right
 
 #[tokio::main]
 async fn main() {
-    let features = Path::new(env!("CARGO_MANIFEST_DIR")).join("features/ast.feature");
+    let features = Path::new(env!("CARGO_MANIFEST_DIR")).join("features");
     AstWorld::run(features).await;
 }
