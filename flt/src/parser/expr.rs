@@ -1,6 +1,5 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::character::complete::multispace0;
 use nom::combinator::map;
 use nom::combinator::verify;
 use nom::multi::many0;
@@ -8,6 +7,7 @@ use nom::sequence::delimited;
 use nom::sequence::tuple;
 use nom::IResult;
 
+use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
 use super::identifier::parse_identifier;
 use super::literal::parse_literal;
@@ -28,9 +28,9 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
         map(parse_identifier, Expr::ident),
         map(
             delimited(
-                tuple((multispace0, tag("("), multispace0)),
+                tuple((multispace0_or_comment, tag("("), multispace0_or_comment)),
                 parse_or,
-                tuple((multispace0, tag(")"), multispace0)),
+                tuple((multispace0_or_comment, tag(")"), multispace0_or_comment)),
             ),
             Expr::parenthesized,
         ),
@@ -39,10 +39,10 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
 
 /// Parses a unary expression: optionally prefixed with `!`, `+`, or `-`.
 fn parse_unary(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
     alt((
         map(
-            tuple((parse_unary_op, multispace0, parse_unary)),
+            tuple((parse_unary_op, multispace0_or_comment, parse_unary)),
             |(op, _, e)| Expr::unary_expr(op, e),
         ),
         parse_primary,
@@ -60,9 +60,9 @@ fn parse_binary_level<'a>(
     let parse_expr_binary_op_expr = tuple((
         next,
         many0(tuple((
-            multispace0,
+            multispace0_or_comment,
             verify(parse_binary_op, |o: &BinaryOp| allowed.contains(o)),
-            multispace0,
+            multispace0_or_comment,
             next,
         ))),
     ));
@@ -118,9 +118,9 @@ fn parse_mul_div(input: &str) -> IResult<&str, Expr> {
 
 /// Parses an expression: unary and binary with proper precedence.
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
     let (input, expr) = parse_pipe(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
     Ok((input, expr))
 }
 
@@ -413,6 +413,33 @@ mod tests {
                     BinaryOp::Concat,
                     Expr::literal_string("world")
                 )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_comments() {
+        assert_eq!(parse_expr("42 # comment"), Ok(("", Expr::literal_number(42))));
+        assert_eq!(
+            parse_expr("# leading comment\n42"),
+            Ok(("", Expr::literal_number(42)))
+        );
+        assert_eq!(
+            parse_expr("1 # add these\n+ 2"),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::literal_number(1),
+                    BinaryOp::Add,
+                    Expr::literal_number(2)
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expr("add(1, # first\n 2)"),
+            Ok((
+                "",
+                Expr::function_call("add", vec![Expr::literal_number(1), Expr::literal_number(2)])
             ))
         );
     }

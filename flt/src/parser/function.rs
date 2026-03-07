@@ -1,7 +1,5 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::character::complete::multispace0;
-use nom::character::complete::multispace1;
 use nom::combinator::map;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
@@ -12,6 +10,7 @@ use nom::IResult;
 
 use crate::ast::Identifier;
 
+use super::comment::{multispace0_or_comment, multispace1_or_comment};
 use super::parse_identifier;
 
 /// Parses a function call: `Identifier` `(` Expr* `)` or `Identifier` Expr+.
@@ -27,24 +26,24 @@ where
         let (input, name) = map(parse_identifier, |s: &str| Identifier(s.to_string()))(input)?;
         let (input, args) = alt((
             preceded(
-                multispace0,
+                multispace0_or_comment,
                 delimited(
                     tag("("),
                     delimited(
-                        multispace0,
+                        multispace0_or_comment,
                         separated_list0(
-                            tuple((multispace0, tag(","), multispace0)),
+                            tuple((multispace0_or_comment, tag(","), multispace0_or_comment)),
                             &parse_expr,
                         ),
-                        multispace0,
+                        multispace0_or_comment,
                     ),
                     tag(")"),
                 ),
             ),
             preceded(
-                multispace1,
+                multispace1_or_comment,
                 separated_list1(
-                    tuple((multispace0, tag(","), multispace0)),
+                    tuple((multispace0_or_comment, tag(","), multispace0_or_comment)),
                     &parse_expr,
                 ),
             ),
