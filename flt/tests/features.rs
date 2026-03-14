@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use bigdecimal::BigDecimal;
-use cucumber::given;
 use cucumber::gherkin::Step;
+use cucumber::given;
 use cucumber::then;
 use cucumber::when;
 use cucumber::World;
@@ -114,7 +114,11 @@ fn then_output_should_be_identifier(world: &mut AstWorld, expected: String) {
 #[then(expr = "parsing should fail")]
 fn then_parsing_should_fail(world: &mut AstWorld) {
     let output = world.output.take().expect("output should be set");
-    assert!(output.is_err(), "expected parsing to fail, got {:?}", output);
+    assert!(
+        output.is_err(),
+        "expected parsing to fail, got {:?}",
+        output
+    );
 }
 
 #[then(expr = r"the output should parse to interpolated string {string} {word} {string}")]
@@ -136,6 +140,95 @@ fn then_output_should_be_interpolated_string(
         Expr::literal_string(after),
     );
     assert_eq!(expr, expected, "expected interpolated string expr");
+}
+
+#[then(expr = "the output should be an empty map")]
+fn then_output_should_be_empty_map(world: &mut AstWorld) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::MapLiteral(entries) => {
+            assert!(entries.is_empty(), "expected empty map, got {entries:?}");
+        }
+        _ => panic!("expected map literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r#"^the output should be a map with (\d+) entr(?:y|ies)$"#)]
+fn then_output_should_be_map_with_n_entries(world: &mut AstWorld, count: usize) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::MapLiteral(entries) => {
+            assert_eq!(
+                entries.len(),
+                count,
+                "expected {count} entries, got {}",
+                entries.len()
+            );
+        }
+        _ => panic!("expected map literal, got {expr:?}"),
+    }
+}
+
+#[then(expr = r#"the output should be a map with key {string} and string value {string}"#)]
+fn then_output_should_be_map_with_key_string_value(
+    world: &mut AstWorld,
+    key: String,
+    value: String,
+) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::MapLiteral(entries) => {
+            assert_eq!(entries.len(), 1, "expected single-entry map");
+            let (k, v) = &entries[0];
+            assert_eq!(k, &key, "expected key {key:?}");
+            assert_eq!(
+                *v,
+                Expr::literal_string(&value),
+                "expected string value {value:?}"
+            );
+        }
+        _ => panic!("expected map literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r#"^the output should be a map with key "([^"]*)" and number value (\d+)$"#)]
+fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: String, value: i64) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::MapLiteral(entries) => {
+            assert_eq!(entries.len(), 1, "expected single-entry map");
+            let (k, v) = &entries[0];
+            assert_eq!(k, &key, "expected key {key:?}");
+            assert_eq!(
+                *v,
+                Expr::literal_number(value),
+                "expected number value {value}"
+            );
+        }
+        _ => panic!("expected map literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r#"^the output should be a function call "([^"]*)" with (\d+) args$"#)]
+fn then_output_should_be_function_call(world: &mut AstWorld, name: String, arg_count: usize) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::FunctionCall(ident, args) => {
+            assert_eq!(ident.0, name, "expected function name {name:?}");
+            assert_eq!(
+                args.len(),
+                arg_count,
+                "expected {arg_count} args, got {}",
+                args.len()
+            );
+        }
+        _ => panic!("expected function call, got {expr:?}"),
+    }
 }
 
 #[then(expr = r"the output should parse to string concat {string} and {string}")]

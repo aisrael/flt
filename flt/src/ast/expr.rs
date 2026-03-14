@@ -6,6 +6,7 @@ use super::identifier::Identifier;
 use super::literal::Literal;
 use super::operands::BinaryOp;
 use super::operands::UnaryOp;
+use crate::utils::escape_string;
 
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
@@ -22,6 +23,8 @@ pub enum Expr {
     FunctionCall(Identifier, Vec<Expr>),
     /// A parenthesized expression.
     Parenthesized(Box<Expr>),
+    /// A map literal: `{ key: value, ... }`.
+    MapLiteral(Vec<(String, Expr)>),
 }
 
 impl Display for Expr {
@@ -40,6 +43,20 @@ impl Display for Expr {
                 write!(f, "{name}({args})")
             }
             Expr::Parenthesized(expr) => write!(f, "({expr})"),
+            Expr::MapLiteral(entries) => {
+                write!(f, "{{ ")?;
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    if key.contains(|c: char| !c.is_alphanumeric() && c != '_') {
+                        write!(f, "\"{}\": {}", escape_string(key), value)?;
+                    } else {
+                        write!(f, "{key}: {value}")?;
+                    }
+                }
+                write!(f, " }}")
+            }
         }
     }
 }
@@ -91,6 +108,11 @@ impl Expr {
     /// Constructs a parenthesized expression.
     pub fn parenthesized(expr: Expr) -> Self {
         Expr::Parenthesized(Box::new(expr))
+    }
+
+    /// Constructs a map literal expression.
+    pub fn map_literal(entries: Vec<(impl Into<String>, Expr)>) -> Self {
+        Expr::MapLiteral(entries.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
 }
 

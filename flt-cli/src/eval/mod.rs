@@ -22,6 +22,7 @@ fn eval_to_literal(expr: &Expr) -> Result<Literal, Error> {
         Expr::BinaryExpr(left, op, right) => eval_binary_expr(left, *op, right),
         Expr::FunctionCall(_, _) => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
         Expr::Parenthesized(inner) => eval_to_literal(inner),
+        Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
     }
 }
 

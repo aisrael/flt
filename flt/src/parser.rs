@@ -6,6 +6,7 @@ mod expr;
 mod function;
 mod identifier;
 mod literal;
+mod map;
 mod number;
 mod operands;
 mod string;
