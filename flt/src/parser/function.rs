@@ -8,20 +8,55 @@ use nom::sequence::preceded;
 use nom::IResult;
 use nom::Parser;
 
+use crate::ast::Expr;
 use crate::ast::Identifier;
 
 use super::comment::{multispace0_or_comment, multispace1_or_comment};
+use super::map::parse_kv_pair;
 use super::parse_identifier;
 
-/// Parses a function call: `Identifier` `(` Expr* `)` or `Identifier` Expr+.
+enum FnArg<'a> {
+    Positional(Expr),
+    KeyValue(std::borrow::Cow<'a, str>, Expr),
+}
+
+fn parse_fn_arg<'a>(
+    expr_parser: fn(&'a str) -> IResult<&'a str, Expr>,
+) -> impl FnMut(&'a str) -> IResult<&'a str, FnArg<'a>> {
+    move |input: &'a str| {
+        alt((
+            map(parse_kv_pair(expr_parser), |(k, v)| FnArg::KeyValue(k, v)),
+            map(expr_parser, FnArg::Positional),
+        ))
+        .parse(input)
+    }
+}
+
+fn collect_fn_args(items: Vec<FnArg<'_>>) -> Vec<Expr> {
+    let mut args = Vec::new();
+    let mut kv_pairs: Vec<(String, Expr)> = Vec::new();
+
+    for item in items {
+        match item {
+            FnArg::Positional(expr) => args.push(expr),
+            FnArg::KeyValue(key, value) => kv_pairs.push((key.into_owned(), value)),
+        }
+    }
+
+    if !kv_pairs.is_empty() {
+        args.push(Expr::MapLiteral(kv_pairs));
+    }
+
+    args
+}
+
+/// Parses a function call: `Identifier` `(` args `)` or `Identifier` args.
 /// Parentheses are optional; without them, at least one argument is required.
-/// Arguments are comma-separated. Returns `(name, args)`.
-pub fn parse_function_call<F, O>(
-    parse_expr: F,
-) -> impl FnMut(&str) -> IResult<&str, (Identifier, Vec<O>)>
-where
-    F: Fn(&str) -> IResult<&str, O> + Copy,
-{
+/// Arguments are comma-separated expressions, with optional trailing key-value
+/// pairs that are collected into a `MapLiteral` as the final argument.
+pub fn parse_function_call(
+    parse_expr: fn(&str) -> IResult<&str, Expr>,
+) -> impl FnMut(&str) -> IResult<&str, (Identifier, Vec<Expr>)> {
     move |input: &str| {
         let (input, name) =
             map(parse_identifier, |s: &str| Identifier(s.to_string())).parse(input)?;
@@ -32,9 +67,12 @@ where
                     tag("("),
                     delimited(
                         multispace0_or_comment,
-                        separated_list0(
-                            (multispace0_or_comment, tag(","), multispace0_or_comment),
-                            parse_expr,
+                        map(
+                            separated_list0(
+                                (multispace0_or_comment, tag(","), multispace0_or_comment),
+                                parse_fn_arg(parse_expr),
+                            ),
+                            collect_fn_args,
                         ),
                         multispace0_or_comment,
                     ),
@@ -43,9 +81,12 @@ where
             ),
             preceded(
                 multispace1_or_comment,
-                separated_list1(
-                    (multispace0_or_comment, tag(","), multispace0_or_comment),
-                    parse_expr,
+                map(
+                    separated_list1(
+                        (multispace0_or_comment, tag(","), multispace0_or_comment),
+                        parse_fn_arg(parse_expr),
+                    ),
+                    collect_fn_args,
                 ),
             ),
         ))
@@ -155,6 +196,74 @@ mod tests {
                 (
                     Identifier::try_from("add").expect("invalid identifier"),
                     vec![Expr::literal_number(1), Expr::literal_number(2)]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_with_trailing_kv_pairs() {
+        assert_eq!(
+            parse_function_call(parse_expr)("foo(1, optional: true)"),
+            Ok((
+                "",
+                (
+                    Identifier::try_from("foo").expect("invalid identifier"),
+                    vec![
+                        Expr::literal_number(1),
+                        Expr::map_literal(vec![("optional", Expr::literal_boolean(true))]),
+                    ]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_with_only_kv_pairs() {
+        assert_eq!(
+            parse_function_call(parse_expr)(r#"foo(name: "Alice", age: 30)"#),
+            Ok((
+                "",
+                (
+                    Identifier::try_from("foo").expect("invalid identifier"),
+                    vec![Expr::map_literal(vec![
+                        ("name", Expr::literal_string("Alice")),
+                        ("age", Expr::literal_number(30)),
+                    ])]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_without_parens_trailing_kv_pairs() {
+        assert_eq!(
+            parse_function_call(parse_expr)("foo 1, optional: true"),
+            Ok((
+                "",
+                (
+                    Identifier::try_from("foo").expect("invalid identifier"),
+                    vec![
+                        Expr::literal_number(1),
+                        Expr::map_literal(vec![("optional", Expr::literal_boolean(true))]),
+                    ]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_with_quoted_kv_key() {
+        assert_eq!(
+            parse_function_call(parse_expr)(r#"foo(1, "output file": "out.csv")"#),
+            Ok((
+                "",
+                (
+                    Identifier::try_from("foo").expect("invalid identifier"),
+                    vec![
+                        Expr::literal_number(1),
+                        Expr::map_literal(vec![("output file", Expr::literal_string("out.csv"),)]),
+                    ]
                 )
             ))
         );

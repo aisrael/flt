@@ -27,12 +27,26 @@ fn parse_bare_key(input: &str) -> IResult<&str, &str> {
 }
 
 /// Parses a map key: bare identifier or quoted string.
-fn parse_map_key(input: &str) -> IResult<&str, Cow<'_, str>> {
+pub fn parse_map_key(input: &str) -> IResult<&str, Cow<'_, str>> {
     alt((
         map(parse_string, Cow::Owned),
         map(parse_bare_key, Cow::Borrowed),
     ))
     .parse(input)
+}
+
+/// Parses a single key-value pair: `key: value`.
+pub fn parse_kv_pair<'a>(
+    expr_parser: fn(&'a str) -> IResult<&'a str, Expr>,
+) -> impl FnMut(&'a str) -> IResult<&'a str, (Cow<'a, str>, Expr)> {
+    move |input: &'a str| {
+        separated_pair(
+            parse_map_key,
+            (multispace0_or_comment, tag(":"), multispace0_or_comment),
+            expr_parser,
+        )
+        .parse(input)
+    }
 }
 
 /// Parses a map literal: `{ key: value, ... }`.
@@ -48,11 +62,7 @@ pub fn parse_map_literal<'a>(
 
         let (input, entries) = separated_list0(
             (multispace0_or_comment, tag(","), multispace0_or_comment),
-            separated_pair(
-                parse_map_key,
-                (multispace0_or_comment, tag(":"), multispace0_or_comment),
-                expr_parser,
-            ),
+            parse_kv_pair(expr_parser),
         )
         .parse(input)?;
 
