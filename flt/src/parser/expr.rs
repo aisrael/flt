@@ -11,6 +11,7 @@ use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
 use super::identifier::parse_identifier;
 use super::literal::parse_literal;
+use super::map::parse_map_literal;
 use super::operands::parse_binary_op;
 use super::operands::parse_unary_op;
 use super::string::parse_interpolated_string;
@@ -26,6 +27,7 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
             Expr::FunctionCall(name, args)
         }),
         map(parse_identifier, Expr::ident),
+        parse_map_literal(parse_or),
         map(
             delimited(
                 (multispace0_or_comment, tag("("), multispace0_or_comment),
