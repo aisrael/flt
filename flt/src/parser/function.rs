@@ -1,6 +1,7 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
+use nom::combinator::map_res;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
@@ -32,13 +33,19 @@ fn parse_fn_arg<'a>(
     }
 }
 
-fn collect_fn_args(items: Vec<FnArg<'_>>) -> Vec<Expr> {
+/// Positional args must all come before key-value pairs.
+fn collect_fn_args(items: Vec<FnArg<'_>>) -> Result<Vec<Expr>, &'static str> {
     let mut args = Vec::new();
     let mut kv_pairs: Vec<(String, Expr)> = Vec::new();
 
     for item in items {
         match item {
-            FnArg::Positional(expr) => args.push(expr),
+            FnArg::Positional(expr) => {
+                if !kv_pairs.is_empty() {
+                    return Err("positional argument after key-value pair");
+                }
+                args.push(expr);
+            }
             FnArg::KeyValue(key, value) => kv_pairs.push((key.into_owned(), value)),
         }
     }
@@ -47,7 +54,7 @@ fn collect_fn_args(items: Vec<FnArg<'_>>) -> Vec<Expr> {
         args.push(Expr::MapLiteral(kv_pairs));
     }
 
-    args
+    Ok(args)
 }
 
 /// Parses a function call: `Identifier` `(` args `)` or `Identifier` args.
@@ -67,7 +74,7 @@ pub fn parse_function_call(
                     tag("("),
                     delimited(
                         multispace0_or_comment,
-                        map(
+                        map_res(
                             separated_list0(
                                 (multispace0_or_comment, tag(","), multispace0_or_comment),
                                 parse_fn_arg(parse_expr),
@@ -81,7 +88,7 @@ pub fn parse_function_call(
             ),
             preceded(
                 multispace1_or_comment,
-                map(
+                map_res(
                     separated_list1(
                         (multispace0_or_comment, tag(","), multispace0_or_comment),
                         parse_fn_arg(parse_expr),
@@ -250,6 +257,11 @@ mod tests {
                 )
             ))
         );
+    }
+
+    #[test]
+    fn test_parse_positional_after_kv_fails() {
+        assert!(parse_function_call(parse_expr)("foo(a: 1, 2)").is_err());
     }
 
     #[test]
