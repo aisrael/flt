@@ -23,6 +23,7 @@ fn eval_to_literal(expr: &Expr) -> Result<Literal, Error> {
         Expr::FunctionCall(_, _) => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
         Expr::Parenthesized(inner) => eval_to_literal(inner),
         Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+        Expr::ArrayLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
     }
 }
 

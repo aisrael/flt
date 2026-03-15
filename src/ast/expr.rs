@@ -32,6 +32,8 @@ pub enum Expr {
     Parenthesized(Box<Expr>),
     /// A map literal: `{ key: value, ... }`.
     MapLiteral(Vec<KeyValue>),
+    /// An array literal: `[ expr, ... ]`.
+    ArrayLiteral(Vec<Expr>),
 }
 
 impl Display for Expr {
@@ -63,6 +65,16 @@ impl Display for Expr {
                     }
                 }
                 write!(f, " }}")
+            }
+            Expr::ArrayLiteral(elems) => {
+                write!(f, "[ ")?;
+                for (i, e) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{e}")?;
+                }
+                write!(f, " ]")
             }
         }
     }
@@ -128,6 +140,11 @@ impl Expr {
                 })
                 .collect(),
         )
+    }
+
+    /// Constructs an array literal expression.
+    pub fn array_literal(elems: Vec<Expr>) -> Self {
+        Expr::ArrayLiteral(elems)
     }
 }
 

@@ -7,6 +7,7 @@ use nom::sequence::delimited;
 use nom::IResult;
 use nom::Parser;
 
+use super::array::parse_array_literal;
 use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
 use super::identifier::parse_identifier;
@@ -27,6 +28,7 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
             Expr::FunctionCall(name, args)
         }),
         map(parse_identifier, Expr::ident),
+        parse_array_literal(parse_or),
         parse_map_literal(parse_or),
         map(
             delimited(

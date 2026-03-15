@@ -16,6 +16,8 @@ use flt::parser::parse_expr;
 pub struct AstWorld {
     pub input: Option<String>,
     pub output: Option<Result<Expr, String>>,
+    /// Set by array step so "first/second/third element" steps can inspect it.
+    pub last_parsed_expr: Option<Expr>,
 }
 
 #[given(expr = r"the input {string}")]
@@ -228,6 +230,160 @@ fn then_output_should_be_function_call(world: &mut AstWorld, name: String, arg_c
             );
         }
         _ => panic!("expected function call, got {expr:?}"),
+    }
+}
+
+#[then(expr = "the output should be an empty array")]
+fn then_output_should_be_empty_array(world: &mut AstWorld) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            assert!(elems.is_empty(), "expected empty array, got {elems:?}");
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the output should be an array with (\d+) elements?$")]
+fn then_output_should_be_array_with_n_elements(world: &mut AstWorld, count: usize) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            assert_eq!(
+                elems.len(),
+                count,
+                "expected {count} elements, got {}",
+                elems.len()
+            );
+            world.last_parsed_expr = Some(expr);
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the first element should be the number (\d+)$")]
+fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set (use 'array with N elements' step first)");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let first = elems.first().expect("array should have at least one element");
+            match first {
+                Expr::Literal(Literal::Number(n)) => {
+                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                }
+                _ => panic!("expected first element to be number, got {first:?}"),
+            }
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the second element should be the number (\d+)$")]
+fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let second = elems.get(1).expect("array should have at least two elements");
+            match second {
+                Expr::Literal(Literal::Number(n)) => {
+                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                }
+                _ => panic!("expected second element to be number, got {second:?}"),
+            }
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the third element should be the number (\d+)$")]
+fn then_third_element_should_be_number(world: &mut AstWorld, expected: i64) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let third = elems.get(2).expect("array should have at least three elements");
+            match third {
+                Expr::Literal(Literal::Number(n)) => {
+                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                }
+                _ => panic!("expected third element to be number, got {third:?}"),
+            }
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(expr = r#"the first element should be the string {string}"#)]
+fn then_first_element_should_be_string(world: &mut AstWorld, expected: String) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let first = elems.first().expect("array should have at least one element");
+            assert_eq!(first, &Expr::literal_string(&expected));
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(expr = r#"the second element should be the string {string}"#)]
+fn then_second_element_should_be_string(world: &mut AstWorld, expected: String) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let second = elems.get(1).expect("array should have at least two elements");
+            assert_eq!(second, &Expr::literal_string(&expected));
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(expr = r#"the third element should be the string {string}"#)]
+fn then_third_element_should_be_string(world: &mut AstWorld, expected: String) {
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let third = elems.get(2).expect("array should have at least three elements");
+            assert_eq!(third, &Expr::literal_string(&expected));
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the third element should be the boolean (true|false)$")]
+fn then_third_element_should_be_boolean(world: &mut AstWorld, expected: String) {
+    let expected: bool = expected.parse().expect("true or false");
+    let expr = world
+        .last_parsed_expr
+        .take()
+        .expect("last_parsed_expr should be set");
+    match &expr {
+        Expr::ArrayLiteral(elems) => {
+            let third = elems.get(2).expect("array should have at least three elements");
+            match third {
+                Expr::Literal(Literal::Boolean(b)) => assert_eq!(*b, expected),
+                _ => panic!("expected third element to be boolean, got {third:?}"),
+            }
+        }
+        _ => panic!("expected array literal, got {expr:?}"),
     }
 }
 
