@@ -35,8 +35,7 @@ impl TryFrom<&str> for Identifier {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let mut chars = s.chars();
         if let Some(first) = chars.next() {
-            if first.is_alphabetic() && chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-            {
+            if first.is_alphabetic() && chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
                 return Ok(Identifier(s.to_string()));
             }
         }

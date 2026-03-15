@@ -1,11 +1,11 @@
+use crate::ast::BinaryOp;
+use crate::ast::Expr;
+use crate::ast::Literal;
+use crate::ast::UnaryOp;
+use crate::errors::Error;
+use crate::errors::RuntimeError;
+use crate::utils::escape_string;
 use bigdecimal::BigDecimal;
-use flt::ast::BinaryOp;
-use flt::ast::Expr;
-use flt::ast::Literal;
-use flt::ast::UnaryOp;
-use flt::errors::Error;
-use flt::errors::RuntimeError;
-use flt::utils::escape_string;
 
 pub fn eval(expr: &Expr) -> Result<String, Error> {
     let lit = eval_to_literal(expr)?;
@@ -22,6 +22,7 @@ fn eval_to_literal(expr: &Expr) -> Result<Literal, Error> {
         Expr::BinaryExpr(left, op, right) => eval_binary_expr(left, *op, right),
         Expr::FunctionCall(_, _) => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
         Expr::Parenthesized(inner) => eval_to_literal(inner),
+        Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
     }
 }
 
@@ -130,11 +131,11 @@ fn binary_string(l: &Literal, r: &Literal) -> Result<Literal, Error> {
 
 #[cfg(test)]
 mod tests {
-    use flt::ast::BinaryOp;
-    use flt::ast::Expr;
-    use flt::ast::UnaryOp;
-    use flt::errors::Error;
-    use flt::errors::RuntimeError;
+    use crate::ast::BinaryOp;
+    use crate::ast::Expr;
+    use crate::ast::UnaryOp;
+    use crate::errors::Error;
+    use crate::errors::RuntimeError;
 
     use super::eval;
 

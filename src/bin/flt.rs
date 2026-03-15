@@ -1,8 +1,6 @@
-mod eval;
-
 use std::process::ExitCode;
 
-use eval::eval;
+use flt::eval::eval;
 use flt::parser::parse_expr;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
