@@ -15,6 +15,19 @@ pub struct KeyValue {
     pub value: Expr,
 }
 
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self
+            .key
+            .contains(|c: char| !c.is_alphanumeric() && c != '_')
+        {
+            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
+        } else {
+            write!(f, "{}: {}", self.key, self.value)
+        }
+    }
+}
+
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -39,30 +52,33 @@ pub enum Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Literal(literal) => write!(f, "{}", literal),
-            Expr::Ident(ident) => write!(f, "{}", ident),
+            Expr::Literal(literal) => literal.fmt(f),
+            Expr::Ident(ident) => ident.fmt(f),
             Expr::UnaryExpr(op, expr) => write!(f, "{op}{expr}"),
             Expr::BinaryExpr(left, op, right) => write!(f, "{left} {op} {right}"),
             Expr::FunctionCall(name, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                write!(f, "{name}({args})")
+                name.fmt(f)?;
+                write!(f, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    arg.fmt(f)?;
+                }
+                write!(f, ")")
             }
-            Expr::Parenthesized(expr) => write!(f, "({expr})"),
+            Expr::Parenthesized(expr) => {
+                write!(f, "(")?;
+                expr.fmt(f)?;
+                write!(f, ")")
+            }
             Expr::MapLiteral(entries) => {
                 write!(f, "{{ ")?;
                 for (i, kv) in entries.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if kv.key.contains(|c: char| !c.is_alphanumeric() && c != '_') {
-                        write!(f, "\"{}\": {}", escape_string(&kv.key), kv.value)?;
-                    } else {
-                        write!(f, "{}: {}", kv.key, kv.value)?;
-                    }
+                    kv.fmt(f)?;
                 }
                 write!(f, " }}")
             }
@@ -72,7 +88,7 @@ impl Display for Expr {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{e}")?;
+                    e.fmt(f)?;
                 }
                 write!(f, " ]")
             }
