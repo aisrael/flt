@@ -213,6 +213,24 @@ fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: St
     }
 }
 
+#[then(regex = r#"^the output should be a function call "([^"]*)" with (\d+) args$"#)]
+fn then_output_should_be_function_call(world: &mut AstWorld, name: String, arg_count: usize) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::FunctionCall(ident, args) => {
+            assert_eq!(ident.0, name, "expected function name {name:?}");
+            assert_eq!(
+                args.len(),
+                arg_count,
+                "expected {arg_count} args, got {}",
+                args.len()
+            );
+        }
+        _ => panic!("expected function call, got {expr:?}"),
+    }
+}
+
 #[then(expr = r"the output should parse to string concat {string} and {string}")]
 fn then_output_should_be_string_concat(world: &mut AstWorld, left: String, right: String) {
     let output = world.output.take().expect("output should be set");

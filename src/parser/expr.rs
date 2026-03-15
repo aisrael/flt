@@ -497,4 +497,59 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn test_parse_function_call_with_kv_pairs() {
+        assert_eq!(
+            parse_expr("foo(1, optional: true)"),
+            Ok((
+                "",
+                Expr::FunctionCall(
+                    Identifier::try_from("foo").expect("invalid identifier"),
+                    vec![
+                        Expr::literal_number(1),
+                        Expr::map_literal(vec![("optional", Expr::literal_boolean(true))]),
+                    ]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_function_call_kv_only() {
+        assert_eq!(
+            parse_expr(r#"config(format: "csv", header: true)"#),
+            Ok((
+                "",
+                Expr::FunctionCall(
+                    Identifier::try_from("config").expect("invalid identifier"),
+                    vec![Expr::map_literal(vec![
+                        ("format", Expr::literal_string("csv")),
+                        ("header", Expr::literal_boolean(true)),
+                    ])]
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_pipe_with_kv_pairs() {
+        assert_eq!(
+            parse_expr(r#"READ("input") |> WRITE("output", format: "csv")"#),
+            Ok((
+                "",
+                Expr::binary_expr(
+                    Expr::function_call("READ", vec![Expr::literal_string("input")]),
+                    BinaryOp::Pipe,
+                    Expr::FunctionCall(
+                        Identifier::try_from("WRITE").expect("invalid identifier"),
+                        vec![
+                            Expr::literal_string("output"),
+                            Expr::map_literal(vec![("format", Expr::literal_string("csv"))]),
+                        ]
+                    )
+                )
+            ))
+        );
+    }
 }
