@@ -182,10 +182,10 @@ fn then_output_should_be_map_with_key_string_value(
     match &expr {
         Expr::MapLiteral(entries) => {
             assert_eq!(entries.len(), 1, "expected single-entry map");
-            let (k, v) = &entries[0];
-            assert_eq!(k, &key, "expected key {key:?}");
+            let kv = &entries[0];
+            assert_eq!(kv.key, key, "expected key {key:?}");
             assert_eq!(
-                *v,
+                kv.value,
                 Expr::literal_string(&value),
                 "expected string value {value:?}"
             );
@@ -201,10 +201,10 @@ fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: St
     match &expr {
         Expr::MapLiteral(entries) => {
             assert_eq!(entries.len(), 1, "expected single-entry map");
-            let (k, v) = &entries[0];
-            assert_eq!(k, &key, "expected key {key:?}");
+            let kv = &entries[0];
+            assert_eq!(kv.key, key, "expected key {key:?}");
             assert_eq!(
-                *v,
+                kv.value,
                 Expr::literal_number(value),
                 "expected number value {value}"
             );

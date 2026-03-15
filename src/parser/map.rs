@@ -16,6 +16,7 @@ use nom::Parser;
 use super::comment::multispace0_or_comment;
 use super::string::parse_string;
 use crate::ast::Expr;
+use crate::ast::KeyValue;
 
 /// Parses a bare map key: starts with a letter, followed by alphanumeric or `_`.
 fn parse_bare_key(input: &str) -> IResult<&str, &str> {
@@ -71,9 +72,12 @@ pub fn parse_map_literal<'a>(
         let (input, _) = multispace0_or_comment(input)?;
         let (input, _) = tag("}").parse(input)?;
 
-        let entries: Vec<(String, Expr)> = entries
+        let entries: Vec<KeyValue> = entries
             .into_iter()
-            .map(|(k, v)| (k.into_owned(), v))
+            .map(|(k, v)| KeyValue {
+                key: k.into_owned(),
+                value: v,
+            })
             .collect();
 
         Ok((input, Expr::MapLiteral(entries)))

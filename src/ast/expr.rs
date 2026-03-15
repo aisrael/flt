@@ -8,6 +8,13 @@ use super::operands::BinaryOp;
 use super::operands::UnaryOp;
 use crate::utils::escape_string;
 
+/// A key-value pair in a map literal.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyValue {
+    pub key: String,
+    pub value: Expr,
+}
+
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -24,7 +31,7 @@ pub enum Expr {
     /// A parenthesized expression.
     Parenthesized(Box<Expr>),
     /// A map literal: `{ key: value, ... }`.
-    MapLiteral(Vec<(String, Expr)>),
+    MapLiteral(Vec<KeyValue>),
 }
 
 impl Display for Expr {
@@ -45,14 +52,14 @@ impl Display for Expr {
             Expr::Parenthesized(expr) => write!(f, "({expr})"),
             Expr::MapLiteral(entries) => {
                 write!(f, "{{ ")?;
-                for (i, (key, value)) in entries.iter().enumerate() {
+                for (i, kv) in entries.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if key.contains(|c: char| !c.is_alphanumeric() && c != '_') {
-                        write!(f, "\"{}\": {}", escape_string(key), value)?;
+                    if kv.key.contains(|c: char| !c.is_alphanumeric() && c != '_') {
+                        write!(f, "\"{}\": {}", escape_string(&kv.key), kv.value)?;
                     } else {
-                        write!(f, "{key}: {value}")?;
+                        write!(f, "{}: {}", kv.key, kv.value)?;
                     }
                 }
                 write!(f, " }}")
@@ -112,7 +119,15 @@ impl Expr {
 
     /// Constructs a map literal expression.
     pub fn map_literal(entries: Vec<(impl Into<String>, Expr)>) -> Self {
-        Expr::MapLiteral(entries.into_iter().map(|(k, v)| (k.into(), v)).collect())
+        Expr::MapLiteral(
+            entries
+                .into_iter()
+                .map(|(k, v)| KeyValue {
+                    key: k.into(),
+                    value: v,
+                })
+                .collect(),
+        )
     }
 }
 
