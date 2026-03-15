@@ -267,11 +267,13 @@ fn then_output_should_be_array_with_n_elements(world: &mut AstWorld, count: usiz
 fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set (use 'array with N elements' step first)");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let first = elems.first().expect("array should have at least one element");
+            let first = elems
+                .first()
+                .expect("array should have at least one element");
             match first {
                 Expr::Literal(Literal::Number(n)) => {
                     assert_eq!(n.as_ref(), &BigDecimal::from(expected));
@@ -287,11 +289,13 @@ fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
 fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let second = elems.get(1).expect("array should have at least two elements");
+            let second = elems
+                .get(1)
+                .expect("array should have at least two elements");
             match second {
                 Expr::Literal(Literal::Number(n)) => {
                     assert_eq!(n.as_ref(), &BigDecimal::from(expected));
@@ -307,11 +311,13 @@ fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
 fn then_third_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let third = elems.get(2).expect("array should have at least three elements");
+            let third = elems
+                .get(2)
+                .expect("array should have at least three elements");
             match third {
                 Expr::Literal(Literal::Number(n)) => {
                     assert_eq!(n.as_ref(), &BigDecimal::from(expected));
@@ -327,11 +333,13 @@ fn then_third_element_should_be_number(world: &mut AstWorld, expected: i64) {
 fn then_first_element_should_be_string(world: &mut AstWorld, expected: String) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let first = elems.first().expect("array should have at least one element");
+            let first = elems
+                .first()
+                .expect("array should have at least one element");
             assert_eq!(first, &Expr::literal_string(&expected));
         }
         _ => panic!("expected array literal, got {expr:?}"),
@@ -342,11 +350,13 @@ fn then_first_element_should_be_string(world: &mut AstWorld, expected: String) {
 fn then_second_element_should_be_string(world: &mut AstWorld, expected: String) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let second = elems.get(1).expect("array should have at least two elements");
+            let second = elems
+                .get(1)
+                .expect("array should have at least two elements");
             assert_eq!(second, &Expr::literal_string(&expected));
         }
         _ => panic!("expected array literal, got {expr:?}"),
@@ -357,11 +367,13 @@ fn then_second_element_should_be_string(world: &mut AstWorld, expected: String) 
 fn then_third_element_should_be_string(world: &mut AstWorld, expected: String) {
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let third = elems.get(2).expect("array should have at least three elements");
+            let third = elems
+                .get(2)
+                .expect("array should have at least three elements");
             assert_eq!(third, &Expr::literal_string(&expected));
         }
         _ => panic!("expected array literal, got {expr:?}"),
@@ -373,11 +385,13 @@ fn then_third_element_should_be_boolean(world: &mut AstWorld, expected: String) 
     let expected: bool = expected.parse().expect("true or false");
     let expr = world
         .last_parsed_expr
-        .take()
+        .as_ref()
         .expect("last_parsed_expr should be set");
-    match &expr {
+    match expr {
         Expr::ArrayLiteral(elems) => {
-            let third = elems.get(2).expect("array should have at least three elements");
+            let third = elems
+                .get(2)
+                .expect("array should have at least three elements");
             match third {
                 Expr::Literal(Literal::Boolean(b)) => assert_eq!(*b, expected),
                 _ => panic!("expected third element to be boolean, got {third:?}"),
