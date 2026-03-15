@@ -1,5 +1,6 @@
 //! The flt Parser
 
+mod array;
 mod boolean;
 mod comment;
 mod expr;

@@ -11,6 +11,7 @@ use nom::Parser;
 
 use crate::ast::Expr;
 use crate::ast::Identifier;
+use crate::ast::KeyValue;
 
 use super::comment::{multispace0_or_comment, multispace1_or_comment};
 use super::map::parse_kv_pair;
@@ -36,7 +37,7 @@ fn parse_fn_arg<'a>(
 /// Positional args must all come before key-value pairs.
 fn collect_fn_args(items: Vec<FnArg<'_>>) -> Result<Vec<Expr>, &'static str> {
     let mut args = Vec::new();
-    let mut kv_pairs: Vec<(String, Expr)> = Vec::new();
+    let mut kv_pairs: Vec<KeyValue> = Vec::new();
 
     for item in items {
         match item {
@@ -46,7 +47,10 @@ fn collect_fn_args(items: Vec<FnArg<'_>>) -> Result<Vec<Expr>, &'static str> {
                 }
                 args.push(expr);
             }
-            FnArg::KeyValue(key, value) => kv_pairs.push((key.into_owned(), value)),
+            FnArg::KeyValue(key, value) => kv_pairs.push(KeyValue {
+                key: key.into_owned(),
+                value,
+            }),
         }
     }
 
