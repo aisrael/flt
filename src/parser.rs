@@ -6,6 +6,7 @@ mod comment;
 mod expr;
 mod function;
 mod identifier;
+mod keyword;
 mod literal;
 mod map;
 mod number;

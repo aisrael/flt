@@ -11,6 +11,7 @@ use super::array::parse_array_literal;
 use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
 use super::identifier::parse_identifier;
+use super::keyword::parse_keyword;
 use super::literal::parse_literal;
 use super::map::parse_map_literal;
 use super::operands::parse_binary_op;
@@ -29,6 +30,7 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
             let args = fc.args_as_exprs();
             Expr::FunctionCall(fc.name, args)
         }),
+        map(parse_keyword, Expr::keyword),
         map(parse_identifier, Expr::ident),
         parse_array_literal(parse_or),
         parse_map_literal(parse_or),
@@ -165,6 +167,28 @@ mod tests {
         assert_eq!(parse_expr("foo-1"), Ok(("", Expr::ident("foo-1"))));
         assert_eq!(parse_expr("123abc"), Ok(("abc", Expr::literal_number(123))));
         assert!(parse_expr("_foo").is_err());
+    }
+
+    #[test]
+    fn test_parse_keyword() {
+        use crate::ast::Keyword;
+
+        assert_eq!(parse_expr("if"), Ok(("", Expr::keyword(Keyword::If))));
+        assert_eq!(parse_expr("else"), Ok(("", Expr::keyword(Keyword::Else))));
+        assert_eq!(
+            parse_expr("return"),
+            Ok(("", Expr::keyword(Keyword::Return)))
+        );
+        assert_eq!(parse_expr("and"), Ok(("", Expr::keyword(Keyword::And))));
+        assert_eq!(parse_expr("or"), Ok(("", Expr::keyword(Keyword::Or))));
+        assert_eq!(parse_expr("not"), Ok(("", Expr::keyword(Keyword::Not))));
+        assert_eq!(parse_expr("for"), Ok(("", Expr::keyword(Keyword::For))));
+        assert_eq!(parse_expr("in"), Ok(("", Expr::keyword(Keyword::In))));
+        assert_eq!(parse_expr("while"), Ok(("", Expr::keyword(Keyword::While))));
+        assert_eq!(parse_expr("do"), Ok(("", Expr::keyword(Keyword::Do))));
+        assert_eq!(parse_expr("fn"), Ok(("", Expr::keyword(Keyword::Fn))));
+        // Keywords are not identifiers: "iffy" parses as ident, not "if" + "fy"
+        assert_eq!(parse_expr("iffy"), Ok(("", Expr::ident("iffy"))));
     }
 
     #[test]

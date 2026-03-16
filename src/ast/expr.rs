@@ -3,30 +3,11 @@ use std::fmt::Display;
 use bigdecimal::BigDecimal;
 
 use super::identifier::Identifier;
+use super::keywords::Keyword;
 use super::literal::Literal;
 use super::operands::BinaryOp;
 use super::operands::UnaryOp;
 use crate::utils::escape_string;
-
-/// A key-value pair in a map literal.
-#[derive(Clone, Debug, PartialEq)]
-pub struct KeyValue {
-    pub key: String,
-    pub value: Expr,
-}
-
-impl Display for KeyValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self
-            .key
-            .contains(|c: char| !c.is_alphanumeric() && c != '_')
-        {
-            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
-        } else {
-            write!(f, "{}: {}", self.key, self.value)
-        }
-    }
-}
 
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +28,8 @@ pub enum Expr {
     MapLiteral(Vec<KeyValue>),
     /// An array literal: `[ expr, ... ]`.
     ArrayLiteral(Vec<Expr>),
+    /// A reserved keyword (e.g. `if`, `else`, `return`).
+    Keyword(Keyword),
 }
 
 impl Display for Expr {
@@ -92,6 +75,7 @@ impl Display for Expr {
                 }
                 write!(f, " ]")
             }
+            Expr::Keyword(kw) => kw.fmt(f),
         }
     }
 }
@@ -161,6 +145,31 @@ impl Expr {
     /// Constructs an array literal expression.
     pub fn array_literal(elems: Vec<Expr>) -> Self {
         Expr::ArrayLiteral(elems)
+    }
+
+    /// Constructs a keyword expression.
+    pub fn keyword(kw: Keyword) -> Self {
+        Expr::Keyword(kw)
+    }
+}
+
+/// A key-value pair in a map literal.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyValue {
+    pub key: String,
+    pub value: Expr,
+}
+
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self
+            .key
+            .contains(|c: char| !c.is_alphanumeric() && c != '_')
+        {
+            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
+        } else {
+            write!(f, "{}: {}", self.key, self.value)
+        }
     }
 }
 
