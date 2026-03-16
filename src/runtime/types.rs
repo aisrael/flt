@@ -7,6 +7,23 @@ pub enum Type {
     Custom(CustomType),
 }
 
+impl Type {
+    /// The built-in number type
+    pub fn number() -> Self {
+        Type::Builtin(BuiltinType::Number)
+    }
+
+    /// The built-in string type
+    pub fn string() -> Self {
+        Type::Builtin(BuiltinType::String)
+    }
+
+    /// The built-in boolean type
+    pub fn boolean() -> Self {
+        Type::Builtin(BuiltinType::Boolean)
+    }
+}
+
 /// A builtin type is a type that is predefined in the runtime.
 #[derive(Debug, PartialEq)]
 pub enum BuiltinType {

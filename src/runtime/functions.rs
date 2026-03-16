@@ -10,9 +10,9 @@ pub struct FunctionDefinition {
 
 impl FunctionDefinition {
     /// Create a new function definition with a name, return type, and arguments
-    pub fn new(name: String, return_type: Type, arguments: Vec<Argument>) -> Self {
+    pub fn new<S: Into<String>>(name: S, return_type: Type, arguments: Vec<Argument>) -> Self {
         Self {
-            name,
+            name: name.into(),
             overloads: vec![FunctionSignature {
                 arguments,
                 return_type,
@@ -29,16 +29,16 @@ impl FunctionDefinition {
         self
     }
 
-    /// Find an overload of the function definition that matches the given arguments
-    /// The arguments are matched by name and type, and according to the order they 
+    /// Check if the function definition accepts the given arguments.
+    /// The arguments are matched by name and type, and according to the order they
     /// were defined (inserted) into the function definition.
-    pub fn find_overload(self, arguments: Vec<Argument>) -> Option<FunctionSignature> {
-        for overload in self.overloads {
+    pub fn accepts(&self, arguments: Vec<Argument>) -> bool {
+        for overload in &self.overloads {
             if overload.arguments == arguments {
-                return Some(overload);
+                return true;
             }
         }
-        None
+        false
     }
 }
 
@@ -55,8 +55,42 @@ pub struct Argument {
     pub r#type: Type,
 }
 
+impl Argument {
+    pub fn new<S: Into<String>>(name: S, r#type: Type) -> Self {
+        Self {
+            name: name.into(),
+            r#type,
+        }
+    }
+
+    /// A convenience method for an argument with the built-in number type
+    pub fn number<S: Into<String>>(name: S) -> Self {
+        Self::new(name, Type::number())
+    }
+
+    /// A convenience method for an argument with the built-in string type
+    pub fn string<S: Into<String>>(name: S) -> Self {
+        Self::new(name, Type::string())
+    }
+
+    /// A convenience method for an argument with the built-in boolean type
+    pub fn boolean<S: Into<String>>(name: S) -> Self {
+        Self::new(name, Type::boolean())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_accepts() {
+        let function_definition = FunctionDefinition::new(
+            "add",
+            Type::number(),
+            vec![Argument::number("a"), Argument::number("b")],
+        );
+        assert!(function_definition.accepts(vec![Argument::number("a"), Argument::number("b")]));
+        assert!(!function_definition.accepts(vec![Argument::number("b")]));
+    }
 }
