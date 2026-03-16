@@ -18,14 +18,16 @@ use super::operands::parse_unary_op;
 use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
+use crate::ast::FunctionCall;
 
 /// Parses a primary expression: literal, identifier, function call, or parenthesized expression.
 fn parse_primary(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_interpolated_string(parse_or),
         map(parse_literal, Expr::Literal),
-        map(parse_function_call(parse_or), |(name, args)| {
-            Expr::FunctionCall(name, args)
+        map(parse_function_call(parse_or), |fc: FunctionCall| {
+            let args = fc.args_as_exprs();
+            Expr::FunctionCall(fc.name, args)
         }),
         map(parse_identifier, Expr::ident),
         parse_array_literal(parse_or),
