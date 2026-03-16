@@ -5,9 +5,9 @@ This folder contains initial documentation for the `flt` language as it exists i
 ## Contents
 
 - [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL.
-- [`syntax.md`](syntax.md) - Core expression forms, literals, comments, and identifiers.
+- [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
 - [`operators.md`](operators.md) - Unary/binary operators and precedence.
-- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax and pipe chaining.
+- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments) and pipe chaining.
 - [`runtime-and-limitations.md`](runtime-and-limitations.md) - Evaluation behavior, errors, and current limitations.
 
 ## Scope
