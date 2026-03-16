@@ -11,6 +11,7 @@ mod literal;
 mod map;
 mod number;
 mod operands;
+mod statement;
 mod string;
 mod symbol;
 
@@ -24,5 +25,6 @@ pub use literal::parse_literal;
 pub use number::parse_number;
 pub use operands::parse_binary_op;
 pub use operands::parse_unary_op;
+pub use statement::parse_statement;
 pub use string::parse_string;
 pub use symbol::parse_symbol;

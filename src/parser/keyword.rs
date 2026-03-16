@@ -37,6 +37,7 @@ pub fn parse_keyword(input: &str) -> IResult<&str, Keyword> {
         value(Keyword::Not, terminated(tag("not"), word_boundary)),
         value(Keyword::If, terminated(tag("if"), word_boundary)),
         value(Keyword::In, terminated(tag("in"), word_boundary)),
+        value(Keyword::Let, terminated(tag("let"), word_boundary)),
         value(Keyword::Or, terminated(tag("or"), word_boundary)),
         value(Keyword::Do, terminated(tag("do"), word_boundary)),
         value(Keyword::Fn, terminated(tag("fn"), word_boundary)),
@@ -63,6 +64,7 @@ mod tests {
         assert_eq!(parse_keyword("while"), Ok(("", Keyword::While)));
         assert_eq!(parse_keyword("do"), Ok(("", Keyword::Do)));
         assert_eq!(parse_keyword("fn"), Ok(("", Keyword::Fn)));
+        assert_eq!(parse_keyword("let"), Ok(("", Keyword::Let)));
     }
 
     #[test]

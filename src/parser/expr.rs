@@ -187,6 +187,7 @@ mod tests {
         assert_eq!(parse_expr("while"), Ok(("", Expr::keyword(Keyword::While))));
         assert_eq!(parse_expr("do"), Ok(("", Expr::keyword(Keyword::Do))));
         assert_eq!(parse_expr("fn"), Ok(("", Expr::keyword(Keyword::Fn))));
+        assert_eq!(parse_expr("let"), Ok(("", Expr::keyword(Keyword::Let))));
         // Keywords are not identifiers: "iffy" parses as ident, not "if" + "fy"
         assert_eq!(parse_expr("iffy"), Ok(("", Expr::ident("iffy"))));
     }

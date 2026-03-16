@@ -7,6 +7,7 @@ mod keywords;
 mod literal;
 mod number;
 mod operands;
+mod statement;
 
 pub use expr::Expr;
 pub use expr::KeyValue;
@@ -17,3 +18,4 @@ pub use literal::Literal;
 pub use number::Numeric;
 pub use operands::BinaryOp;
 pub use operands::UnaryOp;
+pub use statement::Statement;
