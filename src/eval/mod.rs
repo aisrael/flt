@@ -88,6 +88,10 @@ fn eval_binary_expr(left: &Expr, op: BinaryOp, right: &Expr) -> Result<Literal, 
         BinaryOp::Concat => binary_string(&l, &r),
         BinaryOp::Eq => Ok(Literal::boolean(l == r)),
         BinaryOp::Ne => Ok(Literal::boolean(l != r)),
+        BinaryOp::Lt => binary_compare(&l, &r, |a, b| a < b),
+        BinaryOp::Gt => binary_compare(&l, &r, |a, b| a > b),
+        BinaryOp::Lte => binary_compare(&l, &r, |a, b| a <= b),
+        BinaryOp::Gte => binary_compare(&l, &r, |a, b| a >= b),
         BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
     }
 }
@@ -116,6 +120,15 @@ where
         (Literal::Boolean(a), Literal::Boolean(b)) => Ok(Literal::boolean(f(*a, *b))),
         _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
     }
+}
+
+fn binary_compare<F>(l: &Literal, r: &Literal, f: F) -> Result<Literal, Error>
+where
+    F: FnOnce(&BigDecimal, &BigDecimal) -> bool,
+{
+    let a = as_bigdecimal(l)?;
+    let b = as_bigdecimal(r)?;
+    Ok(Literal::boolean(f(&a, &b)))
 }
 
 fn literal_to_concat_str(lit: &Literal) -> String {
@@ -400,6 +413,55 @@ mod tests {
             ))
             .unwrap(),
             "false"
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_gt_lt_gte_lte() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(3),
+                BinaryOp::Gt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Gt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "false"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Lt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(2),
+                BinaryOp::Lte,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(3),
+                BinaryOp::Gte,
+                Expr::literal_number(3),
+            ))
+            .unwrap(),
+            "true"
         );
     }
 

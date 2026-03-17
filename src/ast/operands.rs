@@ -8,7 +8,7 @@ pub enum UnaryOp {
     Minus,
 }
 
-/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`, `==`, `!=`.
+/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`, `==`, `!=`, `<`, `>`, `<=`, `>=`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -29,6 +29,14 @@ pub enum BinaryOp {
     Eq,
     /// Inequality: not equal (different type or value).
     Ne,
+    /// Less than (numbers).
+    Lt,
+    /// Greater than (numbers).
+    Gt,
+    /// Less than or equal (numbers).
+    Lte,
+    /// Greater than or equal (numbers).
+    Gte,
 }
 
 impl Display for UnaryOp {
@@ -58,6 +66,10 @@ impl Display for BinaryOp {
             BinaryOp::Concat => write!(f, "<>"),
             BinaryOp::Eq => write!(f, "=="),
             BinaryOp::Ne => write!(f, "!="),
+            BinaryOp::Lt => write!(f, "<"),
+            BinaryOp::Gt => write!(f, ">"),
+            BinaryOp::Lte => write!(f, "<="),
+            BinaryOp::Gte => write!(f, ">="),
         }
     }
 }
