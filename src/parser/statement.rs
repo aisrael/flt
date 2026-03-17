@@ -22,7 +22,7 @@ use super::keyword::parse_keyword;
 /// the `;` is not required. Two statements on the same line require `;` after the first.
 pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
-    let (input, stmt) = alt((
+    let mut parse_let_or_assign = alt((
         map(
             (
                 verify(parse_keyword, |k: &Keyword| *k == Keyword::Let),
@@ -45,8 +45,13 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
             ),
             |(name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
         ),
-    ))
-    .parse(input)?;
+    ));
+
+    let (input, stmt) = if input.starts_with("let") {
+        parse_let_or_assign.parse(input)?
+    } else {
+        alt((parse_let_or_assign, map(parse_expr, Statement::Expr))).parse(input)?
+    };
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
@@ -89,6 +94,7 @@ mod tests {
                 assert!(*ident == "foo");
                 assert!(matches!(expr, Expr::BinaryExpr(_, _, _)));
             }
+            _ => panic!("expected let statement"),
         }
     }
 
@@ -139,6 +145,27 @@ mod tests {
         assert_eq!(
             stmt,
             Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_statement_number() {
+        let (rest, stmt) = parse_statement("42").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(stmt, Statement::Expr(Expr::literal_number(42)));
+    }
+
+    #[test]
+    fn test_parse_expr_statement_binary_with_semicolon() {
+        let (rest, stmt) = parse_statement("1 + 1;").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(
+            stmt,
+            Statement::Expr(Expr::binary_expr(
+                Expr::literal_number(1),
+                crate::ast::BinaryOp::Add,
+                Expr::literal_number(1)
+            ))
         );
     }
 }

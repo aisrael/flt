@@ -46,6 +46,9 @@ fn when_i_parse_the_input(world: &mut AstWorld) {
     let input = world.input.take().expect("input should be set");
     if let Ok((remainder, stmt)) = parse_statement(&input) {
         if remainder.trim().is_empty() {
+            if let Statement::Expr(expr) = &stmt {
+                world.output = Some(Ok(expr.clone()));
+            }
             world.output_statement = Some(Ok(stmt));
             return;
         }
