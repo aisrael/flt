@@ -24,6 +24,8 @@
 | `|` | bitwise or (parsed) | `a | b` |
 | `^` | bitwise xor (parsed) | `a ^ b` |
 | `|>` | pipe | `x |> f` |
+| `==` | equality | `x == 1` |
+| `!=` | inequality | `x != 0` |
 
 ## Precedence (Low to High)
 
@@ -36,6 +38,7 @@
 7. `&`
 8. `+`, `-`, `<>`
 9. `*`, `/`
+10. `==`, `!=`
 
 All binary levels are left-associative.
 

@@ -1,7 +1,7 @@
 Feature: Binary expressions
 
   Binary operators combine two expressions. Precedence (lowest to highest):
-  `|>`, `||`, `&&`, `^^`, `|`, `^`, `&`, `+`/`-`/`<>`, `*`, `/`.
+  `|>`, `||`, `&&`, `^^`, `|`, `^`, `&`, `+`/`-`/`<>`, `*`, `/`, `==`, `!=`.
 
   Scenario: Addition
     Given the input "1 + 2"
@@ -57,3 +57,13 @@ Feature: Binary expressions
     Given the input "x |> f"
     When I parse the input
     Then the output should be 'BinaryExpr(Ident("x"), Pipe, Ident("f"))'
+
+  Scenario: Equality
+    Given the input "x == 1"
+    When I parse the input
+    Then the output should be 'BinaryExpr(Ident("x"), Eq, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })))'
+
+  Scenario: Inequality
+    Given the input "x != 0"
+    When I parse the input
+    Then the output should be 'BinaryExpr(Ident("x"), Ne, Literal(Number(Numeric { value: BigDecimal(sign=NoSign, scale=0, digits=[]) })))'

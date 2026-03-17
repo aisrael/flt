@@ -60,8 +60,8 @@ fn parse_unary(input: &str) -> IResult<&str, Expr> {
 }
 
 /// Parses binary expressions: `Expr` then `BinaryOp` then `Expr`, with left-associative folding.
+/// Precedence (lowest to highest): ||, &&, ^^, |, ^, &, +/-/<> (add/sub/concat), *, /, ==, !=
 /// `next` parses the higher-precedence operand; `allowed` restricts which operators this level accepts.
-/// Precedence (lowest to highest): ||, &&, ^^, |, ^, &, +/-/<> (add/sub/concat), *, /
 fn parse_binary_level<'a>(
     input: &'a str,
     next: fn(&str) -> IResult<&str, Expr>,
@@ -124,7 +124,11 @@ fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_mul_div(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_unary, &[BinaryOp::Mul, BinaryOp::Div])
+    parse_binary_level(
+        input,
+        parse_unary,
+        &[BinaryOp::Mul, BinaryOp::Div, BinaryOp::Eq, BinaryOp::Ne],
+    )
 }
 
 /// Parses an expression: unary and binary with proper precedence.

@@ -86,6 +86,8 @@ fn eval_binary_expr(left: &Expr, op: BinaryOp, right: &Expr) -> Result<Literal, 
             Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
         }
         BinaryOp::Concat => binary_string(&l, &r),
+        BinaryOp::Eq => Ok(Literal::boolean(l == r)),
+        BinaryOp::Ne => Ok(Literal::boolean(l != r)),
         BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
     }
 }
@@ -337,6 +339,68 @@ mod tests {
             Expr::literal_string("bar"),
         );
         assert_eq!(eval(&expr).unwrap(), "\"foobar\"");
+    }
+
+    #[test]
+    fn test_eval_binary_eq() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Eq,
+                Expr::literal_number(1),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Eq,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "false"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_string("a"),
+                BinaryOp::Eq,
+                Expr::literal_string("a"),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_boolean(true),
+                BinaryOp::Eq,
+                Expr::literal_boolean(false),
+            ))
+            .unwrap(),
+            "false"
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_ne() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Ne,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Ne,
+                Expr::literal_number(1),
+            ))
+            .unwrap(),
+            "false"
+        );
     }
 
     #[test]
