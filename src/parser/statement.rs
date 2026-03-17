@@ -1,3 +1,4 @@
+use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
 use nom::combinator::opt;
@@ -14,24 +15,37 @@ use super::expr::parse_expr;
 use super::identifier::parse_identifier;
 use super::keyword::parse_keyword;
 
-/// Parses a let statement: `let` keyword, identifier, `=`, expression,
+/// Parses a let/assignment statement: optional `let` keyword, then identifier, `=`, expression,
 /// with optional whitespace (or comments) between each part.
+/// So both `let x = 1` and `x = 1` are valid and equivalent.
 /// A statement may be followed by an optional `;`. If it ends on a newline,
 /// the `;` is not required. Two statements on the same line require `;` after the first.
 pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
-    let (input, stmt) = map(
-        (
-            verify(parse_keyword, |k: &Keyword| *k == Keyword::Let),
-            multispace0_or_comment,
-            parse_identifier,
-            multispace0_or_comment,
-            tag("="),
-            multispace0_or_comment,
-            parse_expr,
+    let (input, stmt) = alt((
+        map(
+            (
+                verify(parse_keyword, |k: &Keyword| *k == Keyword::Let),
+                multispace0_or_comment,
+                parse_identifier,
+                multispace0_or_comment,
+                tag("="),
+                multispace0_or_comment,
+                parse_expr,
+            ),
+            |(_, _, name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
         ),
-        |(_, _, name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
-    )
+        map(
+            (
+                parse_identifier,
+                multispace0_or_comment,
+                tag("="),
+                multispace0_or_comment,
+                parse_expr,
+            ),
+            |(name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
+        ),
+    ))
     .parse(input)?;
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
@@ -84,8 +98,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_let_statement_fails_without_let() {
-        assert!(parse_statement("x = 1").is_err());
+    fn test_parse_assignment_without_let() {
+        let (rest, stmt) = parse_statement("x = 1").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(
+            stmt,
+            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
+        );
     }
 
     #[test]

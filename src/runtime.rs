@@ -7,6 +7,8 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 
+use crate::{ast::Statement, Error};
+
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -26,14 +28,23 @@ pub enum Value {
     Array(Vec<Value>),
 }
 
-pub trait Runtime {}
+pub trait Runtime {
+    fn eval(&mut self, statement: &Statement) -> Result<Value, Error>;
+}
 
-pub struct SimpleRuntime;
+pub struct SimpleRuntime {
+    pub built_in_functions: HashMap<String, Box<dyn Function>>,
+    pub global_scope: GlobalScope,
+}
 
-impl Runtime for SimpleRuntime {}
+impl Runtime for SimpleRuntime {
+    fn eval(&mut self, _statement: &Statement) -> Result<Value, Error> {
+        unimplemented!()
+    }
+}
 
 pub struct GlobalScope {
-    pub functions: HashMap<String, Box<dyn BuiltInFunction>>,
+    pub functions: HashMap<String, Box<dyn Function>>,
     pub constants: HashMap<String, Value>,
 }
 
@@ -42,7 +53,7 @@ impl GlobalScope {
         self.functions.contains_key(name)
     }
 
-    pub fn get_function(&self, name: &str) -> Option<&dyn BuiltInFunction> {
+    pub fn get_function(&self, name: &str) -> Option<&dyn Function> {
         self.functions.get(name).map(|f| f.as_ref())
     }
 }
@@ -51,6 +62,6 @@ pub struct FunctionSignature {
     pub name: String,
 }
 
-pub trait BuiltInFunction {
+pub trait Function {
     fn signature(&self) -> FunctionSignature;
 }
