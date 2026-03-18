@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 
-use flt::eval::eval;
-use flt::parser::parse_expr;
+use flt::parser::parse_statement;
+use flt::runtime::Runtime;
+use flt::runtime::SimpleRuntime;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -12,23 +13,24 @@ pub fn version() -> String {
 
 fn run_repl() -> Result<(), ReadlineError> {
     let mut rl = DefaultEditor::new()?;
+    let mut runtime = SimpleRuntime::default();
     loop {
         let line = rl.readline("> ")?;
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        match parse_expr(line) {
-            Ok((remainder, expr)) => {
+        match parse_statement(line) {
+            Ok((remainder, statement)) => {
                 let remainder = remainder.trim();
                 if remainder.is_empty() {
-                    match eval(&expr) {
+                    match runtime.eval(&statement) {
                         Ok(val) => println!("{}", val),
                         Err(e) => eprintln!("eval error: {:?}", e),
                     }
                 } else {
                     eprintln!(
-                        "parse error: unexpected input after expression: {:?}",
+                        "parse error: unexpected input after statement: {:?}",
                         remainder
                     );
                 }
