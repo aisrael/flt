@@ -2,6 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
 use nom::combinator::map_res;
+use nom::error::ErrorKind;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
@@ -38,6 +39,25 @@ fn parse_arg<'a>(
             map(expr_parser, ParsedArg::Positional),
         ))
         .parse(input)
+    }
+}
+
+/// Reject arguments that start with unary `+` in parenless calls like `f + 1`.
+///
+/// Without this, expressions such as `x + 1` become ambiguous with the grammar
+/// `Identifier <whitespace> args` and get parsed as a function call.
+fn parse_arg_disallow_unary_plus<'a>(
+    expr_parser: fn(&'a str) -> IResult<&'a str, Expr>,
+) -> impl FnMut(&'a str) -> IResult<&'a str, ParsedArg> {
+    let mut inner = parse_arg(expr_parser);
+    move |input: &'a str| {
+        if input.starts_with('+') {
+            return Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                ErrorKind::Tag,
+            )));
+        }
+        inner(input)
     }
 }
 
@@ -98,7 +118,7 @@ pub fn parse_function_call(
                 map_res(
                     separated_list1(
                         (multispace0_or_comment, tag(","), multispace0_or_comment),
-                        parse_arg(parse_expr),
+                        parse_arg_disallow_unary_plus(parse_expr),
                     ),
                     collect_args,
                 ),

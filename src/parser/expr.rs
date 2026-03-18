@@ -47,13 +47,27 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
 }
 
 /// Parses a unary expression: optionally prefixed with `!`, `+`, or `-`.
+///
+/// Note: unary operators must be immediately adjacent to their operand.
+/// e.g. `!x` and `+1` are valid, but `! x` / `+ 1` are not.
 fn parse_unary(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_or_comment(input)?;
     alt((
-        map(
-            (parse_unary_op, multispace0_or_comment, parse_unary),
-            |(op, _, e)| Expr::unary_expr(op, e),
-        ),
+        map((parse_unary_op, parse_unary_tight), |(op, e)| {
+            Expr::unary_expr(op, e)
+        }),
+        parse_primary,
+    ))
+    .parse(input)
+}
+
+/// Parses a unary expression without allowing whitespace/comments between a unary
+/// operator and the expression that follows.
+fn parse_unary_tight(input: &str) -> IResult<&str, Expr> {
+    alt((
+        map((parse_unary_op, parse_unary_tight), |(op, e)| {
+            Expr::unary_expr(op, e)
+        }),
         parse_primary,
     ))
     .parse(input)
@@ -246,6 +260,13 @@ mod tests {
             Ok(("", Expr::unary_expr(UnaryOp::Not, Expr::ident("x"))))
         );
         assert_eq!(
+            parse_expr("+1"),
+            Ok(("", Expr::unary_expr(UnaryOp::Plus, Expr::literal_number(1))))
+        );
+        assert!(parse_expr("! x").is_err());
+        assert!(parse_expr("+ 1").is_err());
+        assert!(parse_expr("- 42").is_err());
+        assert_eq!(
             parse_expr("-42"),
             Ok((
                 "",
@@ -278,6 +299,15 @@ mod tests {
                 )
             ))
         );
+    }
+
+    #[test]
+    fn test_parse_binary_add_spacing_variants() {
+        let expected = Expr::binary_expr(Expr::ident("x"), BinaryOp::Add, Expr::literal_number(1));
+        assert_eq!(parse_expr("x + 1"), Ok(("", expected.clone())));
+        assert_eq!(parse_expr("x+1"), Ok(("", expected.clone())));
+        assert_eq!(parse_expr("x +1"), Ok(("", expected.clone())));
+        assert_eq!(parse_expr("x+ 1"), Ok(("", expected)));
     }
 
     #[test]

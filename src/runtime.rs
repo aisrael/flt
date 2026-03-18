@@ -85,8 +85,9 @@ impl Runtime for SimpleRuntime {
             Statement::Expr(expr) => self.eval_expr(expr),
             Statement::Let(ident, expr) => {
                 let value = self.eval_expr(expr)?;
-                self.global_scope.set_variable(ident.0.as_str(), value);
-                Ok(Value::Unit)
+                self.global_scope
+                    .set_variable(ident.0.as_str(), value.clone());
+                Ok(value)
             }
         }
     }
