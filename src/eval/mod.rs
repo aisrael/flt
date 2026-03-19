@@ -1,133 +1,13 @@
-use crate::ast::BinaryOp;
 use crate::ast::Expr;
-use crate::ast::Literal;
-use crate::ast::UnaryOp;
+use crate::ast::Statement;
 use crate::errors::Error;
-use crate::errors::RuntimeError;
-use crate::utils::escape_string;
-use bigdecimal::BigDecimal;
+use crate::runtime::Runtime;
+use crate::runtime::SimpleRuntime;
 
 pub fn eval(expr: &Expr) -> Result<String, Error> {
-    let lit = eval_to_literal(expr)?;
-    Ok(literal_to_string(&lit))
-}
-
-fn eval_to_literal(expr: &Expr) -> Result<Literal, Error> {
-    match expr {
-        Expr::Literal(lit) => eval_literal(lit),
-        Expr::Ident(s) => Err(Error::RuntimeError(RuntimeError::UnboundIdentifier(
-            s.clone(),
-        ))),
-        Expr::UnaryExpr(op, inner) => eval_unary_expr(*op, inner),
-        Expr::BinaryExpr(left, op, right) => eval_binary_expr(left, *op, right),
-        Expr::FunctionCall(_, _) => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
-        Expr::Parenthesized(inner) => eval_to_literal(inner),
-        Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-        Expr::ArrayLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-    }
-}
-
-fn literal_to_string(lit: &Literal) -> String {
-    match lit {
-        Literal::Number(n) => n.as_ref().to_string(),
-        Literal::String(s) => format!("\"{}\"", escape_string(s)),
-        Literal::Boolean(b) => b.to_string(),
-        Literal::Symbol(s) => format!(":{}", s),
-    }
-}
-
-fn eval_literal(lit: &Literal) -> Result<Literal, Error> {
-    match lit {
-        Literal::Number(n) => Ok(Literal::number(n.as_ref().clone())),
-        Literal::String(s) => Ok(Literal::string(s.clone())),
-        Literal::Boolean(b) => Ok(Literal::boolean(*b)),
-        Literal::Symbol(s) => Ok(Literal::symbol(s.clone())),
-    }
-}
-
-fn eval_unary_expr(op: UnaryOp, inner: &Expr) -> Result<Literal, Error> {
-    let val = eval_to_literal(inner)?;
-    match op {
-        UnaryOp::Not => match &val {
-            Literal::Boolean(b) => Ok(Literal::boolean(!b)),
-            _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-        },
-        UnaryOp::Plus => match &val {
-            Literal::Number(n) => Ok(Literal::number(n.as_ref().clone())),
-            _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-        },
-        UnaryOp::Minus => match &val {
-            Literal::Number(n) => Ok(Literal::number(-n.as_ref().clone())),
-            _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-        },
-    }
-}
-
-fn eval_binary_expr(left: &Expr, op: BinaryOp, right: &Expr) -> Result<Literal, Error> {
-    let l = eval_to_literal(left)?;
-    let r = eval_to_literal(right)?;
-    match op {
-        BinaryOp::Add => binary_number(&l, &r, |a, b| a + b),
-        BinaryOp::Sub => binary_number(&l, &r, |a, b| a - b),
-        BinaryOp::Mul => binary_number(&l, &r, |a, b| a * b),
-        BinaryOp::Div => {
-            let (a, b) = (as_bigdecimal(&l)?, as_bigdecimal(&r)?);
-            if b == 0 {
-                Err(Error::RuntimeError(RuntimeError::DivisionByZero))
-            } else {
-                Ok(Literal::number(a / b))
-            }
-        }
-        BinaryOp::And => binary_bool(&l, &r, |a, b| a && b),
-        BinaryOp::Or => binary_bool(&l, &r, |a, b| a || b),
-        BinaryOp::Xor => binary_bool(&l, &r, |a, b| a ^ b),
-        BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor => {
-            Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
-        }
-        BinaryOp::Concat => binary_string(&l, &r),
-        BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
-    }
-}
-
-fn as_bigdecimal(lit: &Literal) -> Result<BigDecimal, Error> {
-    match lit {
-        Literal::Number(n) => Ok(n.as_ref().clone()),
-        _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-    }
-}
-
-fn binary_number<F>(l: &Literal, r: &Literal, f: F) -> Result<Literal, Error>
-where
-    F: FnOnce(BigDecimal, BigDecimal) -> BigDecimal,
-{
-    let a = as_bigdecimal(l)?;
-    let b = as_bigdecimal(r)?;
-    Ok(Literal::number(f(a, b)))
-}
-
-fn binary_bool<F>(l: &Literal, r: &Literal, f: F) -> Result<Literal, Error>
-where
-    F: FnOnce(bool, bool) -> bool,
-{
-    match (l, r) {
-        (Literal::Boolean(a), Literal::Boolean(b)) => Ok(Literal::boolean(f(*a, *b))),
-        _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-    }
-}
-
-fn literal_to_concat_str(lit: &Literal) -> String {
-    match lit {
-        Literal::Number(n) => n.as_ref().to_string(),
-        Literal::String(s) => s.clone(),
-        Literal::Boolean(b) => b.to_string(),
-        Literal::Symbol(s) => s.clone(),
-    }
-}
-
-fn binary_string(l: &Literal, r: &Literal) -> Result<Literal, Error> {
-    let a = literal_to_concat_str(l);
-    let b = literal_to_concat_str(r);
-    Ok(Literal::string(format!("{}{}", a, b)))
+    let mut rt = SimpleRuntime::default();
+    let value = rt.eval(&Statement::Expr(expr.clone()))?;
+    Ok(value.to_string())
 }
 
 #[cfg(test)]
@@ -339,6 +219,117 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_binary_eq() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Eq,
+                Expr::literal_number(1),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Eq,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "false"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_string("a"),
+                BinaryOp::Eq,
+                Expr::literal_string("a"),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_boolean(true),
+                BinaryOp::Eq,
+                Expr::literal_boolean(false),
+            ))
+            .unwrap(),
+            "false"
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_ne() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Ne,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Ne,
+                Expr::literal_number(1),
+            ))
+            .unwrap(),
+            "false"
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_gt_lt_gte_lte() {
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(3),
+                BinaryOp::Gt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Gt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "false"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Lt,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(2),
+                BinaryOp::Lte,
+                Expr::literal_number(2),
+            ))
+            .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            eval(&Expr::binary_expr(
+                Expr::literal_number(3),
+                BinaryOp::Gte,
+                Expr::literal_number(3),
+            ))
+            .unwrap(),
+            "true"
+        );
+    }
+
+    #[test]
     fn test_eval_string_interpolation() {
         let expr = Expr::binary_expr(
             Expr::binary_expr(
@@ -391,6 +382,46 @@ mod tests {
         assert!(matches!(
             err,
             Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)
+        ));
+    }
+
+    #[test]
+    fn test_eval_if_expr_with_else() {
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(true),
+            Expr::literal_number(1),
+            Some(Expr::literal_number(2)),
+        );
+        assert_eq!(eval(&expr).unwrap(), "1");
+
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(false),
+            Expr::literal_number(1),
+            Some(Expr::literal_number(2)),
+        );
+        assert_eq!(eval(&expr).unwrap(), "2");
+    }
+
+    #[test]
+    fn test_eval_if_expr_without_else_returns_unit() {
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
+        assert_eq!(eval(&expr).unwrap(), "1");
+
+        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
+        assert_eq!(eval(&expr).unwrap(), "()");
+    }
+
+    #[test]
+    fn test_eval_if_expr_condition_must_be_boolean() {
+        let expr = Expr::if_expr(
+            Expr::literal_number(1),
+            Expr::literal_number(10),
+            Some(Expr::literal_number(20)),
+        );
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::InvalidOperandType)
         ));
     }
 }

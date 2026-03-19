@@ -8,7 +8,7 @@ pub enum UnaryOp {
     Minus,
 }
 
-/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`.
+/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`, `==`, `!=`, `<`, `>`, `<=`, `>=`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -25,6 +25,18 @@ pub enum BinaryOp {
     Pipe,
     /// String concatenation: concatenates two strings (e.g. `"foo" <> "bar"` → `"foobar"`).
     Concat,
+    /// Equality: same type and value.
+    Eq,
+    /// Inequality: not equal (different type or value).
+    Ne,
+    /// Less than (numbers).
+    Lt,
+    /// Greater than (numbers).
+    Gt,
+    /// Less than or equal (numbers).
+    Lte,
+    /// Greater than or equal (numbers).
+    Gte,
 }
 
 impl Display for UnaryOp {
@@ -52,6 +64,12 @@ impl Display for BinaryOp {
             BinaryOp::Xor => write!(f, "^^"),
             BinaryOp::Pipe => write!(f, "|>"),
             BinaryOp::Concat => write!(f, "<>"),
+            BinaryOp::Eq => write!(f, "=="),
+            BinaryOp::Ne => write!(f, "!="),
+            BinaryOp::Lt => write!(f, "<"),
+            BinaryOp::Gt => write!(f, ">"),
+            BinaryOp::Lte => write!(f, "<="),
+            BinaryOp::Gte => write!(f, ">="),
         }
     }
 }

@@ -3,17 +3,11 @@ use std::fmt::Display;
 use bigdecimal::BigDecimal;
 
 use super::identifier::Identifier;
+use super::keywords::Keyword;
 use super::literal::Literal;
 use super::operands::BinaryOp;
 use super::operands::UnaryOp;
 use crate::utils::escape_string;
-
-/// A key-value pair in a map literal.
-#[derive(Clone, Debug, PartialEq)]
-pub struct KeyValue {
-    pub key: String,
-    pub value: Expr,
-}
 
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
@@ -34,35 +28,49 @@ pub enum Expr {
     MapLiteral(Vec<KeyValue>),
     /// An array literal: `[ expr, ... ]`.
     ArrayLiteral(Vec<Expr>),
+    /// A reserved keyword (e.g. `if`, `else`, `return`).
+    Keyword(Keyword),
+    /// An if expression: `if condition then_branch else else_branch` (else optional).
+    ///
+    /// When `else_branch` is `None` and `condition` evaluates to `false`, the expression
+    /// evaluates to unit `()`.
+    IfExpr {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
+    },
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Literal(literal) => write!(f, "{}", literal),
-            Expr::Ident(ident) => write!(f, "{}", ident),
+            Expr::Literal(literal) => literal.fmt(f),
+            Expr::Ident(ident) => ident.fmt(f),
             Expr::UnaryExpr(op, expr) => write!(f, "{op}{expr}"),
             Expr::BinaryExpr(left, op, right) => write!(f, "{left} {op} {right}"),
             Expr::FunctionCall(name, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                write!(f, "{name}({args})")
+                name.fmt(f)?;
+                write!(f, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    arg.fmt(f)?;
+                }
+                write!(f, ")")
             }
-            Expr::Parenthesized(expr) => write!(f, "({expr})"),
+            Expr::Parenthesized(expr) => {
+                write!(f, "(")?;
+                expr.fmt(f)?;
+                write!(f, ")")
+            }
             Expr::MapLiteral(entries) => {
                 write!(f, "{{ ")?;
                 for (i, kv) in entries.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if kv.key.contains(|c: char| !c.is_alphanumeric() && c != '_') {
-                        write!(f, "\"{}\": {}", escape_string(&kv.key), kv.value)?;
-                    } else {
-                        write!(f, "{}: {}", kv.key, kv.value)?;
-                    }
+                    kv.fmt(f)?;
                 }
                 write!(f, " }}")
             }
@@ -72,9 +80,21 @@ impl Display for Expr {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{e}")?;
+                    e.fmt(f)?;
                 }
                 write!(f, " ]")
+            }
+            Expr::Keyword(kw) => kw.fmt(f),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                write!(f, "if {condition} {then_branch}")?;
+                if let Some(else_branch) = else_branch {
+                    write!(f, " else {else_branch}")?;
+                }
+                Ok(())
             }
         }
     }
@@ -145,6 +165,40 @@ impl Expr {
     /// Constructs an array literal expression.
     pub fn array_literal(elems: Vec<Expr>) -> Self {
         Expr::ArrayLiteral(elems)
+    }
+
+    /// Constructs a keyword expression.
+    pub fn keyword(kw: Keyword) -> Self {
+        Expr::Keyword(kw)
+    }
+
+    /// Constructs an if expression with optional else branch.
+    pub fn if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> Self {
+        Expr::IfExpr {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_branch),
+            else_branch: else_branch.map(Box::new),
+        }
+    }
+}
+
+/// A key-value pair in a map literal.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyValue {
+    pub key: String,
+    pub value: Expr,
+}
+
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self
+            .key
+            .contains(|c: char| !c.is_alphanumeric() && c != '_')
+        {
+            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
+        } else {
+            write!(f, "{}: {}", self.key, self.value)
+        }
     }
 }
 
@@ -286,5 +340,22 @@ mod tests {
             Expr::literal_number(n("3")),
         );
         assert_eq!(expr.to_string(), "(1 + 2) * 3");
+    }
+
+    #[test]
+    fn test_display_if_expr() {
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(true),
+            Expr::literal_number(n("1")),
+            None,
+        );
+        assert_eq!(expr.to_string(), "if true 1");
+
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(false),
+            Expr::literal_number(n("1")),
+            Some(Expr::literal_number(n("2"))),
+        );
+        assert_eq!(expr.to_string(), "if false 1 else 2");
     }
 }

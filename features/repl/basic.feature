@@ -5,4 +5,5 @@ Feature: flt repl
       """
       1 + 1
       """
-    Then the output should contain "2"
+    Then the command should succeed
+    And the output should contain "2"

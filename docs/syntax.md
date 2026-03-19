@@ -10,8 +10,36 @@ This page covers the core surface syntax supported by the parser.
 - Identifiers
 - Unary expressions
 - Binary expressions
-- Function calls
+- Function calls (including [keyword arguments](./functions-and-pipe.md#keyword-arguments))
 - Parenthesized expressions
+- Reserved keywords as expressions (e.g. `if`, `return`)
+
+## Statements
+
+The parser supports **let bindings**:
+
+```flt
+let x = 1
+let name = "flt"
+let foo = 2 + 3
+```
+
+- A statement may be followed by an optional `;`.
+- If a statement ends on a newline, the semicolon is not required.
+- Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
+
+The REPL currently accepts expressions only; statement parsing is available for use in other entry points (e.g. batch or file evaluation).
+
+## Reserved Keywords
+
+The following words are reserved and recognized with word boundaries (e.g. `if` is a keyword, but `iffy` is an identifier):
+
+| Keyword | Keyword | Keyword |
+| --- | --- | --- |
+| `if` | `else` | `return` |
+| `and` | `or` | `not` |
+| `for` | `in` | `let` |
+| `while` | `do` | `fn` |
 
 ## Identifiers
 
@@ -21,7 +49,7 @@ Identifiers are parsed as one or more of:
 - `_`
 - `-`
 
-In practice, expression parsing prefers literals before identifiers. For example, `true` and `false` parse as booleans, and a leading numeric form is parsed as a number first.
+In practice, expression parsing prefers literals before identifiers. For example, `true` and `false` parse as booleans, and a leading numeric form is parsed as a number first. Reserved keywords (e.g. `if`, `let`) are parsed as keywords when they appear as whole words; identifiers like `iffy` or `input` do not match the `if` or `in` keyword.
 
 Examples:
 

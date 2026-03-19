@@ -17,11 +17,17 @@ pub fn parse_unary_op(input: &str) -> IResult<&str, UnaryOp> {
     .parse(input)
 }
 
-/// Parses a binary operand. Longer tokens must be tried first (`&&` before `&`, `||` before `|`, `^^` before `^`, `|>` before `|`).
+/// Parses a binary operand. Longer tokens must be tried first (`>=`/`<=` before `>`/`<`, `==`/`!=` before `=`/`!`, etc.).
 pub fn parse_binary_op(input: &str) -> IResult<&str, BinaryOp> {
     alt((
         value(BinaryOp::Pipe, tag("|>")),
         value(BinaryOp::Concat, tag("<>")),
+        value(BinaryOp::Eq, tag("==")),
+        value(BinaryOp::Ne, tag("!=")),
+        value(BinaryOp::Gte, tag(">=")),
+        value(BinaryOp::Lte, tag("<=")),
+        value(BinaryOp::Gt, tag(">")),
+        value(BinaryOp::Lt, tag("<")),
         value(BinaryOp::And, tag("&&")),
         value(BinaryOp::Or, tag("||")),
         value(BinaryOp::Xor, tag("^^")),
@@ -71,6 +77,12 @@ mod tests {
         assert_eq!(parse_binary_op("^^"), Ok(("", BinaryOp::Xor)));
         assert_eq!(parse_binary_op("|>"), Ok(("", BinaryOp::Pipe)));
         assert_eq!(parse_binary_op("<>"), Ok(("", BinaryOp::Concat)));
+        assert_eq!(parse_binary_op("=="), Ok(("", BinaryOp::Eq)));
+        assert_eq!(parse_binary_op("!="), Ok(("", BinaryOp::Ne)));
+        assert_eq!(parse_binary_op("<"), Ok(("", BinaryOp::Lt)));
+        assert_eq!(parse_binary_op(">"), Ok(("", BinaryOp::Gt)));
+        assert_eq!(parse_binary_op("<="), Ok(("", BinaryOp::Lte)));
+        assert_eq!(parse_binary_op(">="), Ok(("", BinaryOp::Gte)));
     }
 
     #[test]
@@ -79,6 +91,9 @@ mod tests {
         assert_eq!(parse_binary_op("&&"), Ok(("", BinaryOp::And)));
         assert_eq!(parse_binary_op("||"), Ok(("", BinaryOp::Or)));
         assert_eq!(parse_binary_op("^^"), Ok(("", BinaryOp::Xor)));
+        // `>=` and `<=` should parse as Gte/Lte, not as Gt/Lt plus something
+        assert_eq!(parse_binary_op(">="), Ok(("", BinaryOp::Gte)));
+        assert_eq!(parse_binary_op("<="), Ok(("", BinaryOp::Lte)));
     }
 
     #[test]

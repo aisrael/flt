@@ -9,13 +9,18 @@ use cucumber::World;
 
 use flt::ast::BinaryOp;
 use flt::ast::Expr;
+use flt::ast::Identifier;
 use flt::ast::Literal;
+use flt::ast::Statement;
 use flt::parser::parse_expr;
+use flt::parser::parse_statement;
 
 #[derive(Debug, Default, World)]
 pub struct AstWorld {
     pub input: Option<String>,
     pub output: Option<Result<Expr, String>>,
+    /// Parsed as a statement when input is e.g. "let x = 1" or "x = 1".
+    pub output_statement: Option<Result<Statement, String>>,
     /// Set by array step so "first/second/third element" steps can inspect it.
     pub last_parsed_expr: Option<Expr>,
 }
@@ -39,6 +44,15 @@ fn given_the_multiline_input(world: &mut AstWorld, step: &Step) {
 #[when(expr = "I parse the input")]
 fn when_i_parse_the_input(world: &mut AstWorld) {
     let input = world.input.take().expect("input should be set");
+    if let Ok((remainder, stmt)) = parse_statement(&input) {
+        if remainder.trim().is_empty() {
+            if let Statement::Expr(expr) = &stmt {
+                world.output = Some(Ok(expr.clone()));
+            }
+            world.output_statement = Some(Ok(stmt));
+            return;
+        }
+    }
     world.output = Some(match parse_expr(&input) {
         Ok((remainder, expr)) => {
             if remainder.is_empty() {
@@ -120,6 +134,29 @@ fn then_parsing_should_fail(world: &mut AstWorld) {
         output.is_err(),
         "expected parsing to fail, got {:?}",
         output
+    );
+}
+
+#[then(
+    regex = r#"^the output should be a `Statement::Let\(Identifier\("([^"]*)"\), Expr::Literal\(Literal::Number\((\d+)\)\)\)`$"#
+)]
+fn then_output_should_be_let_statement_number(
+    world: &mut AstWorld,
+    ident: String,
+    expected_num: i64,
+) {
+    let output = world
+        .output_statement
+        .take()
+        .expect("output_statement should be set (input was parsed as statement)");
+    let stmt = output.expect("statement parse should succeed");
+    let expected = Statement::Let(
+        Identifier(ident.clone()),
+        Expr::literal_number(expected_num),
+    );
+    assert_eq!(
+        stmt, expected,
+        "expected Statement::Let(Identifier({ident:?}), Literal::Number({expected_num}))"
     );
 }
 

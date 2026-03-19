@@ -27,9 +27,11 @@ Common errors include:
 
 These constructs parse successfully but are not fully supported by the current evaluator:
 
-- Function calls
+- Function calls (including calls with keyword arguments, e.g. `foo(1, bar: true)`)
 - Pipe expressions (`|>`)
 - Bitwise operators (`&`, `|`, `^`)
+- Let statements (`let x = expr`) — the REPL accepts expressions only; statement parsing is available in the library for other entry points
+- Standalone keyword expressions (e.g. `if`, `return`, `fn`) — they parse as expressions but have no evaluation behavior yet
 
 ## Practical Guidance
 
