@@ -384,4 +384,44 @@ mod tests {
             Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)
         ));
     }
+
+    #[test]
+    fn test_eval_if_expr_with_else() {
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(true),
+            Expr::literal_number(1),
+            Some(Expr::literal_number(2)),
+        );
+        assert_eq!(eval(&expr).unwrap(), "1");
+
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(false),
+            Expr::literal_number(1),
+            Some(Expr::literal_number(2)),
+        );
+        assert_eq!(eval(&expr).unwrap(), "2");
+    }
+
+    #[test]
+    fn test_eval_if_expr_without_else_returns_unit() {
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
+        assert_eq!(eval(&expr).unwrap(), "1");
+
+        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
+        assert_eq!(eval(&expr).unwrap(), "()");
+    }
+
+    #[test]
+    fn test_eval_if_expr_condition_must_be_boolean() {
+        let expr = Expr::if_expr(
+            Expr::literal_number(1),
+            Expr::literal_number(10),
+            Some(Expr::literal_number(20)),
+        );
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::InvalidOperandType)
+        ));
+    }
 }

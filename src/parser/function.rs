@@ -136,6 +136,49 @@ pub fn parse_function_call(
     }
 }
 
+/// Parses a function call that *requires* parentheses: `Identifier` `(` args `)`.
+///
+/// This is useful in contexts like `if <cond> <then> else <else>`, where the
+/// parenless call form `Identifier <whitespace> args` would otherwise absorb
+/// the `<then>` expression and make parsing ambiguous.
+pub fn parse_function_call_parens_only(
+    parse_expr: fn(&str) -> IResult<&str, Expr>,
+) -> impl FnMut(&str) -> IResult<&str, FunctionCall> {
+    move |input: &str| {
+        let (input, name) =
+            map(parse_identifier, |s: &str| Identifier(s.to_string())).parse(input)?;
+
+        let (input, (positional_args, keyword_args)) = preceded(
+            multispace0_or_comment,
+            delimited(
+                tag("("),
+                delimited(
+                    multispace0_or_comment,
+                    map_res(
+                        separated_list0(
+                            (multispace0_or_comment, tag(","), multispace0_or_comment),
+                            parse_arg(parse_expr),
+                        ),
+                        collect_args,
+                    ),
+                    multispace0_or_comment,
+                ),
+                tag(")"),
+            ),
+        )
+        .parse(input)?;
+
+        Ok((
+            input,
+            FunctionCall {
+                name,
+                positional_args,
+                keyword_args,
+            },
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr as _;

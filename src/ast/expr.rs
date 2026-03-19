@@ -30,6 +30,15 @@ pub enum Expr {
     ArrayLiteral(Vec<Expr>),
     /// A reserved keyword (e.g. `if`, `else`, `return`).
     Keyword(Keyword),
+    /// An if expression: `if condition then_branch else else_branch` (else optional).
+    ///
+    /// When `else_branch` is `None` and `condition` evaluates to `false`, the expression
+    /// evaluates to unit `()`.
+    IfExpr {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
+    },
 }
 
 impl Display for Expr {
@@ -76,6 +85,17 @@ impl Display for Expr {
                 write!(f, " ]")
             }
             Expr::Keyword(kw) => kw.fmt(f),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                write!(f, "if {condition} {then_branch}")?;
+                if let Some(else_branch) = else_branch {
+                    write!(f, " else {else_branch}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -150,6 +170,15 @@ impl Expr {
     /// Constructs a keyword expression.
     pub fn keyword(kw: Keyword) -> Self {
         Expr::Keyword(kw)
+    }
+
+    /// Constructs an if expression with optional else branch.
+    pub fn if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> Self {
+        Expr::IfExpr {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_branch),
+            else_branch: else_branch.map(Box::new),
+        }
     }
 }
 
@@ -311,5 +340,22 @@ mod tests {
             Expr::literal_number(n("3")),
         );
         assert_eq!(expr.to_string(), "(1 + 2) * 3");
+    }
+
+    #[test]
+    fn test_display_if_expr() {
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(true),
+            Expr::literal_number(n("1")),
+            None,
+        );
+        assert_eq!(expr.to_string(), "if true 1");
+
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(false),
+            Expr::literal_number(n("1")),
+            Some(Expr::literal_number(n("2"))),
+        );
+        assert_eq!(expr.to_string(), "if false 1 else 2");
     }
 }

@@ -102,6 +102,26 @@ impl SimpleRuntime {
                 .get_variable(s.as_str())
                 .cloned()
                 .ok_or_else(|| Error::RuntimeError(RuntimeError::UnboundIdentifier(s.clone()))),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_val = self.eval_expr(condition)?;
+                let cond_bool = match cond_val {
+                    Value::Boolean(b) => b,
+                    _ => return Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+                };
+
+                if cond_bool {
+                    self.eval_expr(then_branch)
+                } else {
+                    match else_branch {
+                        Some(expr) => self.eval_expr(expr),
+                        None => Ok(Value::Unit),
+                    }
+                }
+            }
             Expr::UnaryExpr(op, inner) => {
                 let val = self.eval_expr(inner)?;
                 Self::eval_unary(*op, &val)

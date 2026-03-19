@@ -1,6 +1,8 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::combinator::cut;
 use nom::combinator::map;
+use nom::combinator::opt;
 use nom::combinator::verify;
 use nom::multi::many0;
 use nom::sequence::delimited;
@@ -10,6 +12,7 @@ use nom::Parser;
 use super::array::parse_array_literal;
 use super::comment::multispace0_or_comment;
 use super::function::parse_function_call;
+use super::function::parse_function_call_parens_only;
 use super::identifier::parse_identifier;
 use super::keyword::parse_keyword;
 use super::literal::parse_literal;
@@ -20,12 +23,70 @@ use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
+use crate::ast::Keyword;
+
+/// Parses a `{ expr }` block used by control-flow expressions.
+fn parse_block_expr(input: &str) -> IResult<&str, Expr> {
+    delimited(
+        (multispace0_or_comment, tag("{"), multispace0_or_comment),
+        parse_or,
+        (multispace0_or_comment, tag("}"), multispace0_or_comment),
+    )
+    .parse(input)
+}
+
+fn parse_if_branch(input: &str) -> IResult<&str, Expr> {
+    alt((parse_block_expr, parse_or)).parse(input)
+}
+
+fn parse_if_then_branch(input: &str) -> IResult<&str, Expr> {
+    verify(parse_if_branch, |e: &Expr| match e {
+        Expr::Keyword(Keyword::Else) => false,
+        Expr::FunctionCall(name, _) if *name == "else" => false,
+        _ => true,
+    })
+    .parse(input)
+}
+
+fn parse_if_else_clause(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Else).parse(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
+    parse_if_branch(input)
+}
+
+fn parse_if_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::If).parse(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
+
+    let (input, (condition, then_branch, else_branch)) = alt((
+        |input| {
+            let (input, condition) = cut(parse_pipe).parse(input)?;
+            let (input, _) = multispace0_or_comment(input)?;
+            let (input, then_branch) = parse_if_then_branch.parse(input)?;
+            let (input, _) = multispace0_or_comment(input)?;
+            let (input, else_branch) = opt(parse_if_else_clause).parse(input)?;
+            Ok((input, (condition, then_branch, else_branch)))
+        },
+        |input| {
+            let (input, condition) = cut(parse_if_condition_pipe).parse(input)?;
+            let (input, _) = multispace0_or_comment(input)?;
+            let (input, then_branch) = parse_if_then_branch.parse(input)?;
+            let (input, _) = multispace0_or_comment(input)?;
+            let (input, else_branch) = opt(parse_if_else_clause).parse(input)?;
+            Ok((input, (condition, then_branch, else_branch)))
+        },
+    ))
+    .parse(input)?;
+
+    Ok((input, Expr::if_expr(condition, then_branch, else_branch)))
+}
 
 /// Parses a primary expression: literal, identifier, function call, or parenthesized expression.
 fn parse_primary(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_interpolated_string(parse_or),
         map(parse_literal, Expr::Literal),
+        parse_if_expr,
         map(parse_function_call(parse_or), |fc: FunctionCall| {
             let args = fc.args_as_exprs();
             Expr::FunctionCall(fc.name, args)
@@ -44,6 +105,122 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
         ),
     ))
     .parse(input)
+}
+
+/// Parses a primary expression used specifically for `if` conditions.
+///
+/// The main difference from `parse_primary` is that it disallows *parenless*
+/// function calls (`Identifier <whitespace> args`), which would otherwise make
+/// `if success "Ok" else ...` ambiguous.
+fn parse_if_condition_primary(input: &str) -> IResult<&str, Expr> {
+    alt((
+        parse_interpolated_string(parse_if_condition_or),
+        map(parse_literal, Expr::Literal),
+        map(
+            parse_function_call_parens_only(parse_if_condition_or),
+            |fc: FunctionCall| {
+                let args = fc.args_as_exprs();
+                Expr::FunctionCall(fc.name, args)
+            },
+        ),
+        parse_if_expr,
+        map(parse_keyword, Expr::keyword),
+        map(parse_identifier, Expr::ident),
+        parse_array_literal(parse_if_condition_or),
+        parse_map_literal(parse_if_condition_or),
+        map(
+            delimited(
+                (multispace0_or_comment, tag("("), multispace0_or_comment),
+                parse_if_condition_or,
+                (multispace0_or_comment, tag(")"), multispace0_or_comment),
+            ),
+            Expr::parenthesized,
+        ),
+    ))
+    .parse(input)
+}
+
+/// Parses a unary expression for `if` conditions.
+fn parse_if_condition_unary(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = multispace0_or_comment(input)?;
+    alt((
+        map(
+            (parse_unary_op, parse_if_condition_unary_tight),
+            |(op, e)| Expr::unary_expr(op, e),
+        ),
+        parse_if_condition_primary,
+    ))
+    .parse(input)
+}
+
+/// Parses a unary expression for `if` conditions without whitespace between unary
+/// operators and the expression that follows.
+fn parse_if_condition_unary_tight(input: &str) -> IResult<&str, Expr> {
+    alt((
+        map(
+            (parse_unary_op, parse_if_condition_unary_tight),
+            |(op, e)| Expr::unary_expr(op, e),
+        ),
+        parse_if_condition_primary,
+    ))
+    .parse(input)
+}
+
+fn parse_if_condition_pipe(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_or, &[BinaryOp::Pipe])
+}
+
+fn parse_if_condition_or(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_and, &[BinaryOp::Or])
+}
+
+fn parse_if_condition_and(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_xor, &[BinaryOp::And])
+}
+
+fn parse_if_condition_xor(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_bit_or, &[BinaryOp::Xor])
+}
+
+fn parse_if_condition_bit_or(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_bit_xor, &[BinaryOp::BitOr])
+}
+
+fn parse_if_condition_bit_xor(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_bit_and, &[BinaryOp::BitXor])
+}
+
+fn parse_if_condition_bit_and(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_if_condition_add_sub_concat,
+        &[BinaryOp::BitAnd],
+    )
+}
+
+fn parse_if_condition_add_sub_concat(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_if_condition_mul_div,
+        &[BinaryOp::Add, BinaryOp::Sub, BinaryOp::Concat],
+    )
+}
+
+fn parse_if_condition_mul_div(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_if_condition_unary,
+        &[
+            BinaryOp::Mul,
+            BinaryOp::Div,
+            BinaryOp::Eq,
+            BinaryOp::Ne,
+            BinaryOp::Lt,
+            BinaryOp::Gt,
+            BinaryOp::Lte,
+            BinaryOp::Gte,
+        ],
+    )
 }
 
 /// Parses a unary expression: optionally prefixed with `!`, `+`, or `-`.
@@ -200,7 +377,7 @@ mod tests {
     fn test_parse_keyword() {
         use crate::ast::Keyword;
 
-        assert_eq!(parse_expr("if"), Ok(("", Expr::keyword(Keyword::If))));
+        assert!(parse_expr("if").is_err());
         assert_eq!(parse_expr("else"), Ok(("", Expr::keyword(Keyword::Else))));
         assert_eq!(
             parse_expr("return"),
@@ -217,6 +394,48 @@ mod tests {
         assert_eq!(parse_expr("let"), Ok(("", Expr::keyword(Keyword::Let))));
         // Keywords are not identifiers: "iffy" parses as ident, not "if" + "fy"
         assert_eq!(parse_expr("iffy"), Ok(("", Expr::ident("iffy"))));
+    }
+
+    #[test]
+    fn test_parse_if_expr_block_and_optional_else() {
+        assert_eq!(
+            parse_expr("if true { 1 } else { 2 }"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(true),
+                    Expr::literal_number(1),
+                    Some(Expr::literal_number(2))
+                )
+            ))
+        );
+
+        assert_eq!(
+            parse_expr("if false { do() }"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(false),
+                    Expr::function_call("do", vec![]),
+                    None
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_if_expr_expression_branches() {
+        assert_eq!(
+            parse_expr("if success \"Ok\" else \":(\""),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::ident("success"),
+                    Expr::literal_string("Ok"),
+                    Some(Expr::literal_string(":("))
+                )
+            ))
+        );
     }
 
     #[test]
