@@ -35,8 +35,15 @@ true && false
 "Answer: {1 + 2}"
 ```
 
+## Try bindings
+
+```flt
+let x = 10
+x + 1
+```
+
 ## Notes
 
-- The REPL parses one expression per input line.
-- Expressions with unconsumed trailing text are rejected.
+- The REPL parses one statement per input line (an expression or `let` / `name = expr`).
+- Input with unconsumed trailing text after a complete statement is rejected.
 - Press `Ctrl+C` or `Ctrl+D` to exit.

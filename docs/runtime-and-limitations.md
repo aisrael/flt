@@ -11,6 +11,7 @@ The evaluator currently supports:
 - String literals and concatenation with `<>`
 - Parenthesized expressions
 - Unary numeric `+` and `-`
+- `let` bindings (`let x = expr`) and plain assignment (`x = expr`), stored in the global scope; evaluation returns the bound value (what the REPL prints)
 
 `<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated).
 
@@ -30,7 +31,6 @@ These constructs parse successfully but are not fully supported by the current e
 - Function calls (including calls with keyword arguments, e.g. `foo(1, bar: true)`)
 - Pipe expressions (`|>`)
 - Bitwise operators (`&`, `|`, `^`)
-- Let statements (`let x = expr`) — the REPL accepts expressions only; statement parsing is available in the library for other entry points
 - Standalone keyword expressions (e.g. `if`, `return`, `fn`) — they parse as expressions but have no evaluation behavior yet
 
 ## Practical Guidance

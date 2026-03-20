@@ -28,7 +28,7 @@ let foo = 2 + 3
 - If a statement ends on a newline, the semicolon is not required.
 - Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
 
-The REPL currently accepts expressions only; statement parsing is available for use in other entry points (e.g. batch or file evaluation).
+The REPL parses one statement per line (an expression or a `let` / assignment binding).
 
 ## Reserved Keywords
 
