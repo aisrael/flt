@@ -24,15 +24,13 @@ pub fn parse_literal(input: &str) -> IResult<&str, Literal> {
 mod tests {
     use std::str::FromStr;
 
-    use bigdecimal::BigDecimal;
-
     use crate::ast::Literal;
     use crate::ast::Numeric;
 
     use super::parse_literal;
 
     fn n(s: &str) -> Numeric {
-        Numeric::new(BigDecimal::from_str(s).unwrap())
+        Numeric::from_str(s).unwrap()
     }
 
     #[test]

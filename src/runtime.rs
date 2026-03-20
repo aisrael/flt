@@ -15,6 +15,7 @@ use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
 use crate::errors::RuntimeError;
+use crate::runtime::functions::FunctionDefinition;
 use crate::utils::escape_string;
 use crate::Error;
 
@@ -75,7 +76,7 @@ pub trait Runtime {
 
 #[derive(Default)]
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, Box<dyn Function>>,
+    pub built_in_functions: HashMap<String, FunctionDefinition>,
     pub global_scope: GlobalScope,
 }
 
@@ -252,7 +253,7 @@ impl SimpleRuntime {
 /// The global scope is the scope that is available to all other scopes.
 #[derive(Default)]
 pub struct GlobalScope {
-    pub functions: HashMap<String, Box<dyn Function>>,
+    pub functions: HashMap<String, FunctionDefinition>,
     pub variables: HashMap<String, Value>,
 }
 
@@ -263,8 +264,8 @@ impl GlobalScope {
     }
 
     /// Get a function from the global scope by name.
-    pub fn get_function(&self, name: &str) -> Option<&dyn Function> {
-        self.functions.get(name).map(|f| f.as_ref())
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDefinition> {
+        self.functions.get(name)
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -281,12 +282,4 @@ impl GlobalScope {
     pub fn set_variable(&mut self, name: &str, value: Value) {
         self.variables.insert(name.to_string(), value);
     }
-}
-
-pub struct FunctionSignature {
-    pub name: String,
-}
-
-pub trait Function {
-    fn signature(&self) -> FunctionSignature;
 }

@@ -341,12 +341,11 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr as _;
-
-    use bigdecimal::BigDecimal;
+    use std::str::FromStr;
 
     use crate::ast::BinaryOp;
     use crate::ast::Expr;
+    use crate::ast::Numeric;
     use crate::ast::UnaryOp;
 
     use super::*;
@@ -359,7 +358,7 @@ mod tests {
             Ok((
                 "",
                 Expr::literal_number(
-                    BigDecimal::from_str("3.14").expect("unable to parse 3.14 into BigDecimal")
+                    Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                 )
             ))
         );

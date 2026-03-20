@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use bigdecimal::BigDecimal;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::char;
@@ -32,8 +31,8 @@ pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
         number.push_str(fractional);
     }
 
-    match BigDecimal::from_str(&number) {
-        Ok(value) => Ok((input, Numeric::new(value))),
+    match Numeric::from_str(&number) {
+        Ok(value) => Ok((input, value)),
         Err(_) => Err(nom::Err::Failure(nom::error::Error::new(
             input,
             nom::error::ErrorKind::Float,
@@ -45,14 +44,12 @@ pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
 mod tests {
     use std::str::FromStr;
 
-    use bigdecimal::BigDecimal;
-
     use crate::ast::Numeric;
 
     use super::parse_number;
 
     fn n(s: &str) -> Numeric {
-        Numeric::new(BigDecimal::from_str(s).unwrap())
+        Numeric::from_str(s).unwrap()
     }
 
     #[test]

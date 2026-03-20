@@ -157,7 +157,7 @@ The runtime evaluates basic expressions and statements (literals, identifiers, u
   - `BinaryOp`
   - `UnaryOp`
 - `flt::repl`:
-  - `run_repl`
+  - `Repl`
 - `flt::runtime`:
   - `Runtime`
   - `SimpleRuntime`

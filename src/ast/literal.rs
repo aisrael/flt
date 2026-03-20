@@ -21,7 +21,7 @@ pub enum Literal {
 impl Literal {
     /// Construct a number literal from a BigDecimal
     pub fn number(n: impl Into<BigDecimal>) -> Self {
-        Literal::Number(Numeric::new(n.into()))
+        Literal::Number(Numeric(n.into()))
     }
 
     /// Construct a string literal from a string (e.g. `"hello"`).
@@ -48,7 +48,7 @@ impl From<bool> for Literal {
 
 impl From<i64> for Literal {
     fn from(value: i64) -> Self {
-        Literal::Number(Numeric::new(value))
+        Literal::Number(Numeric(value.into()))
     }
 }
 
@@ -57,7 +57,7 @@ impl TryFrom<f64> for Literal {
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         BigDecimal::from_f64(value)
-            .map(|bd| Literal::Number(Numeric::new(bd)))
+            .map(|bd| Literal::Number(Numeric(bd)))
             .ok_or(Error::F64ConversionError)
     }
 }
@@ -110,7 +110,7 @@ mod tests {
     fn test_literal_from_i64() {
         assert_eq!(
             Literal::from(42),
-            Literal::Number(Numeric::new(BigDecimal::from_str("42").unwrap()))
+            Literal::Number(Numeric(BigDecimal::from_str("42").unwrap()))
         );
     }
 }

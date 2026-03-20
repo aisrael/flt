@@ -18,20 +18,20 @@ use super::string::parse_string;
 use crate::ast::Expr;
 use crate::ast::KeyValue;
 
-/// Parses a bare map key: starts with a letter, followed by alphanumeric or `_`.
-fn parse_bare_key(input: &str) -> IResult<&str, &str> {
-    recognize(pair(
-        satisfy(|c: char| c.is_alphabetic()),
-        take_while(|c: char| c.is_alphanumeric() || c == '_'),
-    ))
-    .parse(input)
-}
-
 /// Parses a map key: bare identifier or quoted string.
 pub fn parse_map_key(input: &str) -> IResult<&str, Cow<'_, str>> {
     alt((
         map(parse_string, Cow::Owned),
         map(parse_bare_key, Cow::Borrowed),
+    ))
+    .parse(input)
+}
+
+/// Parses a bare map key: starts with a letter, followed by alphanumeric or `_`.
+fn parse_bare_key(input: &str) -> IResult<&str, &str> {
+    recognize(pair(
+        satisfy(|c: char| c.is_alphabetic()),
+        take_while(|c: char| c.is_alphanumeric() || c == '_'),
     ))
     .parse(input)
 }
