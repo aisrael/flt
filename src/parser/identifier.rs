@@ -1,5 +1,5 @@
 use nom::bytes::complete::take_while;
-use nom::bytes::complete::take_while_m_n;
+use nom::character::complete::satisfy;
 use nom::combinator::recognize;
 use nom::sequence::pair;
 use nom::IResult;
@@ -9,7 +9,7 @@ use nom::Parser;
 /// alphanumeric, hyphen, or underscore characters.
 pub fn parse_identifier(input: &str) -> IResult<&str, &str> {
     recognize(pair(
-        take_while_m_n(1, 1, |c: char| c.is_alphabetic()),
+        satisfy(|c: char| c.is_alphabetic()),
         take_while(|c: char| c.is_alphanumeric() || c == '-' || c == '_'),
     ))
     .parse(input)

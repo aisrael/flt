@@ -1,42 +1,40 @@
 # flt
 
-A lightweight functional language and parser.
+A lightweight functional language with a parser, REPL, and a rudimentary interpreter/runtime.
 
 ## Overview
 
-`flt` (pronounced "flight") is a Rust workspace with:
+`flt` (pronounced "flight") is a single Rust crate that provides:
 
-- `flt`: parser + AST library
-- `flt-cli`: REPL and expression evaluator
+- a parser + AST (`flt::parser`, `flt::ast`)
+- a REPL (`flt::repl`) backed by a simple interpreter/runtime (`flt::runtime`)
 
 The language supports literals, identifiers, unary/binary operators, function calls, interpolation, comments, and an Elixir-style pipe operator.
+The runtime currently evaluates a subset of that syntax.
 
 ## Crate version
 
 ```toml
 [dependencies]
-flt = "0.0.2"
+flt = "0.1.0"
 ```
 
 ## Quick start
 
 ```rust
-use flt::parser::parse_expr;
+use flt::parser::parse_statement;
+use flt::runtime::Runtime;
+use flt::runtime::SimpleRuntime;
 
 fn main() {
     let input = "1 + 2";
 
-    match parse_expr(input) {
-        Ok((remainder, expr)) if remainder.trim().is_empty() => {
-            println!("Parsed expression: {expr}");
-        }
-        Ok((remainder, _)) => {
-            eprintln!("Unconsumed input: {:?}", remainder);
-        }
-        Err(err) => {
-            eprintln!("Parse error: {:?}", err);
-        }
-    }
+    let (_remainder, statement) =
+        parse_statement(input).expect("input should parse as a statement");
+
+    let mut runtime = SimpleRuntime::default();
+    let value = runtime.eval(&statement).expect("evaluation should succeed");
+    println!("{}", value);
 }
 ```
 
@@ -123,26 +121,27 @@ parse_expr("READ(\"input\") |> WRITE(\"output\")");
 parse_expr("1 # comment\n+ 2");
 ```
 
-## CLI (workspace binary)
+## Binary / REPL
 
 Run the REPL:
 
 ```bash
-cargo run -p flt-cli
+cargo run
 ```
 
 Print version:
 
 ```bash
-cargo run -p flt-cli -- version
+cargo run -- version
 ```
 
-The CLI evaluates literals and supported unary/binary expressions. Function calls and pipe execution are parsed but currently not executed by the evaluator.
+The runtime evaluates basic expressions and statements (literals, identifiers, unary/binary operators, `if` expressions, and `let` bindings). Function calls and pipe execution are parsed but currently not executed by the runtime; maps/arrays/keyword expressions are also not yet supported.
 
 ## Public API
 
 - `flt::parser`:
   - `parse_expr`
+  - `parse_statement`
   - `parse_literal`
   - `parse_identifier`
   - `parse_number`
@@ -157,6 +156,14 @@ The CLI evaluates literals and supported unary/binary expressions. Function call
   - `Numeric`
   - `BinaryOp`
   - `UnaryOp`
+- `flt::repl`:
+  - `run_repl`
+- `flt::runtime`:
+  - `Runtime`
+  - `SimpleRuntime`
+  - `Value`
+- `flt::eval`:
+  - `eval` (evaluate a parsed `Expr` with a fresh runtime)
 - `flt::Error` and `flt::errors::RuntimeError`
 
 ## Development

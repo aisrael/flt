@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
-use nom::bytes::complete::take_while_m_n;
+use nom::character::complete::satisfy;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::recognize;
@@ -21,7 +21,7 @@ use crate::ast::KeyValue;
 /// Parses a bare map key: starts with a letter, followed by alphanumeric or `_`.
 fn parse_bare_key(input: &str) -> IResult<&str, &str> {
     recognize(pair(
-        take_while_m_n(1, 1, |c: char| c.is_alphabetic()),
+        satisfy(|c: char| c.is_alphabetic()),
         take_while(|c: char| c.is_alphanumeric() || c == '_'),
     ))
     .parse(input)
