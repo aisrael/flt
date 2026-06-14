@@ -80,3 +80,25 @@ Examples:
 ```flt
 { "spaced out": (1 + 1) }
 ```
+
+### KeywordArgs
+
+`KeywordArgs` are a special case of `Map`, used to supply arbitrary, optional arguments as the last parameter to a function.
+
+That is, given a function declared as:
+
+```flt
+def warn(message: String, values: ?Map, labels: ?KeywordArgs) # the `?` denotes optional
+```
+
+Then `warn()` can be called like:
+
+```flt
+warn("Message only")
+
+warn("Value is out of range: {n})
+
+warn("Value is out of range: {value}", {value: (x - 1)})
+
+warn("Value is out of range: {value}", {value: (x - 1)}, request_id: request_id)
+```
