@@ -14,8 +14,10 @@ use crate::ast::Expr;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
+use crate::errors::InterpreterError;
 use crate::errors::RuntimeError;
 use crate::runtime::functions::FunctionDefinition;
+use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::Error;
 
@@ -69,6 +71,25 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+        }
+    }
+}
+
+impl Value {
+    /// Map a runtime value to its built-in type.
+    ///
+    /// Bare `None` cannot be typed without contextual information about the
+    /// wrapped `Option<T>`, so it returns `InterpreterError::NotYetImplemented`.
+    pub fn type_of(&self) -> Result<Type, Error> {
+        match self {
+            Value::Unit => Ok(Type::unit()),
+            Value::None => Err(Error::InterpreterError(InterpreterError::NotYetImplemented)),
+            Value::Number(_) => Ok(Type::number()),
+            Value::String(_) => Ok(Type::string()),
+            Value::Boolean(_) => Ok(Type::boolean()),
+            Value::Symbol(_) => Ok(Type::symbol()),
+            Value::Map(_) => Ok(Type::map()),
+            Value::Array(_) => Ok(Type::array()),
         }
     }
 }
@@ -285,5 +306,62 @@ impl GlobalScope {
     /// Set a variable in the global scope by name.
     pub fn set_variable(&mut self, name: &str, value: Value) {
         self.variables.insert(name.to_string(), value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_of_unit() {
+        assert_eq!(Value::Unit.type_of().unwrap(), Type::unit());
+    }
+
+    #[test]
+    fn test_type_of_number() {
+        assert_eq!(
+            Value::Number(BigDecimal::from(42)).type_of().unwrap(),
+            Type::number()
+        );
+    }
+
+    #[test]
+    fn test_type_of_string() {
+        assert_eq!(
+            Value::String("hello".to_string()).type_of().unwrap(),
+            Type::string()
+        );
+    }
+
+    #[test]
+    fn test_type_of_boolean() {
+        assert_eq!(Value::Boolean(true).type_of().unwrap(), Type::boolean());
+    }
+
+    #[test]
+    fn test_type_of_symbol() {
+        assert_eq!(
+            Value::Symbol("name".to_string()).type_of().unwrap(),
+            Type::symbol()
+        );
+    }
+
+    #[test]
+    fn test_type_of_map() {
+        assert_eq!(Value::Map(HashMap::new()).type_of().unwrap(), Type::map());
+    }
+
+    #[test]
+    fn test_type_of_array() {
+        assert_eq!(Value::Array(Vec::new()).type_of().unwrap(), Type::array());
+    }
+
+    #[test]
+    fn test_type_of_none_is_not_yet_implemented() {
+        assert!(matches!(
+            Value::None.type_of(),
+            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
+        ));
     }
 }

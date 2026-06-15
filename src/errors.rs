@@ -15,6 +15,14 @@ pub enum Error {
     SyntaxError(String),
     #[error("Runtime Error: {0}")]
     RuntimeError(RuntimeError),
+    #[error("Interpreter Error: {0}")]
+    InterpreterError(InterpreterError),
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum InterpreterError {
+    #[error("Not yet implemented")]
+    NotYetImplemented,
 }
 
 #[derive(Debug, Error, PartialEq)]
