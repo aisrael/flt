@@ -3,19 +3,23 @@ use std::fmt::Display;
 
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
+use nom::bytes::complete::tag;
+use nom::IResult;
+use nom::Parser;
 
 use crate::errors::Error;
 use crate::utils::escape_string;
 
 use super::number::Numeric;
 
-/// A literal value: number, string, boolean, or symbol.
+/// A literal value: number, string, boolean, symbol, or the `None` sentinel.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Number(Numeric),
     String(String),
     Boolean(bool),
     Symbol(String),
+    None,
 }
 
 impl Literal {
@@ -38,6 +42,16 @@ impl Literal {
     pub fn symbol(s: impl Into<String>) -> Self {
         Literal::Symbol(s.into())
     }
+
+    /// Construct the `None` sentinel literal.
+    pub fn none() -> Self {
+        Literal::None
+    }
+}
+
+/// Parses the `None` sentinel literal.
+pub fn parse_none(input: &str) -> IResult<&str, ()> {
+    tag("None").map(|_| ()).parse(input)
 }
 
 impl From<bool> for Literal {
@@ -75,6 +89,7 @@ impl Display for Literal {
             Literal::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::Symbol(s) => write!(f, "{}", s),
+            Literal::None => write!(f, "None"),
         }
     }
 }
@@ -112,5 +127,21 @@ mod tests {
             Literal::from(42),
             Literal::Number(Numeric(BigDecimal::from_str("42").unwrap()))
         );
+    }
+
+    #[test]
+    fn test_parse_none() {
+        assert_eq!(parse_none("None"), Ok(("", ())));
+    }
+
+    #[test]
+    fn test_parse_none_with_remainder() {
+        assert_eq!(parse_none("None "), Ok((" ", ())));
+        assert_eq!(parse_none("None)"), Ok((")", ())));
+    }
+
+    #[test]
+    fn test_parse_none_rejects_other() {
+        assert!(parse_none("Nope").is_err());
     }
 }

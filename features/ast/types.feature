@@ -33,20 +33,20 @@ Feature: Types
     When I parse the input
     Then the output should be an identifier "KeywordArgs"
 
-  Scenario: None sentinel parses as an identifier
+  Scenario: None sentinel parses as a literal
     Given the input "None"
     When I parse the input
-    Then the output should be an identifier "None"
+    Then the output should be a `Literal::None`
 
   Scenario: Comparing a value to None for Option check
     Given the input "compressed == None"
     When I parse the input
-    Then the output should be 'BinaryExpr(Ident("compressed"), Eq, Ident("None"))'
+    Then the output should be 'BinaryExpr(Ident("compressed"), Eq, Literal(None))'
 
   Scenario: Checking an option is not None
     Given the input "compressed != None"
     When I parse the input
-    Then the output should be 'BinaryExpr(Ident("compressed"), Ne, Ident("None"))'
+    Then the output should be 'BinaryExpr(Ident("compressed"), Ne, Literal(None))'
 
   Scenario: Map literal as a collection-typed value
     Given the input '{ value: 42 }'

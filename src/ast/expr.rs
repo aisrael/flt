@@ -106,6 +106,11 @@ impl Expr {
         Expr::Literal(Literal::boolean(b))
     }
 
+    /// Constructs a `None` sentinel literal expression.
+    pub fn literal_none() -> Self {
+        Expr::Literal(Literal::none())
+    }
+
     /// Constructs a symbol literal expression (e.g. `:foo` or `:"hello"`).
     pub fn literal_symbol(s: impl Into<String>) -> Self {
         Expr::Literal(Literal::symbol(s))

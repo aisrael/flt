@@ -24,6 +24,8 @@ use crate::Error;
 pub enum Value {
     /// The unit value (like `()` in Rust/Elixir)
     Unit,
+    /// The `None` sentinel value (the empty `Option`)
+    None,
     /// A number value
     Number(BigDecimal),
     /// A string value
@@ -42,6 +44,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Unit => write!(f, "()"),
+            Value::None => write!(f, "None"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Value::Boolean(b) => write!(f, "{}", b),
@@ -148,6 +151,7 @@ impl SimpleRuntime {
             Literal::String(s) => Value::String(s.clone()),
             Literal::Boolean(b) => Value::Boolean(*b),
             Literal::Symbol(s) => Value::Symbol(s.clone()),
+            Literal::None => Value::None,
         }
     }
 

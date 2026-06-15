@@ -103,6 +103,16 @@ fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
     }
 }
 
+#[then(expr = r"the output should be a `Literal::None`")]
+fn then_output_should_be_none(world: &mut AstWorld) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::Literal(Literal::None) => {}
+        _ => panic!("expected None literal, got {:?}", expr),
+    }
+}
+
 #[then(regex = r#"^the output should be a `Literal::Symbol\("([^"]*)"\)`$"#)]
 fn then_output_should_be_symbol(world: &mut AstWorld, expected: String) {
     let output = world.output.take().expect("output should be set");
