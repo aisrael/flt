@@ -1,7 +1,9 @@
 //! Types for the flt runtime
 
+use std::fmt;
+
 /// A type is either a builtin type or a custom type
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
     Custom(CustomType),
@@ -49,10 +51,25 @@ impl Type {
     pub fn option(inner: Type) -> Self {
         Type::Option(Box::new(inner))
     }
+
+    /// The universal value type (accepts any value)
+    pub fn value() -> Self {
+        Type::Builtin(BuiltinType::Value)
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Builtin(b) => write!(f, "{b}"),
+            Type::Custom(c) => write!(f, "{}", c.name),
+            Type::Option(inner) => write!(f, "Option<{inner}>"),
+        }
+    }
 }
 
 /// A builtin type is a type that is predefined in the runtime.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BuiltinType {
     Unit,
     String,
@@ -61,10 +78,27 @@ pub enum BuiltinType {
     Symbol,
     Array,
     Map,
+    Value,
+}
+
+impl fmt::Display for BuiltinType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            BuiltinType::Unit => "Unit",
+            BuiltinType::String => "String",
+            BuiltinType::Number => "Number",
+            BuiltinType::Boolean => "Boolean",
+            BuiltinType::Symbol => "Symbol",
+            BuiltinType::Array => "Array",
+            BuiltinType::Map => "Map",
+            BuiltinType::Value => "Value",
+        };
+        write!(f, "{name}")
+    }
 }
 
 /// A custom type is a type that is defined by the user.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CustomType {
     pub name: String,
 }

@@ -71,6 +71,28 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_typeof_number() {
+        let expr = Expr::function_call("typeof", vec![Expr::literal_number(42)]);
+        assert_eq!(eval(&expr).unwrap(), "Number");
+    }
+
+    #[test]
+    fn test_eval_typeof_string() {
+        let expr = Expr::function_call("typeof", vec![Expr::literal_string("hi")]);
+        assert_eq!(eval(&expr).unwrap(), "String");
+    }
+
+    #[test]
+    fn test_eval_typeof_arity_mismatch() {
+        let expr = Expr::function_call("typeof", vec![]);
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::ArgumentCountMismatch { found: 0, .. })
+        ));
+    }
+
+    #[test]
     fn test_eval_unary_not_true() {
         let expr = Expr::unary_expr(UnaryOp::Not, Expr::literal_boolean(true));
         assert_eq!(eval(&expr).unwrap(), "false");

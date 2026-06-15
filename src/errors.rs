@@ -37,4 +37,10 @@ pub enum RuntimeError {
     UnboundIdentifier(String),
     #[error("Function calls not yet supported")]
     UnsupportedFunctionCall,
+    #[error("Function {name} expected {expected} argument(s), found {found}")]
+    ArgumentCountMismatch {
+        name: String,
+        expected: usize,
+        found: usize,
+    },
 }

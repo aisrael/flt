@@ -16,6 +16,8 @@ use crate::ast::Statement;
 use crate::ast::UnaryOp;
 use crate::errors::InterpreterError;
 use crate::errors::RuntimeError;
+use crate::runtime::functions::Argument;
+use crate::runtime::functions::BuiltinFunction;
 use crate::runtime::functions::FunctionDefinition;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
@@ -40,6 +42,8 @@ pub enum Value {
     Map(HashMap<String, Value>),
     /// An array of values
     Array(Vec<Value>),
+    /// A type as a first-class value
+    Type(Type),
 }
 
 impl fmt::Display for Value {
@@ -71,6 +75,7 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Type(t) => write!(f, "{t}"),
         }
     }
 }
@@ -90,6 +95,7 @@ impl Value {
             Value::Symbol(_) => Ok(Type::symbol()),
             Value::Map(_) => Ok(Type::map()),
             Value::Array(_) => Ok(Type::array()),
+            Value::Type(_) => Ok(Type::value()),
         }
     }
 }
@@ -98,10 +104,45 @@ pub trait Runtime {
     fn eval(&mut self, statement: &Statement) -> Result<Value, Error>;
 }
 
-#[derive(Default)]
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, FunctionDefinition>,
+    pub built_in_functions: HashMap<String, BuiltinFunction>,
     pub global_scope: GlobalScope,
+}
+
+impl Default for SimpleRuntime {
+    fn default() -> Self {
+        Self {
+            built_in_functions: register_builtins(),
+            global_scope: GlobalScope::default(),
+        }
+    }
+}
+
+fn register_builtins() -> HashMap<String, BuiltinFunction> {
+    let mut built_ins = HashMap::new();
+    built_ins.insert(
+        "typeof".to_string(),
+        BuiltinFunction::new(
+            FunctionDefinition::new(
+                "typeof",
+                Type::value(),
+                vec![Argument::new("V", Type::value())],
+            ),
+            builtin_typeof,
+        ),
+    );
+    built_ins
+}
+
+fn builtin_typeof(args: &[Value]) -> Result<Value, Error> {
+    if args.len() != 1 {
+        return Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
+            name: "typeof".to_string(),
+            expected: 1,
+            found: args.len(),
+        }));
+    }
+    Ok(Value::Type(args[0].type_of()?))
 }
 
 impl Runtime for SimpleRuntime {
@@ -156,8 +197,15 @@ impl SimpleRuntime {
                 let r = self.eval_expr(right)?;
                 Self::eval_binary(&l, *op, &r)
             }
-            Expr::FunctionCall(_, _) => {
-                Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall))
+            Expr::FunctionCall(name, args) => {
+                let arg_values = args
+                    .iter()
+                    .map(|arg| self.eval_expr(arg))
+                    .collect::<Result<Vec<Value>, Error>>()?;
+                match self.built_in_functions.get(name.0.as_str()) {
+                    Some(function) => function.call(&arg_values),
+                    None => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
+                }
             }
             Expr::Parenthesized(inner) => self.eval_expr(inner),
             Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
@@ -363,5 +411,54 @@ mod tests {
             Value::None.type_of(),
             Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
         ));
+    }
+
+    #[test]
+    fn test_type_of_type_is_value() {
+        assert_eq!(
+            Value::Type(Type::number()).type_of().unwrap(),
+            Type::value()
+        );
+    }
+
+    #[test]
+    fn test_value_type_display() {
+        assert_eq!(Value::Type(Type::number()).to_string(), "Number");
+        assert_eq!(
+            Value::Type(Type::option(Type::string())).to_string(),
+            "Option<String>"
+        );
+    }
+
+    #[test]
+    fn test_builtin_typeof_returns_type() {
+        let result = builtin_typeof(&[Value::Number(BigDecimal::from(42))]).unwrap();
+        assert_eq!(result, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_builtin_typeof_propagates_none_error() {
+        assert!(matches!(
+            builtin_typeof(&[Value::None]),
+            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
+        ));
+    }
+
+    #[test]
+    fn test_builtin_typeof_arity_mismatch() {
+        assert!(matches!(
+            builtin_typeof(&[]),
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
+                expected: 1,
+                found: 0,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn test_typeof_registered_as_builtin() {
+        let runtime = SimpleRuntime::default();
+        assert!(runtime.built_in_functions.contains_key("typeof"));
     }
 }
