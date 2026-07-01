@@ -262,6 +262,16 @@ fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: St
     }
 }
 
+#[then(expr = r#"the output should be a field access with field {string}"#)]
+fn then_output_should_be_field_access(world: &mut AstWorld, field: String) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    match &expr {
+        Expr::FieldAccess(_, f) => assert_eq!(f, &field, "expected field {field:?}"),
+        _ => panic!("expected field access, got {expr:?}"),
+    }
+}
+
 #[then(regex = r#"^the output should be a function call "([^"]*)" with (\d+) args$"#)]
 fn then_output_should_be_function_call(world: &mut AstWorld, name: String, arg_count: usize) {
     let output = world.output.take().expect("output should be set");

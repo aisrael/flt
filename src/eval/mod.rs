@@ -434,6 +434,46 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_field_access_on_map_literal() {
+        let expr = Expr::field_access(
+            Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+            "foo",
+        );
+        assert_eq!(eval(&expr).unwrap(), "\"bar\"");
+    }
+
+    #[test]
+    fn test_eval_chained_field_access() {
+        let inner = Expr::map_literal(vec![("bar", Expr::literal_number(42))]);
+        let outer = Expr::map_literal(vec![("baz", inner)]);
+        let expr = Expr::field_access(Expr::field_access(outer, "baz"), "bar");
+        assert_eq!(eval(&expr).unwrap(), "42");
+    }
+
+    #[test]
+    fn test_eval_field_access_not_found() {
+        let expr = Expr::field_access(
+            Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+            "missing",
+        );
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::NoSuchField(f)) if f == "missing"
+        ));
+    }
+
+    #[test]
+    fn test_eval_field_access_on_non_map() {
+        let expr = Expr::field_access(Expr::literal_number(42), "foo");
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::InvalidOperandType)
+        ));
+    }
+
+    #[test]
     fn test_eval_if_expr_condition_must_be_boolean() {
         let expr = Expr::if_expr(
             Expr::literal_number(1),

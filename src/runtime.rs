@@ -208,7 +208,24 @@ impl SimpleRuntime {
                 }
             }
             Expr::Parenthesized(inner) => self.eval_expr(inner),
-            Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+            Expr::FieldAccess(inner, field) => {
+                let value = self.eval_expr(inner)?;
+                match value {
+                    Value::Map(m) => m
+                        .get(field.as_str())
+                        .cloned()
+                        .ok_or_else(|| Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))),
+                    _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+                }
+            }
+            Expr::MapLiteral(entries) => {
+                let mut map = HashMap::new();
+                for kv in entries {
+                    let value = self.eval_expr(&kv.value)?;
+                    map.insert(kv.key.clone(), value);
+                }
+                Ok(Value::Map(map))
+            }
             Expr::ArrayLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
             Expr::Keyword(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
         }

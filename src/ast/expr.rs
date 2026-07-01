@@ -24,6 +24,8 @@ pub enum Expr {
     FunctionCall(Identifier, Vec<Expr>),
     /// A parenthesized expression.
     Parenthesized(Box<Expr>),
+    /// Field access on an expression: `expr.field` (e.g. `u.foo`, `{a:1}.a`, `f().x`).
+    FieldAccess(Box<Expr>, String),
     /// A map literal: `{ key: value, ... }`.
     MapLiteral(Vec<KeyValue>),
     /// An array literal: `[ expr, ... ]`.
@@ -64,6 +66,7 @@ impl Display for Expr {
                 expr.fmt(f)?;
                 write!(f, ")")
             }
+            Expr::FieldAccess(expr, field) => write!(f, "{expr}.{field}"),
             Expr::MapLiteral(entries) => {
                 write!(f, "{{ ")?;
                 for (i, kv) in entries.iter().enumerate() {
@@ -152,6 +155,11 @@ impl Expr {
     /// Constructs a parenthesized expression.
     pub fn parenthesized(expr: Expr) -> Self {
         Expr::Parenthesized(Box::new(expr))
+    }
+
+    /// Constructs a field-access expression: `expr.field`.
+    pub fn field_access(expr: Expr, field: impl Into<String>) -> Self {
+        Expr::FieldAccess(Box::new(expr), field.into())
     }
 
     /// Constructs a map literal expression.
@@ -330,6 +338,30 @@ mod tests {
             ))
             .to_string(),
             "(1 + 2)"
+        );
+    }
+
+    #[test]
+    fn test_display_field_access() {
+        assert_eq!(
+            Expr::field_access(Expr::ident("u"), "foo").to_string(),
+            "u.foo"
+        );
+        assert_eq!(
+            Expr::field_access(Expr::field_access(Expr::ident("a"), "b"), "c").to_string(),
+            "a.b.c"
+        );
+        assert_eq!(
+            Expr::field_access(
+                Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+                "foo"
+            )
+            .to_string(),
+            "{ foo: \"bar\" }.foo"
+        );
+        assert_eq!(
+            Expr::field_access(Expr::parenthesized(Expr::ident("u")), "foo").to_string(),
+            "(u).foo"
         );
     }
 

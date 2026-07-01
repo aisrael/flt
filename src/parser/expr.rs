@@ -6,6 +6,7 @@ use nom::combinator::opt;
 use nom::combinator::verify;
 use nom::multi::many0;
 use nom::sequence::delimited;
+use nom::sequence::preceded;
 use nom::IResult;
 use nom::Parser;
 
@@ -107,6 +108,19 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
     .parse(input)
 }
 
+/// Parses zero or more `.field` postfix suffixes onto a primary expression,
+/// left-folding them into nested `Expr::FieldAccess` nodes (e.g. `u.foo.bar`
+/// becomes `FieldAccess(FieldAccess(u, "foo"), "bar")`).
+///
+/// Note: `.` binds tightly — no whitespace/comments are allowed between the
+/// primary expression, the `.`, and the field name (mirrors the unary-operator
+/// "tight" convention; see `parse_unary_tight`).
+fn parse_postfix(input: &str) -> IResult<&str, Expr> {
+    let (input, base) = parse_primary(input)?;
+    let (input, fields) = many0(preceded(tag("."), parse_identifier)).parse(input)?;
+    Ok((input, fields.into_iter().fold(base, Expr::field_access)))
+}
+
 /// Parses a primary expression used specifically for `if` conditions.
 ///
 /// The main difference from `parse_primary` is that it disallows *parenless*
@@ -140,6 +154,14 @@ fn parse_if_condition_primary(input: &str) -> IResult<&str, Expr> {
     .parse(input)
 }
 
+/// Parses zero or more `.field` postfix suffixes for `if`-condition expressions.
+/// See `parse_postfix` for the general-grammar equivalent.
+fn parse_if_condition_postfix(input: &str) -> IResult<&str, Expr> {
+    let (input, base) = parse_if_condition_primary(input)?;
+    let (input, fields) = many0(preceded(tag("."), parse_identifier)).parse(input)?;
+    Ok((input, fields.into_iter().fold(base, Expr::field_access)))
+}
+
 /// Parses a unary expression for `if` conditions.
 fn parse_if_condition_unary(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_or_comment(input)?;
@@ -148,7 +170,7 @@ fn parse_if_condition_unary(input: &str) -> IResult<&str, Expr> {
             (parse_unary_op, parse_if_condition_unary_tight),
             |(op, e)| Expr::unary_expr(op, e),
         ),
-        parse_if_condition_primary,
+        parse_if_condition_postfix,
     ))
     .parse(input)
 }
@@ -161,7 +183,7 @@ fn parse_if_condition_unary_tight(input: &str) -> IResult<&str, Expr> {
             (parse_unary_op, parse_if_condition_unary_tight),
             |(op, e)| Expr::unary_expr(op, e),
         ),
-        parse_if_condition_primary,
+        parse_if_condition_postfix,
     ))
     .parse(input)
 }
@@ -233,7 +255,7 @@ fn parse_unary(input: &str) -> IResult<&str, Expr> {
         map((parse_unary_op, parse_unary_tight), |(op, e)| {
             Expr::unary_expr(op, e)
         }),
-        parse_primary,
+        parse_postfix,
     ))
     .parse(input)
 }
@@ -245,7 +267,7 @@ fn parse_unary_tight(input: &str) -> IResult<&str, Expr> {
         map((parse_unary_op, parse_unary_tight), |(op, e)| {
             Expr::unary_expr(op, e)
         }),
-        parse_primary,
+        parse_postfix,
     ))
     .parse(input)
 }
@@ -767,6 +789,79 @@ mod tests {
                 )
             ))
         );
+    }
+
+    #[test]
+    fn test_parse_field_access() {
+        assert_eq!(
+            parse_expr("u.foo"),
+            Ok(("", Expr::field_access(Expr::ident("u"), "foo")))
+        );
+    }
+
+    #[test]
+    fn test_parse_chained_field_access() {
+        assert_eq!(
+            parse_expr("a.b.c"),
+            Ok((
+                "",
+                Expr::field_access(Expr::field_access(Expr::ident("a"), "b"), "c")
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_field_access_on_map_literal() {
+        assert_eq!(
+            parse_expr(r#"{ foo: "bar" }.foo"#),
+            Ok((
+                "",
+                Expr::field_access(
+                    Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+                    "foo"
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_unary_binds_looser_than_dot() {
+        assert_eq!(
+            parse_expr("-u.foo"),
+            Ok((
+                "",
+                Expr::unary_expr(UnaryOp::Minus, Expr::field_access(Expr::ident("u"), "foo"))
+            ))
+        );
+        assert_eq!(
+            parse_expr("!x.y"),
+            Ok((
+                "",
+                Expr::unary_expr(UnaryOp::Not, Expr::field_access(Expr::ident("x"), "y"))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_if_condition_with_field_access() {
+        assert_eq!(
+            parse_expr("if u.active 1 else 0"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::field_access(Expr::ident("u"), "active"),
+                    Expr::literal_number(1),
+                    Some(Expr::literal_number(0))
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_field_access_no_whitespace_allowed() {
+        let (remainder, expr) = parse_expr("u . foo").unwrap();
+        assert_eq!(expr, Expr::ident("u"));
+        assert!(remainder.contains("foo"));
     }
 
     #[test]

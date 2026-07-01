@@ -35,6 +35,8 @@ pub enum RuntimeError {
     DivisionByZero,
     #[error("Unbound identifier: {0}")]
     UnboundIdentifier(String),
+    #[error("No such field: {0}")]
+    NoSuchField(String),
     #[error("Function calls not yet supported")]
     UnsupportedFunctionCall,
     #[error("Function {name} expected {expected} argument(s), found {found}")]
