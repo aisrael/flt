@@ -211,10 +211,9 @@ impl SimpleRuntime {
             Expr::FieldAccess(inner, field) => {
                 let value = self.eval_expr(inner)?;
                 match value {
-                    Value::Map(m) => m
-                        .get(field.as_str())
-                        .cloned()
-                        .ok_or_else(|| Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))),
+                    Value::Map(m) => m.get(field.as_str()).cloned().ok_or_else(|| {
+                        Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))
+                    }),
                     _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
                 }
             }
