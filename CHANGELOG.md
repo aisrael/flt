@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1
+
+- **Fix**: Map literals (`{ key: value }`) now evaluate to `Value::Map` instead of erroring.
+- **Dot-access syntax for maps**: `u.foo` reads a field off a map value, supported at every expression precedence level (including unary and `if` conditions), with a runtime error for missing fields or non-map operands.
+
 ## v0.1.0
 
 - **REPL**: Interactive read-eval-print loop and `flt version` CLI.

@@ -56,8 +56,10 @@ impl fmt::Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Symbol(s) => write!(f, ":{}", s),
             Value::Map(m) => {
+                let mut entries: Vec<_> = m.iter().collect();
+                entries.sort_by_key(|(k, _)| *k);
                 write!(f, "{{")?;
-                for (i, (k, v)) in m.iter().enumerate() {
+                for (i, (k, v)) in entries.into_iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -211,7 +213,7 @@ impl SimpleRuntime {
             Expr::FieldAccess(inner, field) => {
                 let value = self.eval_expr(inner)?;
                 match value {
-                    Value::Map(m) => m.get(field.as_str()).cloned().ok_or_else(|| {
+                    Value::Map(m) => m.get(field).cloned().ok_or_else(|| {
                         Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))
                     }),
                     _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
