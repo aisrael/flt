@@ -16,7 +16,7 @@ The runtime currently evaluates a subset of that syntax.
 
 ```toml
 [dependencies]
-flt = "0.1.0"
+flt = "0.1.1"
 ```
 
 ## Quick start

@@ -11,7 +11,7 @@ cargo run -p flt-cli -- version
 Expected output:
 
 ```text
-flt version 0.1.0
+flt version 0.1.1
 ```
 
 ## Start the REPL
