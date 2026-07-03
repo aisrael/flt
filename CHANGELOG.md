@@ -2,9 +2,20 @@
 
 ## v0.1.1
 
+### Highlights
+
+- **Dot-access syntax for maps**: `u.foo` reads a field off a map value, supported at every expression precedence level (including unary and `if` conditions), with a runtime error for missing fields or non-map operands.
+- **`typeof` builtin**: Runtime type introspection for values.
+
+### Improvements
+
 - **Fix**: Map literals (`{ key: value }`) now evaluate to `Value::Map` instead of erroring.
 - **Fix**: Array literals (`[ expr, ... ]`) now evaluate to `Value::Array` instead of erroring.
-- **Dot-access syntax for maps**: `u.foo` reads a field off a map value, supported at every expression precedence level (including unary and `if` conditions), with a runtime error for missing fields or non-map operands.
+
+### Changelog Stats
+
+- 2 commits since v0.1.0
+- 39 files changed, 1221 insertions(+), 205 deletions(-)
 
 ## v0.1.0
 
