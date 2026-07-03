@@ -11,7 +11,7 @@ cargo run -p flt-cli -- version
 Expected output:
 
 ```text
-flt version 0.0.2
+flt version 0.1.0
 ```
 
 ## Start the REPL
@@ -40,6 +40,14 @@ true && false
 ```flt
 let x = 10
 x + 1
+```
+
+## Try maps and field access
+
+```flt
+let u = { name: "Ada", age: 36 }
+u.name
+typeof(u.age)
 ```
 
 ## Notes

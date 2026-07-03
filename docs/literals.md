@@ -46,6 +46,14 @@ true
 false
 ```
 
+### None
+
+`None` is the sentinel literal for an empty [`Option`](./types.md#option).
+
+```flt
+None
+```
+
 ### Symbols
 
 Symbols are prefixed with `:` and support two forms:
@@ -81,24 +89,26 @@ Examples:
 { "spaced out": (1 + 1) }
 ```
 
-### KeywordArgs
+Fields can be read back off a map with [dot-access syntax](./field-access.md), e.g. `{ foo: "bar" }.foo`.
 
-`KeywordArgs` are a special case of `Map`, used to supply arbitrary, optional arguments as the last parameter to a function.
+### Arrays
 
-That is, given a function declared as:
+A literal array is an ordered collection of values. They start with `[` and end with `]`, with elements separated by commas. A trailing comma is allowed, and elements can be any valid expression.
+
+Examples:
 
 ```flt
-def warn(message: String, values: ?Map, labels: ?KeywordArgs) # the `?` denotes optional
+[]
+[ 1, 2, 3 ]
+[ "a", "b", ]
+[ 1 + 2, foo() ]
 ```
 
-Then `warn()` can be called like:
+### KeywordArgs
+
+`KeywordArgs` are a special case of `Map`: trailing `key: value` pairs in a function call are collected into a single map and passed as the call's final argument. See [Keyword Arguments](./functions-and-pipe.md#keyword-arguments) for the call syntax, e.g.:
 
 ```flt
-warn("Message only")
-
-warn("Value is out of range: {n})
-
-warn("Value is out of range: {value}", {value: (x - 1)})
-
-warn("Value is out of range: {value}", {value: (x - 1)}, request_id: request_id)
+foo(1, bar: true)
+warn("Value is out of range: {value}", value: (x - 1), request_id: request_id)
 ```

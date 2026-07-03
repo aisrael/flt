@@ -6,13 +6,15 @@ This page covers the core surface syntax supported by the parser.
 
 `flt` currently parses these expression forms:
 
-- [Literals](./literals.md)
+- [Literals](./literals.md), including [map](./literals.md#maps) and [array](./literals.md#arrays) literals
 - Identifiers
 - Unary expressions
 - Binary expressions
+- [Field access](./field-access.md) (`u.foo`)
 - Function calls (including [keyword arguments](./functions-and-pipe.md#keyword-arguments))
 - Parenthesized expressions
-- Reserved keywords as expressions (e.g. `if`, `return`)
+- `if` expressions
+- Reserved keywords as expressions (e.g. `return`, `fn`)
 
 ## Statements
 

@@ -486,4 +486,61 @@ mod tests {
             Error::RuntimeError(RuntimeError::InvalidOperandType)
         ));
     }
+
+    #[test]
+    fn test_eval_empty_array() {
+        let expr = Expr::array_literal(vec![]);
+        assert_eq!(eval(&expr).unwrap(), "[]");
+    }
+
+    #[test]
+    fn test_eval_array_literal() {
+        let expr = Expr::array_literal(vec![
+            Expr::literal_number(1),
+            Expr::literal_number(2),
+            Expr::literal_number(3),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_eval_array_mixed_types() {
+        let expr = Expr::array_literal(vec![
+            Expr::literal_number(1),
+            Expr::literal_string("foo"),
+            Expr::literal_boolean(true),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[1, \"foo\", true]");
+    }
+
+    #[test]
+    fn test_eval_nested_array() {
+        let expr = Expr::array_literal(vec![
+            Expr::array_literal(vec![Expr::literal_number(1), Expr::literal_number(2)]),
+            Expr::literal_number(3),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[[1, 2], 3]");
+    }
+
+    #[test]
+    fn test_eval_array_propagates_element_error() {
+        let expr = Expr::array_literal(vec![Expr::literal_number(1), Expr::ident("x")]);
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::UnboundIdentifier(s)) if s == "x"
+        ));
+    }
+
+    #[test]
+    fn test_eval_typeof_array() {
+        let expr = Expr::function_call(
+            "typeof",
+            vec![Expr::array_literal(vec![
+                Expr::literal_number(1),
+                Expr::literal_number(2),
+            ])],
+        );
+        assert_eq!(eval(&expr).unwrap(), "Array");
+    }
 }

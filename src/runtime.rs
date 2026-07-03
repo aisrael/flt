@@ -227,7 +227,13 @@ impl SimpleRuntime {
                 }
                 Ok(Value::Map(map))
             }
-            Expr::ArrayLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+            Expr::ArrayLiteral(elems) => {
+                let values = elems
+                    .iter()
+                    .map(|e| self.eval_expr(e))
+                    .collect::<Result<Vec<Value>, Error>>()?;
+                Ok(Value::Array(values))
+            }
             Expr::Keyword(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
         }
     }

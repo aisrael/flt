@@ -4,10 +4,14 @@
 
 ## Built-In Types
 
+- `Unit` - the empty value `()`, e.g. the result of an `if` with no matching `else`
 - `Boolean`
 - `Number`
 - `String`
 - `Symbol`
+- `Array`
+- `Map`
+- `Type` - a type used as a first-class value, returned by [`typeof`](./functions-and-pipe.md#built-in-functions)
 
 ## Wrapper Types
 
