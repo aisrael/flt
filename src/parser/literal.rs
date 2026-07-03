@@ -7,12 +7,14 @@ use super::boolean::parse_boolean;
 use super::number::parse_number;
 use super::string::parse_string;
 use super::symbol::parse_symbol;
+use crate::ast::parse_none;
 use crate::ast::Literal;
 
 /// Parses a literal: number, string, boolean, or symbol.
 pub fn parse_literal(input: &str) -> IResult<&str, Literal> {
     alt((
         map(parse_boolean, Literal::Boolean),
+        map(parse_none, |_| Literal::None),
         map(parse_symbol, Literal::symbol),
         map(parse_string, Literal::string),
         map(parse_number, Literal::Number),
@@ -24,15 +26,13 @@ pub fn parse_literal(input: &str) -> IResult<&str, Literal> {
 mod tests {
     use std::str::FromStr;
 
-    use bigdecimal::BigDecimal;
-
     use crate::ast::Literal;
     use crate::ast::Numeric;
 
     use super::parse_literal;
 
     fn n(s: &str) -> Numeric {
-        Numeric::new(BigDecimal::from_str(s).unwrap())
+        Numeric::from_str(s).unwrap()
     }
 
     #[test]
@@ -53,6 +53,12 @@ mod tests {
     fn test_parse_boolean_literal() {
         assert_eq!(parse_literal("true"), Ok(("", Literal::Boolean(true))));
         assert_eq!(parse_literal("false"), Ok(("", Literal::Boolean(false))));
+    }
+
+    #[test]
+    fn test_parse_none_literal() {
+        assert_eq!(parse_literal("None"), Ok(("", Literal::None)));
+        assert_eq!(parse_literal("None)"), Ok((")", Literal::None)));
     }
 
     #[test]

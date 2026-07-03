@@ -3,25 +3,29 @@ use std::fmt::Display;
 
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
+use nom::bytes::complete::tag;
+use nom::IResult;
+use nom::Parser;
 
 use crate::errors::Error;
 use crate::utils::escape_string;
 
 use super::number::Numeric;
 
-/// A literal value: number, string, boolean, or symbol.
+/// A literal value: number, string, boolean, symbol, or the `None` sentinel.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Number(Numeric),
     String(String),
     Boolean(bool),
     Symbol(String),
+    None,
 }
 
 impl Literal {
     /// Construct a number literal from a BigDecimal
     pub fn number(n: impl Into<BigDecimal>) -> Self {
-        Literal::Number(Numeric::new(n.into()))
+        Literal::Number(Numeric(n.into()))
     }
 
     /// Construct a string literal from a string (e.g. `"hello"`).
@@ -38,6 +42,16 @@ impl Literal {
     pub fn symbol(s: impl Into<String>) -> Self {
         Literal::Symbol(s.into())
     }
+
+    /// Construct the `None` sentinel literal.
+    pub fn none() -> Self {
+        Literal::None
+    }
+}
+
+/// Parses the `None` sentinel literal.
+pub fn parse_none(input: &str) -> IResult<&str, ()> {
+    tag("None").map(|_| ()).parse(input)
 }
 
 impl From<bool> for Literal {
@@ -48,7 +62,7 @@ impl From<bool> for Literal {
 
 impl From<i64> for Literal {
     fn from(value: i64) -> Self {
-        Literal::Number(Numeric::new(value))
+        Literal::Number(Numeric(value.into()))
     }
 }
 
@@ -57,7 +71,7 @@ impl TryFrom<f64> for Literal {
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         BigDecimal::from_f64(value)
-            .map(|bd| Literal::Number(Numeric::new(bd)))
+            .map(|bd| Literal::Number(Numeric(bd)))
             .ok_or(Error::F64ConversionError)
     }
 }
@@ -75,6 +89,7 @@ impl Display for Literal {
             Literal::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::Symbol(s) => write!(f, "{}", s),
+            Literal::None => write!(f, "None"),
         }
     }
 }
@@ -110,7 +125,23 @@ mod tests {
     fn test_literal_from_i64() {
         assert_eq!(
             Literal::from(42),
-            Literal::Number(Numeric::new(BigDecimal::from_str("42").unwrap()))
+            Literal::Number(Numeric(BigDecimal::from_str("42").unwrap()))
         );
+    }
+
+    #[test]
+    fn test_parse_none() {
+        assert_eq!(parse_none("None"), Ok(("", ())));
+    }
+
+    #[test]
+    fn test_parse_none_with_remainder() {
+        assert_eq!(parse_none("None "), Ok((" ", ())));
+        assert_eq!(parse_none("None)"), Ok((")", ())));
+    }
+
+    #[test]
+    fn test_parse_none_rejects_other() {
+        assert!(parse_none("Nope").is_err());
     }
 }

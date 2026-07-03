@@ -181,15 +181,14 @@ pub fn parse_function_call_parens_only(
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr as _;
-
-    use bigdecimal::BigDecimal;
+    use std::str::FromStr;
 
     use super::parse_function_call;
     use crate::ast::Expr;
     use crate::ast::FunctionCall;
     use crate::ast::Identifier;
     use crate::ast::KeyValue;
+    use crate::ast::Numeric;
     use crate::parser::expr::parse_expr;
 
     #[test]
@@ -216,7 +215,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("floor").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(
-                        BigDecimal::from_str("3.14").expect("unable to parse 3.14 into BigDecimal")
+                        Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
                     keyword_args: vec![],
                 }
@@ -233,7 +232,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("ceil").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(
-                        BigDecimal::from_str("3.14").expect("unable to parse 3.14 into BigDecimal")
+                        Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
                     keyword_args: vec![],
                 }
@@ -251,8 +250,7 @@ mod tests {
                     name: Identifier::try_from("round").expect("invalid identifier"),
                     positional_args: vec![
                         Expr::literal_number(
-                            BigDecimal::from_str("3.14")
-                                .expect("unable to parse 3.14 into BigDecimal")
+                            Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                         ),
                         Expr::literal_number(2),
                     ],

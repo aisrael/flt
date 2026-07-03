@@ -1,6 +1,32 @@
 //! Functions in the runtime
 
 use crate::runtime::types::Type;
+use crate::runtime::Value;
+use crate::Error;
+
+/// The native handler backing a built-in function.
+pub type BuiltinFn = fn(&[Value]) -> Result<Value, Error>;
+
+/// A built-in function pairs a type signature with a native implementation.
+pub struct BuiltinFunction {
+    pub definition: FunctionDefinition,
+    pub handler: BuiltinFn,
+}
+
+impl BuiltinFunction {
+    /// Create a new built-in function from a definition and a native handler.
+    pub fn new(definition: FunctionDefinition, handler: BuiltinFn) -> Self {
+        Self {
+            definition,
+            handler,
+        }
+    }
+
+    /// Invoke the built-in function with the given evaluated arguments.
+    pub fn call(&self, args: &[Value]) -> Result<Value, Error> {
+        (self.handler)(args)
+    }
+}
 
 /// A function definition is a collection of function signatures (overloads)
 pub struct FunctionDefinition {
@@ -92,5 +118,21 @@ mod tests {
         );
         assert!(function_definition.accepts(vec![Argument::number("a"), Argument::number("b")]));
         assert!(!function_definition.accepts(vec![Argument::number("b")]));
+    }
+
+    #[test]
+    fn test_builtin_function_call() {
+        let identity = BuiltinFunction::new(
+            FunctionDefinition::new(
+                "identity",
+                Type::value(),
+                vec![Argument::new("v", Type::value())],
+            ),
+            |args| Ok(args[0].clone()),
+        );
+        assert_eq!(
+            identity.call(&[Value::Boolean(true)]).unwrap(),
+            Value::Boolean(true)
+        );
     }
 }

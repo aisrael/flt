@@ -1,6 +1,6 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::bytes::complete::take_while_m_n;
+use nom::character::complete::satisfy;
 use nom::combinator::peek;
 use nom::combinator::value;
 use nom::sequence::terminated;
@@ -18,10 +18,7 @@ fn is_identifier_continue(c: char) -> bool {
 fn word_boundary(input: &str) -> IResult<&str, ()> {
     peek(alt((
         value((), nom::combinator::eof),
-        value(
-            (),
-            take_while_m_n(1, 1, |c: char| !is_identifier_continue(c)),
-        ),
+        value((), satisfy(|c: char| !is_identifier_continue(c))),
     )))
     .parse(input)
 }

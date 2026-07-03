@@ -14,7 +14,12 @@ use crate::ast::Expr;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
+use crate::errors::InterpreterError;
 use crate::errors::RuntimeError;
+use crate::runtime::functions::Argument;
+use crate::runtime::functions::BuiltinFunction;
+use crate::runtime::functions::FunctionDefinition;
+use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::Error;
 
@@ -23,6 +28,8 @@ use crate::Error;
 pub enum Value {
     /// The unit value (like `()` in Rust/Elixir)
     Unit,
+    /// The `None` sentinel value (the empty `Option`)
+    None,
     /// A number value
     Number(BigDecimal),
     /// A string value
@@ -35,19 +42,24 @@ pub enum Value {
     Map(HashMap<String, Value>),
     /// An array of values
     Array(Vec<Value>),
+    /// A type as a first-class value
+    Type(Type),
 }
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Unit => write!(f, "()"),
+            Value::None => write!(f, "None"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Symbol(s) => write!(f, ":{}", s),
             Value::Map(m) => {
+                let mut entries: Vec<_> = m.iter().collect();
+                entries.sort_by_key(|(k, _)| *k);
                 write!(f, "{{")?;
-                for (i, (k, v)) in m.iter().enumerate() {
+                for (i, (k, v)) in entries.into_iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -65,6 +77,27 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Type(t) => write!(f, "{t}"),
+        }
+    }
+}
+
+impl Value {
+    /// Map a runtime value to its built-in type.
+    ///
+    /// Bare `None` cannot be typed without contextual information about the
+    /// wrapped `Option<T>`, so it returns `InterpreterError::NotYetImplemented`.
+    pub fn type_of(&self) -> Result<Type, Error> {
+        match self {
+            Value::Unit => Ok(Type::unit()),
+            Value::None => Err(Error::InterpreterError(InterpreterError::NotYetImplemented)),
+            Value::Number(_) => Ok(Type::number()),
+            Value::String(_) => Ok(Type::string()),
+            Value::Boolean(_) => Ok(Type::boolean()),
+            Value::Symbol(_) => Ok(Type::symbol()),
+            Value::Map(_) => Ok(Type::map()),
+            Value::Array(_) => Ok(Type::array()),
+            Value::Type(_) => Ok(Type::value()),
         }
     }
 }
@@ -73,10 +106,45 @@ pub trait Runtime {
     fn eval(&mut self, statement: &Statement) -> Result<Value, Error>;
 }
 
-#[derive(Default)]
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, Box<dyn Function>>,
+    pub built_in_functions: HashMap<String, BuiltinFunction>,
     pub global_scope: GlobalScope,
+}
+
+impl Default for SimpleRuntime {
+    fn default() -> Self {
+        Self {
+            built_in_functions: register_builtins(),
+            global_scope: GlobalScope::default(),
+        }
+    }
+}
+
+fn register_builtins() -> HashMap<String, BuiltinFunction> {
+    let mut built_ins = HashMap::new();
+    built_ins.insert(
+        "typeof".to_string(),
+        BuiltinFunction::new(
+            FunctionDefinition::new(
+                "typeof",
+                Type::value(),
+                vec![Argument::new("V", Type::value())],
+            ),
+            builtin_typeof,
+        ),
+    );
+    built_ins
+}
+
+fn builtin_typeof(args: &[Value]) -> Result<Value, Error> {
+    if args.len() != 1 {
+        return Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
+            name: "typeof".to_string(),
+            expected: 1,
+            found: args.len(),
+        }));
+    }
+    Ok(Value::Type(args[0].type_of()?))
 }
 
 impl Runtime for SimpleRuntime {
@@ -131,12 +199,41 @@ impl SimpleRuntime {
                 let r = self.eval_expr(right)?;
                 Self::eval_binary(&l, *op, &r)
             }
-            Expr::FunctionCall(_, _) => {
-                Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall))
+            Expr::FunctionCall(name, args) => {
+                let arg_values = args
+                    .iter()
+                    .map(|arg| self.eval_expr(arg))
+                    .collect::<Result<Vec<Value>, Error>>()?;
+                match self.built_in_functions.get(name.0.as_str()) {
+                    Some(function) => function.call(&arg_values),
+                    None => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
+                }
             }
             Expr::Parenthesized(inner) => self.eval_expr(inner),
-            Expr::MapLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-            Expr::ArrayLiteral(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+            Expr::FieldAccess(inner, field) => {
+                let value = self.eval_expr(inner)?;
+                match value {
+                    Value::Map(m) => m.get(field).cloned().ok_or_else(|| {
+                        Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))
+                    }),
+                    _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+                }
+            }
+            Expr::MapLiteral(entries) => {
+                let mut map = HashMap::new();
+                for kv in entries {
+                    let value = self.eval_expr(&kv.value)?;
+                    map.insert(kv.key.clone(), value);
+                }
+                Ok(Value::Map(map))
+            }
+            Expr::ArrayLiteral(elems) => {
+                let values = elems
+                    .iter()
+                    .map(|e| self.eval_expr(e))
+                    .collect::<Result<Vec<Value>, Error>>()?;
+                Ok(Value::Array(values))
+            }
             Expr::Keyword(_) => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
         }
     }
@@ -147,6 +244,7 @@ impl SimpleRuntime {
             Literal::String(s) => Value::String(s.clone()),
             Literal::Boolean(b) => Value::Boolean(*b),
             Literal::Symbol(s) => Value::Symbol(s.clone()),
+            Literal::None => Value::None,
         }
     }
 
@@ -252,7 +350,7 @@ impl SimpleRuntime {
 /// The global scope is the scope that is available to all other scopes.
 #[derive(Default)]
 pub struct GlobalScope {
-    pub functions: HashMap<String, Box<dyn Function>>,
+    pub functions: HashMap<String, FunctionDefinition>,
     pub variables: HashMap<String, Value>,
 }
 
@@ -263,8 +361,8 @@ impl GlobalScope {
     }
 
     /// Get a function from the global scope by name.
-    pub fn get_function(&self, name: &str) -> Option<&dyn Function> {
-        self.functions.get(name).map(|f| f.as_ref())
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDefinition> {
+        self.functions.get(name)
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -283,10 +381,108 @@ impl GlobalScope {
     }
 }
 
-pub struct FunctionSignature {
-    pub name: String,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub trait Function {
-    fn signature(&self) -> FunctionSignature;
+    #[test]
+    fn test_type_of_unit() {
+        assert_eq!(Value::Unit.type_of().unwrap(), Type::unit());
+    }
+
+    #[test]
+    fn test_type_of_number() {
+        assert_eq!(
+            Value::Number(BigDecimal::from(42)).type_of().unwrap(),
+            Type::number()
+        );
+    }
+
+    #[test]
+    fn test_type_of_string() {
+        assert_eq!(
+            Value::String("hello".to_string()).type_of().unwrap(),
+            Type::string()
+        );
+    }
+
+    #[test]
+    fn test_type_of_boolean() {
+        assert_eq!(Value::Boolean(true).type_of().unwrap(), Type::boolean());
+    }
+
+    #[test]
+    fn test_type_of_symbol() {
+        assert_eq!(
+            Value::Symbol("name".to_string()).type_of().unwrap(),
+            Type::symbol()
+        );
+    }
+
+    #[test]
+    fn test_type_of_map() {
+        assert_eq!(Value::Map(HashMap::new()).type_of().unwrap(), Type::map());
+    }
+
+    #[test]
+    fn test_type_of_array() {
+        assert_eq!(Value::Array(Vec::new()).type_of().unwrap(), Type::array());
+    }
+
+    #[test]
+    fn test_type_of_none_is_not_yet_implemented() {
+        assert!(matches!(
+            Value::None.type_of(),
+            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
+        ));
+    }
+
+    #[test]
+    fn test_type_of_type_is_value() {
+        assert_eq!(
+            Value::Type(Type::number()).type_of().unwrap(),
+            Type::value()
+        );
+    }
+
+    #[test]
+    fn test_value_type_display() {
+        assert_eq!(Value::Type(Type::number()).to_string(), "Number");
+        assert_eq!(
+            Value::Type(Type::option(Type::string())).to_string(),
+            "Option<String>"
+        );
+    }
+
+    #[test]
+    fn test_builtin_typeof_returns_type() {
+        let result = builtin_typeof(&[Value::Number(BigDecimal::from(42))]).unwrap();
+        assert_eq!(result, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_builtin_typeof_propagates_none_error() {
+        assert!(matches!(
+            builtin_typeof(&[Value::None]),
+            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
+        ));
+    }
+
+    #[test]
+    fn test_builtin_typeof_arity_mismatch() {
+        assert!(matches!(
+            builtin_typeof(&[]),
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
+                expected: 1,
+                found: 0,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn test_typeof_registered_as_builtin() {
+        let runtime = SimpleRuntime::default();
+        assert!(runtime.built_in_functions.contains_key("typeof"));
+    }
 }

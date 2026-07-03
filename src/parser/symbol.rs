@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
-use nom::bytes::complete::take_while_m_n;
+use nom::character::complete::satisfy;
 use nom::combinator::map;
 use nom::combinator::recognize;
 use nom::sequence::pair;
@@ -24,7 +24,7 @@ pub fn parse_symbol(input: &str) -> IResult<&str, Cow<'_, str>> {
         map(parse_string, Cow::Owned),
         map(
             recognize(pair(
-                take_while_m_n(1, 1, |c: char| c.is_alphabetic()),
+                satisfy(|c: char| c.is_alphabetic()),
                 take_while(|c: char| c.is_alphanumeric() || c == '_'),
             )),
             Cow::Borrowed,

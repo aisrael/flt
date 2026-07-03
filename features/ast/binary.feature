@@ -6,32 +6,32 @@ Feature: Binary expressions
   Scenario: Addition
     Given the input "1 + 2"
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2])))))'
 
   Scenario: Subtraction
     Given the input "10 - 3"
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[10]) })), Sub, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) })))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[10])))), Sub, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[3])))))'
 
   Scenario: Multiplication
     Given the input "4 * 5"
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[4]) })), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[5]) })))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[4])))), Mul, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[5])))))'
 
   Scenario: Division
     Given the input "20 / 4"
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[20]) })), Div, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[4]) })))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[20])))), Div, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[4])))))'
 
   Scenario: Multiplication has higher precedence than addition
     Given the input "1 + 2 * 3"
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) }))))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2])))), Mul, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[3]))))))'
 
   Scenario: Parentheses override precedence
     Given the input "(1 + 2) * 3"
     When I parse the input
-    Then the output should be 'BinaryExpr(Parenthesized(BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })))), Mul, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[3]) })))'
+    Then the output should be 'BinaryExpr(Parenthesized(BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2])))))), Mul, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[3])))))'
 
   Scenario: Logical and
     Given the input "true && false"
@@ -61,12 +61,12 @@ Feature: Binary expressions
   Scenario: Equality
     Given the input "x == 1"
     When I parse the input
-    Then the output should be 'BinaryExpr(Ident("x"), Eq, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })))'
+    Then the output should be 'BinaryExpr(Ident("x"), Eq, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))))'
 
   Scenario: Inequality
     Given the input "x != 0"
     When I parse the input
-    Then the output should be 'BinaryExpr(Ident("x"), Ne, Literal(Number(Numeric { value: BigDecimal(sign=NoSign, scale=0, digits=[]) })))'
+    Then the output should be 'BinaryExpr(Ident("x"), Ne, Literal(Number(Numeric(BigDecimal(sign=NoSign, scale=0, digits=[])))))'
 
   Scenario: Less than
     Given the input "a < b"

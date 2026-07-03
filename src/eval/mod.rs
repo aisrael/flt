@@ -71,6 +71,28 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_typeof_number() {
+        let expr = Expr::function_call("typeof", vec![Expr::literal_number(42)]);
+        assert_eq!(eval(&expr).unwrap(), "Number");
+    }
+
+    #[test]
+    fn test_eval_typeof_string() {
+        let expr = Expr::function_call("typeof", vec![Expr::literal_string("hi")]);
+        assert_eq!(eval(&expr).unwrap(), "String");
+    }
+
+    #[test]
+    fn test_eval_typeof_arity_mismatch() {
+        let expr = Expr::function_call("typeof", vec![]);
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::ArgumentCountMismatch { found: 0, .. })
+        ));
+    }
+
+    #[test]
     fn test_eval_unary_not_true() {
         let expr = Expr::unary_expr(UnaryOp::Not, Expr::literal_boolean(true));
         assert_eq!(eval(&expr).unwrap(), "false");
@@ -412,6 +434,46 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_field_access_on_map_literal() {
+        let expr = Expr::field_access(
+            Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+            "foo",
+        );
+        assert_eq!(eval(&expr).unwrap(), "\"bar\"");
+    }
+
+    #[test]
+    fn test_eval_chained_field_access() {
+        let inner = Expr::map_literal(vec![("bar", Expr::literal_number(42))]);
+        let outer = Expr::map_literal(vec![("baz", inner)]);
+        let expr = Expr::field_access(Expr::field_access(outer, "baz"), "bar");
+        assert_eq!(eval(&expr).unwrap(), "42");
+    }
+
+    #[test]
+    fn test_eval_field_access_not_found() {
+        let expr = Expr::field_access(
+            Expr::map_literal(vec![("foo", Expr::literal_string("bar"))]),
+            "missing",
+        );
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::NoSuchField(f)) if f == "missing"
+        ));
+    }
+
+    #[test]
+    fn test_eval_field_access_on_non_map() {
+        let expr = Expr::field_access(Expr::literal_number(42), "foo");
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::InvalidOperandType)
+        ));
+    }
+
+    #[test]
     fn test_eval_if_expr_condition_must_be_boolean() {
         let expr = Expr::if_expr(
             Expr::literal_number(1),
@@ -423,5 +485,62 @@ mod tests {
             err,
             Error::RuntimeError(RuntimeError::InvalidOperandType)
         ));
+    }
+
+    #[test]
+    fn test_eval_empty_array() {
+        let expr = Expr::array_literal(vec![]);
+        assert_eq!(eval(&expr).unwrap(), "[]");
+    }
+
+    #[test]
+    fn test_eval_array_literal() {
+        let expr = Expr::array_literal(vec![
+            Expr::literal_number(1),
+            Expr::literal_number(2),
+            Expr::literal_number(3),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_eval_array_mixed_types() {
+        let expr = Expr::array_literal(vec![
+            Expr::literal_number(1),
+            Expr::literal_string("foo"),
+            Expr::literal_boolean(true),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[1, \"foo\", true]");
+    }
+
+    #[test]
+    fn test_eval_nested_array() {
+        let expr = Expr::array_literal(vec![
+            Expr::array_literal(vec![Expr::literal_number(1), Expr::literal_number(2)]),
+            Expr::literal_number(3),
+        ]);
+        assert_eq!(eval(&expr).unwrap(), "[[1, 2], 3]");
+    }
+
+    #[test]
+    fn test_eval_array_propagates_element_error() {
+        let expr = Expr::array_literal(vec![Expr::literal_number(1), Expr::ident("x")]);
+        let err = eval(&expr).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::RuntimeError(RuntimeError::UnboundIdentifier(s)) if s == "x"
+        ));
+    }
+
+    #[test]
+    fn test_eval_typeof_array() {
+        let expr = Expr::function_call(
+            "typeof",
+            vec![Expr::array_literal(vec![
+                Expr::literal_number(1),
+                Expr::literal_number(2),
+            ])],
+        );
+        assert_eq!(eval(&expr).unwrap(), "Array");
     }
 }

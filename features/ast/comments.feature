@@ -24,7 +24,7 @@ Feature: Comments
       + 2
       """
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Add, Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) })))'
+    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2])))))'
 
   Scenario: Comment in function call arguments
     Given the multiline input
@@ -33,7 +33,7 @@ Feature: Comments
        2)
       """
     When I parse the input
-    Then the output should be 'FunctionCall(Identifier("add"), [Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[1]) })), Literal(Number(Numeric { value: BigDecimal(sign=Plus, scale=0, digits=[2]) }))])'
+    Then the output should be 'FunctionCall(Identifier("add"), [Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))])'
 
   Scenario: Comment between string concatenation operands
     Given the multiline input

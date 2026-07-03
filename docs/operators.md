@@ -46,6 +46,10 @@
 
 All binary levels are left-associative.
 
+`.` ([field access](./field-access.md)) is a tight postfix operator that
+binds even tighter than the unary operators above — it applies directly to
+the primary expression before any unary or binary operator sees it.
+
 ## Parentheses
 
 Parentheses override precedence:

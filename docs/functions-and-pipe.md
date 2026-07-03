@@ -44,7 +44,14 @@ READ("input") |> SELECT(:id) |> WRITE("output")
 
 The parser treats this as a left-associative binary operator chain.
 
+## Built-in Functions
+
+The runtime currently registers one built-in function:
+
+- `typeof(value)` - returns the [`Type`](./types.md) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error; calling it with `None` raises an interpreter error ("Not yet implemented"), since `None` doesn't carry its wrapped type.
+
 ## Current Semantics Note
 
 - Parsing for function calls (including keyword arguments) and pipe expressions is implemented.
-- Runtime evaluation for function calls and pipe is not implemented yet in `flt-cli`.
+- Calling a registered built-in (currently just `typeof`) evaluates it. Calling any other name raises `Function calls not yet supported`.
+- Runtime evaluation for the pipe operator (`|>`) is not implemented yet; evaluating a pipe expression raises the same `Function calls not yet supported` error.

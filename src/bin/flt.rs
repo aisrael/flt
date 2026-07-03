@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use flt::repl::run_repl;
+use flt::repl::Repl;
 use rustyline::error::ReadlineError;
 
 // Returns the library version, which reflects the crate version
@@ -15,15 +15,21 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match run_repl() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(ReadlineError::Interrupted) => {
-            println!("\nExiting.");
-            ExitCode::SUCCESS
-        }
-        Err(ReadlineError::Eof) => ExitCode::SUCCESS,
+    match Repl::new() {
+        Ok(mut repl) => match repl.run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(ReadlineError::Interrupted) => {
+                println!("\nExiting.");
+                ExitCode::SUCCESS
+            }
+            Err(ReadlineError::Eof) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Err(e) => {
-            eprintln!("Error: {:?}", e);
+            eprintln!("Error initializing REPL: {:?}", e);
             ExitCode::FAILURE
         }
     }

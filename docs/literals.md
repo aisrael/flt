@@ -46,6 +46,14 @@ true
 false
 ```
 
+### None
+
+`None` is the sentinel literal for an empty [`Option`](./types.md#option).
+
+```flt
+None
+```
+
 ### Symbols
 
 Symbols are prefixed with `:` and support two forms:
@@ -79,4 +87,28 @@ Examples:
 
 ```flt
 { "spaced out": (1 + 1) }
+```
+
+Fields can be read back off a map with [dot-access syntax](./field-access.md), e.g. `{ foo: "bar" }.foo`.
+
+### Arrays
+
+A literal array is an ordered collection of values. They start with `[` and end with `]`, with elements separated by commas. A trailing comma is allowed, and elements can be any valid expression.
+
+Examples:
+
+```flt
+[]
+[ 1, 2, 3 ]
+[ "a", "b", ]
+[ 1 + 2, foo() ]
+```
+
+### KeywordArgs
+
+`KeywordArgs` are a special case of `Map`: trailing `key: value` pairs in a function call are collected into a single map and passed as the call's final argument. See [Keyword Arguments](./functions-and-pipe.md#keyword-arguments) for the call syntax, e.g.:
+
+```flt
+foo(1, bar: true)
+warn("Value is out of range: {value}", value: (x - 1), request_id: request_id)
 ```
