@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+echo "Running cargo fmt --check..."
+if ! cargo fmt -- --check; then
+    echo "cargo fmt check failed. Run 'cargo +nightly fmt' and try again." >&2
+    exit 1
+fi
+
+echo "Running cargo clippy..."
+if ! cargo clippy --all-targets -- -D warnings; then
+    echo "cargo clippy failed. Fix the warnings above and try again." >&2
+    exit 1
+fi
