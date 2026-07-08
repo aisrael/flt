@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::ast::Expr;
 use crate::ast::Identifier;
 use crate::ast::Statement;
 use crate::parser::parse_statement;
@@ -118,6 +119,7 @@ impl Repl {
         match cmd {
             "parse" => Self::handle_parse(args),
             "unset" => self.handle_unset(args),
+            "inspect" | "i" => self.handle_inspect(args),
             _ => eprintln!("unknown command: /{cmd}"),
         }
     }
@@ -147,6 +149,44 @@ impl Repl {
                 }
             }
             Err(e) => eprintln!("{:?}", e),
+        }
+    }
+
+    /// Parses and evaluates `args`, reporting specially on bare variable
+    /// references and literal expressions.
+    fn handle_inspect(&mut self, args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /inspect <expression>");
+            return;
+        }
+        let statement = match Self::parse_full(args) {
+            Ok(statement) => statement,
+            Err(msg) => {
+                eprintln!("{}", msg);
+                return;
+            }
+        };
+
+        if let Statement::Expr(Expr::Ident(name)) = &statement {
+            match self.runtime.global_scope.get_variable(name) {
+                Some(value) => println!("(variable) {}", value),
+                None => println!("Unbound variable"),
+            }
+            return;
+        }
+
+        let is_literal = matches!(
+            &statement,
+            Statement::Expr(Expr::Literal(_) | Expr::ArrayLiteral(_) | Expr::MapLiteral(_))
+        );
+
+        match self.runtime.eval(&statement) {
+            Ok(value) if is_literal => match value.type_of() {
+                Ok(ty) => println!("{}", ty),
+                Err(e) => eprintln!("eval error: {:?}", e),
+            },
+            Ok(value) => println!("{}", value),
+            Err(e) => eprintln!("eval error: {:?}", e),
         }
     }
 }

@@ -34,3 +34,53 @@ Feature: flt repl
       """
     Then the command should succeed
     And the output should contain "UnboundIdentifier"
+
+  Scenario: inspect an unbound variable
+    When the REPL is run and the user types:
+      """
+      /inspect x
+      """
+    Then the command should succeed
+    And the output should contain "Unbound variable"
+
+  Scenario: inspect a bound variable
+    When the REPL is run and the user types:
+      """
+      x = 1
+      /inspect x
+      """
+    Then the command should succeed
+    And the output should contain "(variable) 1"
+
+  Scenario: inspect a bound variable using the short alias
+    When the REPL is run and the user types:
+      """
+      x = 1
+      /i x
+      """
+    Then the command should succeed
+    And the output should contain "(variable) 1"
+
+  Scenario: inspect a scalar literal
+    When the REPL is run and the user types:
+      """
+      /inspect 42
+      """
+    Then the command should succeed
+    And the output should contain "Number"
+
+  Scenario: inspect an array literal
+    When the REPL is run and the user types:
+      """
+      /inspect [1, 2, 3]
+      """
+    Then the command should succeed
+    And the output should contain "Array"
+
+  Scenario: inspect a map literal
+    When the REPL is run and the user types:
+      """
+      /inspect { foo: "bar" }
+      """
+    Then the command should succeed
+    And the output should contain "Map"
