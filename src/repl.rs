@@ -78,7 +78,9 @@ impl Repl {
                 continue;
             }
             if let Some(rest) = line.strip_prefix('/') {
-                self.handle_command(rest);
+                if !self.handle_command(rest) {
+                    break Ok(());
+                }
             } else {
                 match Self::parse_full(line) {
                     Ok(statement) => match self.runtime.eval(&statement) {
@@ -111,17 +113,31 @@ impl Repl {
         }
     }
 
-    fn handle_command(&mut self, rest: &str) {
+    /// Dispatches a slash command. Returns `false` if the REPL should exit.
+    fn handle_command(&mut self, rest: &str) -> bool {
         let (cmd, args) = match rest.split_once(char::is_whitespace) {
             Some((cmd, args)) => (cmd, args.trim()),
             None => (rest, ""),
         };
         match cmd {
+            "quit" | "q" => return false,
+            "help" | "h" => Self::handle_help(),
             "parse" => Self::handle_parse(args),
             "unset" => self.handle_unset(args),
             "inspect" | "i" => self.handle_inspect(args),
             _ => eprintln!("unknown command: /{cmd}"),
         }
+        true
+    }
+
+    /// Prints a list of available REPL commands.
+    fn handle_help() {
+        println!("Available commands:");
+        println!("  /parse <expression>          Parse an expression and print its AST without evaluating it");
+        println!("  /unset <identifier>          Remove a bound variable");
+        println!("  /inspect <expression> (/i)   Parse and evaluate an expression, reporting on bound variables and literal types");
+        println!("  /help (/h)                   Show this help message");
+        println!("  /quit (/q)                   Exit the REPL");
     }
 
     /// Parses `args` and prints the resulting AST without evaluating it.

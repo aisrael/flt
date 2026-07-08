@@ -84,3 +84,37 @@ Feature: flt repl
       """
     Then the command should succeed
     And the output should contain "Map"
+
+  Scenario: quit the REPL
+    When the REPL is run and the user types:
+      """
+      /quit
+      1 + 1
+      """
+    Then the command should succeed
+    And the output should not contain "2"
+
+  Scenario: quit the REPL using the short alias
+    When the REPL is run and the user types:
+      """
+      /q
+      1 + 1
+      """
+    Then the command should succeed
+    And the output should not contain "2"
+
+  Scenario: show help
+    When the REPL is run and the user types:
+      """
+      /help
+      """
+    Then the command should succeed
+    And the output should contain "/quit"
+
+  Scenario: show help using the short alias
+    When the REPL is run and the user types:
+      """
+      /h
+      """
+    Then the command should succeed
+    And the output should contain "/quit"

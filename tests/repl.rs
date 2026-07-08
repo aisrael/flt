@@ -81,6 +81,15 @@ async fn the_output_should_contain(world: &mut ReplWorld, expected: String) {
     );
 }
 
+#[then(expr = r"the output should not contain {string}")]
+async fn the_output_should_not_contain(world: &mut ReplWorld, unexpected: String) {
+    assert!(world.output.is_some(), "No output");
+    assert!(
+        !world.output.as_ref().unwrap().contains(&unexpected),
+        "Output should not contain {unexpected}",
+    );
+}
+
 #[tokio::main]
 async fn main() {
     let features = Path::new(env!("CARGO_MANIFEST_DIR")).join("features/repl");
