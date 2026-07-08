@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+use crate::ast::Expr;
+use crate::ast::Identifier;
+use crate::ast::Statement;
 use crate::parser::parse_statement;
 use crate::runtime::Runtime;
 use crate::runtime::SimpleRuntime;
@@ -74,26 +77,132 @@ impl Repl {
             if line.is_empty() {
                 continue;
             }
-            match parse_statement(line) {
-                Ok((remainder, statement)) => {
-                    let remainder = remainder.trim();
-                    if remainder.is_empty() {
-                        match self.runtime.eval(&statement) {
-                            Ok(val) => println!("{}", val),
-                            Err(e) => eprintln!("eval error: {:?}", e),
-                        }
-                    } else {
-                        eprintln!(
-                            "parse error: unexpected input after statement: {:?}",
-                            remainder
-                        );
-                    }
+            if let Some(rest) = line.strip_prefix('/') {
+                if !self.handle_command(rest) {
+                    break Ok(());
                 }
-                Err(e) => {
-                    eprintln!("parse error: {:?}", e);
+            } else {
+                match Self::parse_full(line) {
+                    Ok(statement) => match self.runtime.eval(&statement) {
+                        Ok(val) => println!("{}", val),
+                        Err(e) => eprintln!("eval error: {:?}", e),
+                    },
+                    Err(msg) => eprintln!("{}", msg),
                 }
             }
             println!();
+        }
+    }
+
+    /// Parses a full statement from `line`, treating any leftover, non-whitespace
+    /// input after the statement as a parse error.
+    fn parse_full(line: &str) -> Result<Statement, String> {
+        match parse_statement(line) {
+            Ok((remainder, statement)) => {
+                let remainder = remainder.trim();
+                if remainder.is_empty() {
+                    Ok(statement)
+                } else {
+                    Err(format!(
+                        "parse error: unexpected input after statement: {:?}",
+                        remainder
+                    ))
+                }
+            }
+            Err(e) => Err(format!("parse error: {:?}", e)),
+        }
+    }
+
+    /// Dispatches a slash command. Returns `false` if the REPL should exit.
+    fn handle_command(&mut self, rest: &str) -> bool {
+        let (cmd, args) = match rest.split_once(char::is_whitespace) {
+            Some((cmd, args)) => (cmd, args.trim()),
+            None => (rest, ""),
+        };
+        match cmd {
+            "quit" | "q" => return false,
+            "help" | "h" => Self::handle_help(),
+            "parse" => Self::handle_parse(args),
+            "unset" => self.handle_unset(args),
+            "inspect" | "i" => self.handle_inspect(args),
+            _ => eprintln!("unknown command: /{cmd}"),
+        }
+        true
+    }
+
+    /// Prints a list of available REPL commands.
+    fn handle_help() {
+        println!("Available commands:");
+        println!("  /parse <expression>          Parse an expression and print its AST without evaluating it");
+        println!("  /unset <identifier>          Remove a bound variable");
+        println!("  /inspect <expression> (/i)   Parse and evaluate an expression, reporting on bound variables and literal types");
+        println!("  /help (/h)                   Show this help message");
+        println!("  /quit (/q)                   Exit the REPL");
+    }
+
+    /// Parses `args` and prints the resulting AST without evaluating it.
+    fn handle_parse(args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /parse <expression>");
+            return;
+        }
+        match Self::parse_full(args) {
+            Ok(statement) => println!("{:?}", statement),
+            Err(msg) => eprintln!("{}", msg),
+        }
+    }
+
+    /// Removes a previously bound variable, so later references raise an unbound identifier error.
+    fn handle_unset(&mut self, args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /unset <identifier>");
+            return;
+        }
+        match Identifier::try_from(args.trim()) {
+            Ok(ident) => {
+                if self.runtime.global_scope.remove_variable(&ident).is_none() {
+                    eprintln!("unbound identifier: {}", ident);
+                }
+            }
+            Err(e) => eprintln!("{:?}", e),
+        }
+    }
+
+    /// Parses and evaluates `args`, reporting specially on bare variable
+    /// references and literal expressions.
+    fn handle_inspect(&mut self, args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /inspect <expression>");
+            return;
+        }
+        let statement = match Self::parse_full(args) {
+            Ok(statement) => statement,
+            Err(msg) => {
+                eprintln!("{}", msg);
+                return;
+            }
+        };
+
+        if let Statement::Expr(Expr::Ident(name)) = &statement {
+            match self.runtime.global_scope.get_variable(name) {
+                Some(value) => println!("(variable) {}", value),
+                None => println!("Unbound variable"),
+            }
+            return;
+        }
+
+        let is_literal = matches!(
+            &statement,
+            Statement::Expr(Expr::Literal(_) | Expr::ArrayLiteral(_) | Expr::MapLiteral(_))
+        );
+
+        match self.runtime.eval(&statement) {
+            Ok(value) if is_literal => match value.type_of() {
+                Ok(ty) => println!("{}", ty),
+                Err(e) => eprintln!("eval error: {:?}", e),
+            },
+            Ok(value) => println!("{}", value),
+            Err(e) => eprintln!("eval error: {:?}", e),
         }
     }
 }
