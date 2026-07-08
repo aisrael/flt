@@ -379,6 +379,11 @@ impl GlobalScope {
     pub fn set_variable(&mut self, name: &str, value: Value) {
         self.variables.insert(name.to_string(), value);
     }
+
+    /// Remove a variable from the global scope by name, returning its previous value if bound.
+    pub fn remove_variable(&mut self, name: &str) -> Option<Value> {
+        self.variables.remove(name)
+    }
 }
 
 #[cfg(test)]

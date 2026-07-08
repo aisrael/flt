@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::ast::Identifier;
+use crate::ast::Statement;
 use crate::parser::parse_statement;
 use crate::runtime::Runtime;
 use crate::runtime::SimpleRuntime;
@@ -74,26 +76,77 @@ impl Repl {
             if line.is_empty() {
                 continue;
             }
-            match parse_statement(line) {
-                Ok((remainder, statement)) => {
-                    let remainder = remainder.trim();
-                    if remainder.is_empty() {
-                        match self.runtime.eval(&statement) {
-                            Ok(val) => println!("{}", val),
-                            Err(e) => eprintln!("eval error: {:?}", e),
-                        }
-                    } else {
-                        eprintln!(
-                            "parse error: unexpected input after statement: {:?}",
-                            remainder
-                        );
-                    }
-                }
-                Err(e) => {
-                    eprintln!("parse error: {:?}", e);
+            if let Some(rest) = line.strip_prefix('/') {
+                self.handle_command(rest);
+            } else {
+                match Self::parse_full(line) {
+                    Ok(statement) => match self.runtime.eval(&statement) {
+                        Ok(val) => println!("{}", val),
+                        Err(e) => eprintln!("eval error: {:?}", e),
+                    },
+                    Err(msg) => eprintln!("{}", msg),
                 }
             }
             println!();
+        }
+    }
+
+    /// Parses a full statement from `line`, treating any leftover, non-whitespace
+    /// input after the statement as a parse error.
+    fn parse_full(line: &str) -> Result<Statement, String> {
+        match parse_statement(line) {
+            Ok((remainder, statement)) => {
+                let remainder = remainder.trim();
+                if remainder.is_empty() {
+                    Ok(statement)
+                } else {
+                    Err(format!(
+                        "parse error: unexpected input after statement: {:?}",
+                        remainder
+                    ))
+                }
+            }
+            Err(e) => Err(format!("parse error: {:?}", e)),
+        }
+    }
+
+    fn handle_command(&mut self, rest: &str) {
+        let (cmd, args) = match rest.split_once(char::is_whitespace) {
+            Some((cmd, args)) => (cmd, args.trim()),
+            None => (rest, ""),
+        };
+        match cmd {
+            "parse" => Self::handle_parse(args),
+            "unset" => self.handle_unset(args),
+            _ => eprintln!("unknown command: /{cmd}"),
+        }
+    }
+
+    /// Parses `args` and prints the resulting AST without evaluating it.
+    fn handle_parse(args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /parse <expression>");
+            return;
+        }
+        match Self::parse_full(args) {
+            Ok(statement) => println!("{:?}", statement),
+            Err(msg) => eprintln!("{}", msg),
+        }
+    }
+
+    /// Removes a previously bound variable, so later references raise an unbound identifier error.
+    fn handle_unset(&mut self, args: &str) {
+        if args.is_empty() {
+            eprintln!("usage: /unset <identifier>");
+            return;
+        }
+        match Identifier::try_from(args.trim()) {
+            Ok(ident) => {
+                if self.runtime.global_scope.remove_variable(&ident).is_none() {
+                    eprintln!("unbound identifier: {}", ident);
+                }
+            }
+            Err(e) => eprintln!("{:?}", e),
         }
     }
 }
