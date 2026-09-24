@@ -9,35 +9,51 @@ use crate::runtime::SimpleRuntime;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-/// Maximum number of inputs to keep in REPL history.
-const HISTORY_DEPTH: usize = 1000;
+mod slash_commands;
 
-fn repl_history_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("flt").join("history"))
+pub use slash_commands::SlashCommand;
+pub use slash_commands::SlashCommands;
+
+/// A Repl handler is responsible for handling the REPL loop and dispatching commands.
+pub trait ReplHandler {
+    fn eval(&mut self, line: &str) -> eyre::Result<()>;
+    /// Handles a slash command. Returns `Ok(false)` if the REPL should exit.
+    fn handle_command(&mut self, rest: &str) -> eyre::Result<bool>;
 }
 
-pub struct Repl {
+/// The generic Repl
+pub struct Repl<H>
+where
+    H: ReplHandler,
+{
+    handler: H,
+    slash_commands: SlashCommands,
     editor: DefaultEditor,
-    runtime: SimpleRuntime,
 }
 
-impl Repl {
-    pub fn new() -> Result<Self, ReadlineError> {
+impl<H: ReplHandler> Repl<H> {
+    pub fn new(handler: H) -> eyre::Result<Self> {
         let config = rustyline::Config::builder()
             .max_history_size(HISTORY_DEPTH)
             .expect("valid history size")
             .auto_add_history(true)
             .build();
         let editor = DefaultEditor::with_config(config)?;
+        let slash_commands = SlashCommands::new();
         let mut repl = Self {
             editor,
-            runtime: SimpleRuntime::default(),
+            slash_commands,
+            handler,
         };
         repl.load_history()?;
         Ok(repl)
     }
 
-    fn load_history(&mut self) -> Result<(), ReadlineError> {
+    pub fn add_slash_command(&mut self, command: SlashCommand) {
+        self.slash_commands.add_command(command);
+    }
+
+    fn load_history(&mut self) -> eyre::Result<()> {
         let Some(history_path) = repl_history_path() else {
             return Ok(());
         };
@@ -48,7 +64,7 @@ impl Repl {
         Ok(())
     }
 
-    fn save_history(&mut self) -> Result<(), ReadlineError> {
+    fn save_history(&mut self) -> eyre::Result<()> {
         let Some(history_path) = repl_history_path() else {
             return Ok(());
         };
@@ -59,39 +75,52 @@ impl Repl {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), ReadlineError> {
+    pub fn run(&mut self) -> eyre::Result<()> {
         let repl_result = self.repl_loop();
         let _ = self.save_history();
         repl_result
     }
 
-    fn repl_loop(&mut self) -> Result<(), ReadlineError> {
+    fn repl_loop(&mut self) -> eyre::Result<()> {
         loop {
             let line = match self.editor.readline("> ") {
                 Ok(line) => line,
                 Err(ReadlineError::Eof) => break Ok(()),
                 Err(ReadlineError::Interrupted) => continue,
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into()),
             };
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
             if let Some(rest) = line.strip_prefix('/') {
-                if !self.handle_command(rest) {
+                if !self.handler.handle_command(rest)? {
                     break Ok(());
                 }
             } else {
-                match Self::parse_full(line) {
-                    Ok(statement) => match self.runtime.eval(&statement) {
-                        Ok(val) => println!("{}", val),
-                        Err(e) => eprintln!("eval error: {:?}", e),
-                    },
-                    Err(msg) => eprintln!("{}", msg),
-                }
+                self.handler.eval(line)?;
             }
             println!();
         }
+    }
+}
+
+/// Maximum number of inputs to keep in REPL history.
+const HISTORY_DEPTH: usize = 1000;
+
+fn repl_history_path() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|dir| dir.join("flt").join("history"))
+}
+
+/// The concrete implementation of the REPL context for `flt`
+#[derive(Default)]
+pub struct FltRepl {
+    runtime: SimpleRuntime,
+}
+
+impl FltRepl {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Parses a full statement from `line`, treating any leftover, non-whitespace
@@ -204,5 +233,22 @@ impl Repl {
             Ok(value) => println!("{}", value),
             Err(e) => eprintln!("eval error: {:?}", e),
         }
+    }
+}
+
+impl ReplHandler for FltRepl {
+    fn eval(&mut self, line: &str) -> eyre::Result<()> {
+        match Self::parse_full(line) {
+            Ok(statement) => match self.runtime.eval(&statement) {
+                Ok(val) => println!("{}", val),
+                Err(e) => eprintln!("eval error: {:?}", e),
+            },
+            Err(msg) => eprintln!("{}", msg),
+        }
+        Ok(())
+    }
+
+    fn handle_command(&mut self, rest: &str) -> eyre::Result<bool> {
+        Ok(FltRepl::handle_command(self, rest))
     }
 }
