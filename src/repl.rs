@@ -262,3 +262,90 @@ impl ReplHandler for FltRepl {
         Ok(FltRepl::handle_command(self, rest))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rustyline::history::History;
+
+    use super::*;
+
+    struct TestHandler;
+
+    impl ReplHandler for TestHandler {
+        fn eval(&mut self, _line: &str) -> eyre::Result<()> {
+            Ok(())
+        }
+
+        fn handle_command(&mut self, _rest: &str) -> eyre::Result<bool> {
+            Ok(true)
+        }
+    }
+
+    struct PromptHandler;
+
+    impl ReplHandler for PromptHandler {
+        fn eval(&mut self, _line: &str) -> eyre::Result<()> {
+            Ok(())
+        }
+
+        fn handle_command(&mut self, _rest: &str) -> eyre::Result<bool> {
+            Ok(true)
+        }
+
+        fn prompt(&self) -> &str {
+            "... "
+        }
+    }
+
+    #[test]
+    fn test_default_prompt() {
+        assert_eq!("> ", TestHandler.prompt());
+    }
+
+    #[test]
+    fn test_custom_prompt() {
+        assert_eq!("... ", PromptHandler.prompt());
+    }
+
+    #[test]
+    fn test_no_history_path_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut repl = Repl::new(TestHandler, None).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.save_history().unwrap();
+        assert_eq!(0, std::fs::read_dir(dir.path()).unwrap().count());
+    }
+
+    #[test]
+    fn test_missing_history_file_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history");
+        let repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        assert_eq!(0, repl.editor.history().len());
+        assert!(!history_path.exists());
+    }
+
+    #[test]
+    fn test_save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("nested").join("history");
+        let mut repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.save_history().unwrap();
+        assert!(history_path.exists());
+    }
+
+    #[test]
+    fn test_history_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history");
+        let mut repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.editor.add_history_entry("x = 2").unwrap();
+        repl.save_history().unwrap();
+
+        let reloaded = Repl::new(TestHandler, Some(history_path)).unwrap();
+        let history = reloaded.editor.history();
+        assert_eq!(2, history.len());
+    }
+}

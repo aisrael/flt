@@ -16,7 +16,13 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match Repl::new(FltRepl::new(), default_history_path()) {
+    let history_path = if std::env::var_os("FLT_NO_HISTORY").is_some() {
+        None
+    } else {
+        default_history_path()
+    };
+
+    match Repl::new(FltRepl::new(), history_path) {
         Ok(mut repl) => match repl.run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
