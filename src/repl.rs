@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::ast::Expr;
@@ -117,9 +118,20 @@ impl<H: ReplHandler> Repl<H> {
 /// Maximum number of inputs to keep in REPL history.
 const HISTORY_DEPTH: usize = 1000;
 
-/// The default history location for the `flt` REPL.
+/// Environment variable that overrides the default REPL history location.
+pub const HISTORY_PATH_ENV_VAR: &str = "FLT_HISTORY_PATH";
+
+/// The default history location for the `flt` REPL: `$FLT_HISTORY_PATH` if set
+/// and non-empty, otherwise `flt/history` under the platform's local data directory.
 pub fn default_history_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("flt").join("history"))
+    history_path_from(std::env::var_os(HISTORY_PATH_ENV_VAR))
+}
+
+fn history_path_from(env_value: Option<OsString>) -> Option<PathBuf> {
+    match env_value {
+        Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
+        _ => dirs::data_local_dir().map(|dir| dir.join("flt").join("history")),
+    }
 }
 
 /// The concrete implementation of the REPL context for `flt`
@@ -305,6 +317,21 @@ mod tests {
     #[test]
     fn test_custom_prompt() {
         assert_eq!("... ", PromptHandler.prompt());
+    }
+
+    #[test]
+    fn test_history_path_from_env_override() {
+        assert_eq!(
+            Some(PathBuf::from("/tmp/flt-history")),
+            history_path_from(Some(OsString::from("/tmp/flt-history")))
+        );
+    }
+
+    #[test]
+    fn test_history_path_from_falls_back_to_default() {
+        let default = dirs::data_local_dir().map(|dir| dir.join("flt").join("history"));
+        assert_eq!(default, history_path_from(None));
+        assert_eq!(default, history_path_from(Some(OsString::new())));
     }
 
     #[test]
