@@ -19,6 +19,10 @@ pub trait ReplHandler {
     fn eval(&mut self, line: &str) -> eyre::Result<()>;
     /// Handles a slash command. Returns `Ok(false)` if the REPL should exit.
     fn handle_command(&mut self, rest: &str) -> eyre::Result<bool>;
+    /// The prompt to display before reading the next line.
+    fn prompt(&self) -> &str {
+        "> "
+    }
 }
 
 /// The generic Repl
@@ -29,10 +33,13 @@ where
     handler: H,
     slash_commands: SlashCommands,
     editor: DefaultEditor,
+    history_path: Option<PathBuf>,
 }
 
 impl<H: ReplHandler> Repl<H> {
-    pub fn new(handler: H) -> eyre::Result<Self> {
+    /// Creates a REPL for `handler`, loading and saving history at `history_path`
+    /// (`None` disables history).
+    pub fn new(handler: H, history_path: Option<PathBuf>) -> eyre::Result<Self> {
         let config = rustyline::Config::builder()
             .max_history_size(HISTORY_DEPTH)
             .expect("valid history size")
@@ -44,6 +51,7 @@ impl<H: ReplHandler> Repl<H> {
             editor,
             slash_commands,
             handler,
+            history_path,
         };
         repl.load_history()?;
         Ok(repl)
@@ -54,24 +62,24 @@ impl<H: ReplHandler> Repl<H> {
     }
 
     fn load_history(&mut self) -> eyre::Result<()> {
-        let Some(history_path) = repl_history_path() else {
+        let Some(history_path) = self.history_path.as_deref() else {
             return Ok(());
         };
         if history_path.exists() {
             println!("Loading REPL history from: {:?}", history_path);
-            self.editor.load_history(&history_path)?;
+            self.editor.load_history(history_path)?;
         }
         Ok(())
     }
 
     fn save_history(&mut self) -> eyre::Result<()> {
-        let Some(history_path) = repl_history_path() else {
+        let Some(history_path) = self.history_path.as_deref() else {
             return Ok(());
         };
         if let Some(parent) = history_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        self.editor.save_history(&history_path)?;
+        self.editor.save_history(history_path)?;
         Ok(())
     }
 
@@ -83,7 +91,8 @@ impl<H: ReplHandler> Repl<H> {
 
     fn repl_loop(&mut self) -> eyre::Result<()> {
         loop {
-            let line = match self.editor.readline("> ") {
+            let prompt = self.handler.prompt().to_string();
+            let line = match self.editor.readline(&prompt) {
                 Ok(line) => line,
                 Err(ReadlineError::Eof) => break Ok(()),
                 Err(ReadlineError::Interrupted) => continue,
@@ -108,7 +117,8 @@ impl<H: ReplHandler> Repl<H> {
 /// Maximum number of inputs to keep in REPL history.
 const HISTORY_DEPTH: usize = 1000;
 
-fn repl_history_path() -> Option<PathBuf> {
+/// The default history location for the `flt` REPL.
+pub fn default_history_path() -> Option<PathBuf> {
     dirs::data_local_dir().map(|dir| dir.join("flt").join("history"))
 }
 

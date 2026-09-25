@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+use flt::repl::default_history_path;
 use flt::repl::FltRepl;
 use flt::repl::Repl;
 
@@ -15,7 +16,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match Repl::new(FltRepl::new()) {
+    match Repl::new(FltRepl::new(), default_history_path()) {
         Ok(mut repl) => match repl.run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
