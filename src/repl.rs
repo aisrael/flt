@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::ast::Expr;
@@ -9,89 +10,139 @@ use crate::runtime::SimpleRuntime;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-/// Maximum number of inputs to keep in REPL history.
-const HISTORY_DEPTH: usize = 1000;
+mod slash_commands;
 
-fn repl_history_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("flt").join("history"))
+pub use slash_commands::SlashCommand;
+pub use slash_commands::SlashCommands;
+
+/// A Repl handler is responsible for handling the REPL loop and dispatching commands.
+pub trait ReplHandler {
+    fn eval(&mut self, line: &str) -> eyre::Result<()>;
+    /// Handles a slash command. Returns `Ok(false)` if the REPL should exit.
+    fn handle_command(&mut self, rest: &str) -> eyre::Result<bool>;
+    /// The prompt to display before reading the next line.
+    fn prompt(&self) -> &str {
+        "> "
+    }
 }
 
-pub struct Repl {
+/// The generic Repl
+pub struct Repl<H>
+where
+    H: ReplHandler,
+{
+    handler: H,
+    slash_commands: SlashCommands,
     editor: DefaultEditor,
-    runtime: SimpleRuntime,
+    history_path: Option<PathBuf>,
 }
 
-impl Repl {
-    pub fn new() -> Result<Self, ReadlineError> {
+impl<H: ReplHandler> Repl<H> {
+    /// Creates a REPL for `handler`, loading and saving history at `history_path`
+    /// (`None` disables history).
+    pub fn new(handler: H, history_path: Option<PathBuf>) -> eyre::Result<Self> {
         let config = rustyline::Config::builder()
             .max_history_size(HISTORY_DEPTH)
             .expect("valid history size")
             .auto_add_history(true)
             .build();
         let editor = DefaultEditor::with_config(config)?;
+        let slash_commands = SlashCommands::new();
         let mut repl = Self {
             editor,
-            runtime: SimpleRuntime::default(),
+            slash_commands,
+            handler,
+            history_path,
         };
         repl.load_history()?;
         Ok(repl)
     }
 
-    fn load_history(&mut self) -> Result<(), ReadlineError> {
-        let Some(history_path) = repl_history_path() else {
+    pub fn add_slash_command(&mut self, command: SlashCommand) {
+        self.slash_commands.add_command(command);
+    }
+
+    fn load_history(&mut self) -> eyre::Result<()> {
+        let Some(history_path) = self.history_path.as_deref() else {
             return Ok(());
         };
         if history_path.exists() {
             println!("Loading REPL history from: {:?}", history_path);
-            self.editor.load_history(&history_path)?;
+            self.editor.load_history(history_path)?;
         }
         Ok(())
     }
 
-    fn save_history(&mut self) -> Result<(), ReadlineError> {
-        let Some(history_path) = repl_history_path() else {
+    fn save_history(&mut self) -> eyre::Result<()> {
+        let Some(history_path) = self.history_path.as_deref() else {
             return Ok(());
         };
         if let Some(parent) = history_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        self.editor.save_history(&history_path)?;
+        self.editor.save_history(history_path)?;
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), ReadlineError> {
+    pub fn run(&mut self) -> eyre::Result<()> {
         let repl_result = self.repl_loop();
         let _ = self.save_history();
         repl_result
     }
 
-    fn repl_loop(&mut self) -> Result<(), ReadlineError> {
+    fn repl_loop(&mut self) -> eyre::Result<()> {
         loop {
-            let line = match self.editor.readline("> ") {
+            let prompt = self.handler.prompt().to_string();
+            let line = match self.editor.readline(&prompt) {
                 Ok(line) => line,
                 Err(ReadlineError::Eof) => break Ok(()),
                 Err(ReadlineError::Interrupted) => continue,
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into()),
             };
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
             if let Some(rest) = line.strip_prefix('/') {
-                if !self.handle_command(rest) {
+                if !self.handler.handle_command(rest)? {
                     break Ok(());
                 }
             } else {
-                match Self::parse_full(line) {
-                    Ok(statement) => match self.runtime.eval(&statement) {
-                        Ok(val) => println!("{}", val),
-                        Err(e) => eprintln!("eval error: {:?}", e),
-                    },
-                    Err(msg) => eprintln!("{}", msg),
-                }
+                self.handler.eval(line)?;
             }
             println!();
         }
+    }
+}
+
+/// Maximum number of inputs to keep in REPL history.
+const HISTORY_DEPTH: usize = 1000;
+
+/// Environment variable that overrides the default REPL history location.
+pub const HISTORY_PATH_ENV_VAR: &str = "FLT_HISTORY_PATH";
+
+/// The default history location for the `flt` REPL: `$FLT_HISTORY_PATH` if set
+/// and non-empty, otherwise `flt/history` under the platform's local data directory.
+pub fn default_history_path() -> Option<PathBuf> {
+    history_path_from(std::env::var_os(HISTORY_PATH_ENV_VAR))
+}
+
+fn history_path_from(env_value: Option<OsString>) -> Option<PathBuf> {
+    match env_value {
+        Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
+        _ => dirs::data_local_dir().map(|dir| dir.join("flt").join("history")),
+    }
+}
+
+/// The concrete implementation of the REPL context for `flt`
+#[derive(Default)]
+pub struct FltRepl {
+    runtime: SimpleRuntime,
+}
+
+impl FltRepl {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Parses a full statement from `line`, treating any leftover, non-whitespace
@@ -204,5 +255,124 @@ impl Repl {
             Ok(value) => println!("{}", value),
             Err(e) => eprintln!("eval error: {:?}", e),
         }
+    }
+}
+
+impl ReplHandler for FltRepl {
+    fn eval(&mut self, line: &str) -> eyre::Result<()> {
+        match Self::parse_full(line) {
+            Ok(statement) => match self.runtime.eval(&statement) {
+                Ok(val) => println!("{}", val),
+                Err(e) => eprintln!("eval error: {:?}", e),
+            },
+            Err(msg) => eprintln!("{}", msg),
+        }
+        Ok(())
+    }
+
+    fn handle_command(&mut self, rest: &str) -> eyre::Result<bool> {
+        Ok(FltRepl::handle_command(self, rest))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustyline::history::History;
+
+    use super::*;
+
+    struct TestHandler;
+
+    impl ReplHandler for TestHandler {
+        fn eval(&mut self, _line: &str) -> eyre::Result<()> {
+            Ok(())
+        }
+
+        fn handle_command(&mut self, _rest: &str) -> eyre::Result<bool> {
+            Ok(true)
+        }
+    }
+
+    struct PromptHandler;
+
+    impl ReplHandler for PromptHandler {
+        fn eval(&mut self, _line: &str) -> eyre::Result<()> {
+            Ok(())
+        }
+
+        fn handle_command(&mut self, _rest: &str) -> eyre::Result<bool> {
+            Ok(true)
+        }
+
+        fn prompt(&self) -> &str {
+            "... "
+        }
+    }
+
+    #[test]
+    fn test_default_prompt() {
+        assert_eq!("> ", TestHandler.prompt());
+    }
+
+    #[test]
+    fn test_custom_prompt() {
+        assert_eq!("... ", PromptHandler.prompt());
+    }
+
+    #[test]
+    fn test_history_path_from_env_override() {
+        assert_eq!(
+            Some(PathBuf::from("/tmp/flt-history")),
+            history_path_from(Some(OsString::from("/tmp/flt-history")))
+        );
+    }
+
+    #[test]
+    fn test_history_path_from_falls_back_to_default() {
+        let default = dirs::data_local_dir().map(|dir| dir.join("flt").join("history"));
+        assert_eq!(default, history_path_from(None));
+        assert_eq!(default, history_path_from(Some(OsString::new())));
+    }
+
+    #[test]
+    fn test_no_history_path_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut repl = Repl::new(TestHandler, None).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.save_history().unwrap();
+        assert_eq!(0, std::fs::read_dir(dir.path()).unwrap().count());
+    }
+
+    #[test]
+    fn test_missing_history_file_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history");
+        let repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        assert_eq!(0, repl.editor.history().len());
+        assert!(!history_path.exists());
+    }
+
+    #[test]
+    fn test_save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("nested").join("history");
+        let mut repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.save_history().unwrap();
+        assert!(history_path.exists());
+    }
+
+    #[test]
+    fn test_history_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history");
+        let mut repl = Repl::new(TestHandler, Some(history_path.clone())).unwrap();
+        repl.editor.add_history_entry("1 + 1").unwrap();
+        repl.editor.add_history_entry("x = 2").unwrap();
+        repl.save_history().unwrap();
+
+        let reloaded = Repl::new(TestHandler, Some(history_path)).unwrap();
+        let history = reloaded.editor.history();
+        assert_eq!(2, history.len());
     }
 }
