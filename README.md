@@ -1,3 +1,6 @@
+[![Crates.io](https://img.shields.io/crates/v/flt.svg)](https://crates.io/crates/flt)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 # flt
 
 A lightweight functional language with a parser, REPL, and a rudimentary interpreter/runtime.
@@ -16,7 +19,7 @@ The runtime currently evaluates a subset of that syntax.
 
 ```toml
 [dependencies]
-flt = "0.1.1"
+flt = "0.1.2"
 ```
 
 ## Quick start

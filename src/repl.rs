@@ -278,6 +278,11 @@ impl ReplHandler for FltRepl {
 #[cfg(test)]
 mod tests {
     use rustyline::history::History;
+    // rustyline's `FileHistory::save` temporarily changes the process-wide
+    // umask, which can race with directory creation in parallel tests and
+    // produce unwritable directories. Tests that touch the filesystem are
+    // marked `#[serial(fs)]` so they don't run concurrently.
+    use serial_test::serial;
 
     use super::*;
 
@@ -335,6 +340,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(fs)]
     fn test_no_history_path_writes_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let mut repl = Repl::new(TestHandler, None).unwrap();
@@ -344,6 +350,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(fs)]
     fn test_missing_history_file_is_ok() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history");
@@ -353,6 +360,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(fs)]
     fn test_save_creates_parent_dirs() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("nested").join("history");
@@ -363,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(fs)]
     fn test_history_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history");
