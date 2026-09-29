@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 
+use flt::repl::default_history_path;
+use flt::repl::FltRepl;
 use flt::repl::Repl;
-use rustyline::error::ReadlineError;
 
 // Returns the library version, which reflects the crate version
 pub fn version() -> String {
@@ -15,14 +16,15 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match Repl::new() {
+    let history_path = if std::env::var_os("FLT_NO_HISTORY").is_some() {
+        None
+    } else {
+        default_history_path()
+    };
+
+    match Repl::new(FltRepl::new(), history_path) {
         Ok(mut repl) => match repl.run() {
             Ok(()) => ExitCode::SUCCESS,
-            Err(ReadlineError::Interrupted) => {
-                println!("\nExiting.");
-                ExitCode::SUCCESS
-            }
-            Err(ReadlineError::Eof) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("Error: {:?}", e);
                 ExitCode::FAILURE

@@ -118,3 +118,11 @@ Feature: flt repl
       """
     Then the command should succeed
     And the output should contain "/quit"
+
+  Scenario: history is disabled with FLT_NO_HISTORY
+    When the REPL is run and the user types:
+      """
+      1 + 1
+      """
+    Then the command should succeed
+    And the output should not contain "Loading REPL history"

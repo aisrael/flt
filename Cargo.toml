@@ -1,28 +1,30 @@
 [package]
 name = "flt"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "a 'lite' functional language"
 license = "MIT"
 
 [dependencies]
-bigdecimal = "0.4"
-env_logger = "0.11.6"
-log = "0.4.22"
+bigdecimal = "0.4.11"
+env_logger = "0.11.11"
+log = "0.4.34"
 nom = "8.0.0"
-regex = "1.11.1"
-thiserror = "2.0.9"
-clap = { version = "4.5.23", features = ["cargo", "derive"] }
-rustyline = "17.0"
-eyre = "0.6.12"
+regex = "1.13.1"
+thiserror = "2.0.21"
+clap = { version = "4.6.7", features = ["cargo", "derive"] }
+rustyline = "18.0.1"
+eyre = "0.6.14"
 dirs = { version = "2.0", package = "dirs-next" }
 
 [dev-dependencies]
 bigdecimal = "0.4"
-ctor = "0.6.3"
-cucumber = "0.22.1"
-tokio = { version = "1.42.0", features = ["full"] }
-futures = "0.3.31"
+ctor = "1.0.13"
+cucumber = "0.23.0"
+tokio = { version = "1.53.1", features = ["full"] }
+futures = "0.3.34"
+tempfile = "3.27.0"
+serial_test = "4.0.1"
 
 [[test]]
 name = "features"

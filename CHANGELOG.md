@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.2
+
+- **REPL commands**: `/parse`, `/unset`, `/inspect` (alias `/i`), `/quit`, and `/help`.
+- **REPL refactor**: Generic `Repl<H: ReplHandler>` with flt-specific logic in `FltRepl`, and a `SlashCommands` registry.
+- **Custom prompts**: `ReplHandler::prompt()` lets handlers vary the prompt.
+- **Configurable history**: `Repl::new` takes an optional history path (`None` disables history); `default_history_path()` is now public.
+- **Env vars**: `FLT_HISTORY_PATH` overrides the history file location; `FLT_NO_HISTORY` disables history.
+- **Dev**: Tracked pre-commit hook (`.githooks/pre-commit`) runs `cargo fmt --check` and `cargo clippy`.
+
 ## v0.1.1
 
 ### Highlights
