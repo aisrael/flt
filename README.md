@@ -102,7 +102,7 @@ Binary operators:
 
 ### Precedence (lowest to highest)
 
-`|>` -> `||` -> `&&` -> `^^` -> `|` -> `^` -> `&` -> `+`/`-`/`<>` -> `*`/`/`
+`|>` → `||` → `&&` → `^^` → `|` → `^` → `&` → `+`/`-`/`<>` → `*`/`/`
 
 Parentheses override precedence as expected.
 
