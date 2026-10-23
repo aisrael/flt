@@ -3,7 +3,7 @@
 - **Date:** 2026-10-22
 - **Status:** Accepted. `None` is implemented; types as values are documented but not yet
   implemented.
-- **PR:** [#16](https://github.com/aisrael/flt/pull/16)
+- **PR:** [#17](https://github.com/aisrael/flt/pull/17)
 
 ## Context
 
