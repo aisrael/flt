@@ -16,4 +16,4 @@ This folder contains initial documentation for the `flt` language as it exists i
 
 ## Scope
 
-These docs describe the currently implemented parser and CLI evaluator for version `0.1.2`.
+These docs describe the currently implemented parser and CLI evaluator for version `0.2.0`.
