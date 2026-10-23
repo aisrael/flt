@@ -24,9 +24,3 @@ flt has no unit value `()`. `None` fills that role.
   ```
 
   So an `if` without `else` whose then-branch has type `T` has the [union type](./union_types.md) `T | None`.
-
-## `None` and `Option<T>`
-
-`None` is also the empty value of an [`Option<T>`](../types.md#option), the wrapper type used for optional parameters such as `compression: ?CompressionType`.
-
-`Option<T>` and the union `T | None` describe similar values, a `T` or `None`, but they are different types. `Option<T>` is a wrapper, while `T | None` is a plain union.

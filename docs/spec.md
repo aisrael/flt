@@ -40,21 +40,19 @@ key        = ident | string ;
 | Number    | `42` `3.14` `-0.5` `42.`                   | Arbitrary-precision decimal                        |
 | String    | `"hi"` `"say \"hi\""` `"Answer: {1 + 2}"` | `{expr}` interpolates; `\{` is a literal `{`       |
 | Boolean   | `true` `false`                             |                                                    |
-| None      | `None`                                     | The empty `Option`                                 |
+| None      | `None`                                     | No value; also its own type                        |
 | Symbol    | `:id` `:foo-bar` `:"hello world"`          | Bare or quoted                                     |
 | Array     | `[]` `[1, 2, 3,]`                          | Trailing comma allowed                             |
 | Map       | `{ foo: 1, "spaced out": 2 }`              | Keys are bare identifiers or strings; unique       |
 
 ## 4. Types
 
-`None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, `Type`, and `Option` (a value or
-`None`). `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
+`None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, and `Type`. `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
 expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
 `typeof(1) == Number` is `true`, and a `let` binding shadows it. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
-`else` evaluates to `None` when its condition is `false`, so it has type `T | None`. Function types
-are written `fn(A, B) -> R`, and a union return type needs brackets: `fn(A) -> (A | None)`.
+`else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
 
 ## 5. Operators (lowest → highest precedence)
 
@@ -97,14 +95,6 @@ raises `Function calls not yet supported`.
 The runtime registers one built-in, `typeof(v)` of type `fn(Any) -> Type`, which returns `v`'s type (`typeof(42)` is
 `Number`, `typeof(None)` is `None`). The wrong arity raises
 `Function typeof expected 1 argument(s), found N`. Calling any other name raises `Function calls not yet supported`.
-
-### Definitions
-
-A function is identified by its name and one or more signatures (overloads).
-
-A signature has positional and keyword parameters and an optional return type.
-
-Each parameter has a name, an optional type, and an optional default value. Undeclared keyword arguments can be captured by a final `**args` parameter.
 
 ## 7. Bindings
 
