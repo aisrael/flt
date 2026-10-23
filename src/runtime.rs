@@ -90,7 +90,7 @@ impl Value {
             Value::Symbol(_) => Ok(Type::symbol()),
             Value::Map(_) => Ok(Type::map()),
             Value::Array(_) => Ok(Type::array()),
-            Value::Type(_) => Ok(Type::value()),
+            Value::Type(_) => Ok(Type::type_type()),
         }
     }
 }
@@ -120,8 +120,8 @@ fn register_builtins() -> HashMap<String, BuiltinFunction> {
         BuiltinFunction::new(
             FunctionDefinition::new(
                 "typeof",
-                Type::value(),
-                vec![Argument::new("V", Type::value())],
+                Type::type_type(),
+                vec![Argument::new("V", Type::any())],
             ),
             builtin_typeof,
         ),
@@ -158,10 +158,12 @@ impl SimpleRuntime {
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(lit) => Ok(Self::literal_to_value(lit)),
+            // A variable shadows a built-in type name, e.g. after `let Number = 5`
             Expr::Ident(s) => self
                 .global_scope
                 .get_variable(s.as_str())
                 .cloned()
+                .or_else(|| Type::builtin_named(s.as_str()).map(Value::Type))
                 .ok_or_else(|| Error::RuntimeError(RuntimeError::UnboundIdentifier(s.clone()))),
             Expr::IfExpr {
                 condition,
@@ -391,6 +393,7 @@ impl GlobalScope {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Identifier;
 
     /// Evaluates a single expression statement in a fresh runtime.
     fn eval(expr: Expr) -> Value {
@@ -484,11 +487,62 @@ mod tests {
     }
 
     #[test]
-    fn test_type_of_type_is_value() {
+    fn test_type_of_type_is_type() {
         assert_eq!(
             Value::Type(Type::number()).type_of().unwrap(),
-            Type::value()
+            Type::type_type()
         );
+    }
+
+    #[test]
+    fn test_builtin_type_name_evaluates_to_type() {
+        assert_eq!(eval(Expr::ident("Number")), Value::Type(Type::number()));
+        assert_eq!(eval(Expr::ident("Type")), Value::Type(Type::type_type()));
+    }
+
+    #[test]
+    fn test_typeof_equals_builtin_type_name() {
+        let typeof_one = Expr::function_call("typeof", vec![Expr::literal_number(1)]);
+        let expr = Expr::binary_expr(typeof_one, BinaryOp::Eq, Expr::ident("Number"));
+        assert_eq!(eval(expr), Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_typeof_builtin_type_name_is_type() {
+        let expr = Expr::function_call("typeof", vec![Expr::ident("Number")]);
+        assert_eq!(eval(expr), Value::Type(Type::type_type()));
+    }
+
+    #[test]
+    fn test_let_shadows_builtin_type_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&Statement::Let(
+                Identifier("Number".to_string()),
+                Expr::literal_number(5),
+            ))
+            .unwrap();
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("Number")))
+            .unwrap();
+        assert_eq!(value, Value::Number(BigDecimal::from(5)));
+    }
+
+    #[test]
+    fn test_any_is_unbound() {
+        let result = SimpleRuntime::default().eval(&Statement::Expr(Expr::ident("Any")));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::UnboundIdentifier(name))) if name == "Any"
+        ));
+    }
+
+    #[test]
+    fn test_typeof_signature() {
+        let runtime = SimpleRuntime::default();
+        let definition = &runtime.built_in_functions["typeof"].definition;
+        assert_eq!(definition.overloads[0].return_type, Type::type_type());
+        assert_eq!(definition.overloads[0].arguments[0].r#type, Type::any());
     }
 
     #[test]
