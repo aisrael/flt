@@ -48,7 +48,7 @@ The parser treats this as a left-associative binary operator chain.
 
 The runtime currently registers one built-in function:
 
-- `typeof(value)` - returns the [`Type`](./types.md) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error; calling it with `None` raises an interpreter error ("Not yet implemented"), since `None` doesn't carry its wrapped type.
+- `typeof(value)`, with type `fn(Any) -> Type` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`, and `typeof(42) == Number` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
 
 ## Current Semantics Note
 

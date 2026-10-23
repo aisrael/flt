@@ -47,8 +47,14 @@ key        = ident | string ;
 
 ## 4. Types
 
-`Unit` (`()`), `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, `Type` (types are
-first-class values), and `Option` (a value or `None`). Keyword arguments are passed as a `Map`.
+`None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, `Type`, and `Option` (a value or
+`None`). `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
+expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
+`typeof(1) == Number` is `true`, and a `let` binding shadows it. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
+
+A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
+`else` evaluates to `None` when its condition is `false`, so it has type `T | None`. Function types
+are written `fn(A, B) -> R`, and a union return type needs brackets: `fn(A) -> (A | None)`.
 
 ## 5. Operators (lowest → highest precedence)
 
@@ -88,9 +94,9 @@ raises `Function calls not yet supported`.
 
 ### Built-ins
 
-The runtime registers one built-in, `typeof(v)`, which returns `v`'s `Type` (`typeof(42)` is
-`Number`). The wrong arity raises `Function typeof expected 1 argument(s), found N`; `typeof(None)` is
-not yet implemented. Calling any other name raises `Function calls not yet supported`.
+The runtime registers one built-in, `typeof(v)` of type `fn(Any) -> Type`, which returns `v`'s type (`typeof(42)` is
+`Number`, `typeof(None)` is `None`). The wrong arity raises
+`Function typeof expected 1 argument(s), found N`. Calling any other name raises `Function calls not yet supported`.
 
 ### Definitions
 
