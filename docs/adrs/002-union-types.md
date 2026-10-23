@@ -6,18 +6,14 @@
 
 ## Context
 
-An `if` has two outcomes, and its type should describe both. With `None` as the result of an `if`
-with no `else` whose condition is `false` (see [ADR 001](001-none-types.md)), that needs a type
-that means "either of these".
+flt needs a type that means "either of these". The main drivers, neither implemented yet, are
+function overloading (decision 4) and type inference for `if` (decision 5).
 
 ## Decisions
 
 ### 1. Union types: `A | B`
 
 A value of type `A | B` is a value of either type.
-
-- `if c a` has type `T | None`.
-- `if c a else b` has type `A | B`.
 
 Unions are always simplified:
 
@@ -49,7 +45,14 @@ Inferred types are left to future static analysis, for example an flt language s
 When overloading is added, the type of an overloaded function will be the union of its signatures,
 e.g. `fn(String) -> String | fn(String, Number) -> String`. It is out of scope for now.
 
-### 5. Staging
+### 5. Type inference for `if` is deferred
+
+When static type inference is added, an `if` whose branches have types `T` and `F` will have the
+inferred type `T | F`. An `if` with no `else` evaluates to `None` when its condition is `false` (see
+[ADR 001](001-none-types.md)), so its inferred type is `T | None`. Until then, types are only
+checked at run time (decision 3).
+
+### 6. Staging
 
 1. **This stage:** `None` and union types, then types as values and `Any`.
 2. **Next:** function definitions and function bodies.
