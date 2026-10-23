@@ -5,6 +5,10 @@
 - When generating commit messages, if the staged changes are limited to one file, keep the commit message to one line.
 - After a major change or refactoring, run `cargo +nightly fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test` to ensure linting and tests pass
 
+# Language Features
+
+- Whenever planning or implementing a new language feature, start by writing the documentation under `docs/`, with examples. Then write Cucumber features (under `features/`) and unit tests that match those examples. Only then write the implementation.
+
 # Rust Code Guidelines
 
 - When writing imports, use one `use` statement per line. DO NOT use grouped `use` statements

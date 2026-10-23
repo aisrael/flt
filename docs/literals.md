@@ -48,7 +48,7 @@ false
 
 ### None
 
-`None` is the sentinel literal for an empty [`Option`](./types.md#option).
+`None` is the literal for no value. It is also its own type; see [None](./types/none.md).
 
 ```flt
 None
