@@ -390,9 +390,56 @@ impl GlobalScope {
 mod tests {
     use super::*;
 
+    /// Evaluates a single expression statement in a fresh runtime.
+    fn eval(expr: Expr) -> Value {
+        SimpleRuntime::default()
+            .eval(&Statement::Expr(expr))
+            .unwrap()
+    }
+
     #[test]
-    fn test_type_of_unit() {
-        assert_eq!(Value::Unit.type_of().unwrap(), Type::unit());
+    fn test_type_of_none() {
+        assert_eq!(Value::None.type_of().unwrap(), Type::none());
+    }
+
+    #[test]
+    fn test_none_value_display() {
+        assert_eq!(Value::None.to_string(), "None");
+    }
+
+    #[test]
+    fn test_if_without_else_evaluates_to_then_branch_when_true() {
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
+        assert_eq!(eval(expr), Value::Number(BigDecimal::from(1)));
+    }
+
+    #[test]
+    fn test_if_without_else_evaluates_to_none_when_false() {
+        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
+        assert_eq!(eval(expr), Value::None);
+    }
+
+    #[test]
+    fn test_typeof_if_without_else_is_none_when_false() {
+        let expr = Expr::function_call(
+            "typeof",
+            vec![Expr::if_expr(
+                Expr::literal_boolean(false),
+                Expr::literal_number(1),
+                None,
+            )],
+        );
+        assert_eq!(eval(expr), Value::Type(Type::none()));
+    }
+
+    #[test]
+    fn test_none_value_equals_none_type() {
+        let typeof_none = Expr::function_call("typeof", vec![Expr::literal_none()]);
+        let expr = Expr::binary_expr(typeof_none.clone(), BinaryOp::Eq, Expr::literal_none());
+        assert_eq!(eval(expr), Value::Boolean(true));
+
+        let expr = Expr::binary_expr(Expr::literal_none(), BinaryOp::Eq, typeof_none);
+        assert_eq!(eval(expr), Value::Boolean(true));
     }
 
     #[test]
@@ -435,14 +482,6 @@ mod tests {
     }
 
     #[test]
-    fn test_type_of_none_is_not_yet_implemented() {
-        assert!(matches!(
-            Value::None.type_of(),
-            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
-        ));
-    }
-
-    #[test]
     fn test_type_of_type_is_value() {
         assert_eq!(
             Value::Type(Type::number()).type_of().unwrap(),
@@ -457,6 +496,10 @@ mod tests {
             Value::Type(Type::option(Type::string())).to_string(),
             "Option<String>"
         );
+        assert_eq!(
+            Value::Type(Type::union(Type::number(), Type::none())).to_string(),
+            "Number | None"
+        );
     }
 
     #[test]
@@ -466,11 +509,9 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_typeof_propagates_none_error() {
-        assert!(matches!(
-            builtin_typeof(&[Value::None]),
-            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
-        ));
+    fn test_builtin_typeof_none() {
+        let result = builtin_typeof(&[Value::None]).unwrap();
+        assert_eq!(result, Value::Type(Type::none()));
     }
 
     #[test]

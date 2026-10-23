@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+mod union_types;
+
 /// A type is either a builtin type or a custom type
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
@@ -9,9 +11,17 @@ pub enum Type {
     Custom(CustomType),
     /// The `Option` wrapper around an inner type (the empty case is `None`)
     Option(Box<Type>),
+    /// A union of types: a value of any one of the member types. Build it with
+    /// [`Type::union`] so that it stays flattened and free of duplicates.
+    Union(Vec<Type>),
 }
 
 impl Type {
+    /// The built-in `None` type, the type of the `None` value
+    pub fn none() -> Self {
+        todo!("BuiltinType::None")
+    }
+
     /// The built-in unit type
     pub fn unit() -> Self {
         Type::Builtin(BuiltinType::Unit)
@@ -64,6 +74,7 @@ impl fmt::Display for Type {
             Type::Builtin(b) => write!(f, "{b}"),
             Type::Custom(c) => write!(f, "{}", c.name),
             Type::Option(inner) => write!(f, "Option<{inner}>"),
+            Type::Union(members) => union_types::fmt_union(members, f),
         }
     }
 }
@@ -106,5 +117,15 @@ pub struct CustomType {
 impl CustomType {
     pub fn new(name: String) -> Self {
         Self { name }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_none_type_display() {
+        assert_eq!(Type::none().to_string(), "None");
     }
 }
