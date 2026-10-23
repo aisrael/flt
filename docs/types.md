@@ -35,12 +35,6 @@ typeof(typeof(1))      # Type
 
 [`None`](./types/none.md) is both a value and a type, and the two compare equal, so `typeof(None) == None` is `true`.
 
-`<>` joins a type's name:
-
-```flt
-"type: " <> typeof(1)   # "type: Number"
-```
-
 A `let` binding shadows a built-in type name. There are no scopes yet, so the binding applies everywhere after it:
 
 ```flt
