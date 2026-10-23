@@ -18,7 +18,7 @@ The evaluator currently supports:
 - Unary numeric `+` and `-`
 - `if`/`else` expressions; an `if` without `else` evaluates to `None` when its condition is `false`
 - `let` bindings (`let x = expr`) and plain assignment (`x = expr`), stored in the global scope; evaluation returns the bound value (what the REPL prints)
-- Identifier lookup against the global scope
+- Identifier lookup against the global scope, falling back to [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type)
 - Calls to registered [built-in functions](./functions-and-pipe.md#built-in-functions) (currently `typeof`)
 
 `<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated).

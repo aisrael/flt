@@ -105,6 +105,16 @@ fn then_the_result_should_be(world: &mut AstWorld, expected: String) {
     assert_eq!(actual, expected);
 }
 
+#[then(expr = r#"the evaluation should fail with {string}"#)]
+fn then_the_evaluation_should_fail_with(world: &mut AstWorld, expected: String) {
+    let result = world.result.take().expect("result should be set");
+    let error = result.expect_err("evaluation should fail");
+    assert!(
+        error.contains(&expected),
+        "expected error containing {expected:?}, got {error:?}"
+    );
+}
+
 #[then(expr = r"the output should be a `Literal::Number\({int}\)`")]
 fn then_output_should_be_number(world: &mut AstWorld, expected: i64) {
     let output = world.output.take().expect("output should be set");
