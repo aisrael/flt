@@ -19,12 +19,7 @@ pub enum Type {
 impl Type {
     /// The built-in `None` type, the type of the `None` value
     pub fn none() -> Self {
-        todo!("BuiltinType::None")
-    }
-
-    /// The built-in unit type
-    pub fn unit() -> Self {
-        Type::Builtin(BuiltinType::Unit)
+        Type::Builtin(BuiltinType::None)
     }
 
     /// The built-in number type
@@ -82,7 +77,7 @@ impl fmt::Display for Type {
 /// A builtin type is a type that is predefined in the runtime.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BuiltinType {
-    Unit,
+    None,
     String,
     Number,
     Boolean,
@@ -95,7 +90,7 @@ pub enum BuiltinType {
 impl fmt::Display for BuiltinType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            BuiltinType::Unit => "Unit",
+            BuiltinType::None => "None",
             BuiltinType::String => "String",
             BuiltinType::Number => "Number",
             BuiltinType::Boolean => "Boolean",

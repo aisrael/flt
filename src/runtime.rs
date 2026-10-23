@@ -14,7 +14,6 @@ use crate::ast::Expr;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
-use crate::errors::InterpreterError;
 use crate::errors::RuntimeError;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::BuiltinFunction;
@@ -26,9 +25,8 @@ use crate::Error;
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    /// The unit value (like `()` in Rust/Elixir)
-    Unit,
-    /// The `None` sentinel value (the empty `Option`)
+    /// The `None` value: the empty `Option`, and the result of an `if` with no `else`
+    /// whose condition is `false`. Its type is the built-in `None` type.
     None,
     /// A number value
     Number(BigDecimal),
@@ -49,7 +47,6 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Unit => write!(f, "()"),
             Value::None => write!(f, "None"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
@@ -84,13 +81,9 @@ impl fmt::Display for Value {
 
 impl Value {
     /// Map a runtime value to its built-in type.
-    ///
-    /// Bare `None` cannot be typed without contextual information about the
-    /// wrapped `Option<T>`, so it returns `InterpreterError::NotYetImplemented`.
     pub fn type_of(&self) -> Result<Type, Error> {
         match self {
-            Value::Unit => Ok(Type::unit()),
-            Value::None => Err(Error::InterpreterError(InterpreterError::NotYetImplemented)),
+            Value::None => Ok(Type::none()),
             Value::Number(_) => Ok(Type::number()),
             Value::String(_) => Ok(Type::string()),
             Value::Boolean(_) => Ok(Type::boolean()),
@@ -186,7 +179,7 @@ impl SimpleRuntime {
                 } else {
                     match else_branch {
                         Some(expr) => self.eval_expr(expr),
-                        None => Ok(Value::Unit),
+                        None => Ok(Value::None),
                     }
                 }
             }
@@ -285,13 +278,22 @@ impl SimpleRuntime {
                 Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
             }
             BinaryOp::Concat => Self::binary_string(l, r),
-            BinaryOp::Eq => Ok(Value::Boolean(l == r)),
-            BinaryOp::Ne => Ok(Value::Boolean(l != r)),
+            BinaryOp::Eq => Ok(Value::Boolean(Self::values_equal(l, r))),
+            BinaryOp::Ne => Ok(Value::Boolean(!Self::values_equal(l, r))),
             BinaryOp::Lt => Self::binary_compare(l, r, |a, b| a < b),
             BinaryOp::Gt => Self::binary_compare(l, r, |a, b| a > b),
             BinaryOp::Lte => Self::binary_compare(l, r, |a, b| a <= b),
             BinaryOp::Gte => Self::binary_compare(l, r, |a, b| a >= b),
             BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
+        }
+    }
+
+    /// Equality for `==` and `!=`. `None` is both a value and a type, so the `None`
+    /// value equals the `None` type (e.g. `typeof(None) == None`).
+    fn values_equal(l: &Value, r: &Value) -> bool {
+        match (l, r) {
+            (Value::None, Value::Type(t)) | (Value::Type(t), Value::None) => *t == Type::none(),
+            _ => l == r,
         }
     }
 
