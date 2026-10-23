@@ -1,7 +1,7 @@
 Feature: None
 
   `None` is both a value and its own type. An `if` without `else` evaluates to
-  `None` when its condition is false.
+  `None` when its condition is false, so it has type `T | None`.
   See docs/types/none.md.
 
   Scenario: None evaluates to None
