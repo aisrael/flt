@@ -9,6 +9,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
 - [`types.md`](types.md) - Core flt types
   - [`types/none.md`](types/none.md) - `None`: the value, its type, and the result of `if` without `else`.
+  - [`types/union_types.md`](types/union_types.md) - Union types (`A | B`) and the type of `if`.
 - [`operators.md`](operators.md) - Unary/binary operators and precedence.
 - [`field-access.md`](field-access.md) - Dot-access syntax for reading map fields (`u.foo`).
 - [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments) and pipe chaining.

@@ -9,7 +9,8 @@
 
 flt had a `Unit` type, written `()`, for the result of an `if` with no `else` whose condition is
 `false`. It also had a separate `None` value for the empty `Option`. Two "empty" values were one
-too many.
+too many, and the type of an `if` without `else` (see [ADR 002](002-union-types.md)) needs a single
+type for the empty case.
 
 ## Decisions
 
