@@ -4,6 +4,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 
 ## Contents
 
+- [`spec.md`](spec.md) - One-page minimal language specification (grammar, types, operators, semantics).
 - [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL.
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
 - [`types.md`](types.md) - Core flt types
