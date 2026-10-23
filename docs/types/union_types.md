@@ -7,16 +7,9 @@ Number | String           # a Number, or a String
 Number | String | None    # a Number, a String, or None
 ```
 
-## `if` Without `else`
+## The Type of `if`
 
-An `if` with an `else` produces the value of whichever branch ran. An `if` without an `else` produces the then-branch's value when the condition is `true`, and `None` when it is `false`:
-
-```flt
-if true 1     # 1
-if false 1    # None
-```
-
-So an `if` whose then-branch has type `T` and no `else` has type `T | None`. An `if` with an `else` has the type `<then type> | <else type>`:
+An `if` with an `else` has the type `<then type> | <else type>`. An `if` without an `else` evaluates to [`None`](./none.md) when its condition is `false`, so it has type `<then type> | None`:
 
 | Expression              | Type              |
 | ----------------------- | ----------------- |
@@ -32,14 +25,6 @@ typeof(if false 1)           # None
 typeof(if false 1 else "a")  # String
 ```
 
-## The `None` Type
-
-`None` is both a value and its own type:
-
-```flt
-typeof(None)    # None
-```
-
 ## Simplification
 
 flt keeps union types in a simple, canonical form:
@@ -47,10 +32,6 @@ flt keeps union types in a simple, canonical form:
 - **Duplicates are removed.** `Number | Number` is just `Number`, which is why `if b 1 else 2` has type `Number`.
 - **Nested unions are flattened.** `(Number | String) | None` is `Number | String | None`.
 - **Order is kept.** Members print in the order they first appear, e.g. the then-branch's type before the else-branch's.
-
-## Unions and `Option<T>`
-
-[`Option<T>`](../types.md#option) is a wrapper type, used for optional parameters such as `compression: ?CompressionType`. `T | None` is a plain union. They describe similar values, a `T` or `None`, but they are different types.
 
 ## Unions in Function Types
 
