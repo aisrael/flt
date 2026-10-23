@@ -425,12 +425,12 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_if_expr_without_else_returns_unit() {
+    fn test_eval_if_expr_without_else_returns_none() {
         let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
         assert_eq!(eval(&expr).unwrap(), "1");
 
         let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
-        assert_eq!(eval(&expr).unwrap(), "()");
+        assert_eq!(eval(&expr).unwrap(), "None");
     }
 
     #[test]
