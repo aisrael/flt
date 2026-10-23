@@ -68,6 +68,7 @@ Replacing `()` with `None` is a breaking change, so the next release is 0.2.0.
 
 - Code and tests that expected `()` now get `None`.
 - `Value::Unit` and `BuiltinType::Unit` are gone; the type is `BuiltinType::None`.
-- Identifier lookup falls back to built-in type names after variables.
+- Identifier lookup falls back to built-in type names after variables. Global functions will take a
+  step between the two.
 - The spec (`docs/spec.md`) and the type docs (`docs/types.md`, `docs/types/none.md`) describe these
   rules.
