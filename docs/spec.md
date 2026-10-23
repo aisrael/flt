@@ -105,3 +105,15 @@ A function is identified by its name and one or more signatures (overloads).
 A signature has positional and keyword parameters and an optional return type.
 
 Each parameter has a name, an optional type, and an optional default value. Undeclared keyword arguments can be captured by a final `**args` parameter.
+
+## 7. Bindings
+
+A variable is a binding of an identifier: to a value at run time, or to an expression for static
+analysis (e.g. type inference). `let x = expr` and `x = expr` both bind `x`.
+
+- **Bindings are global.** There are no scopes, so a binding is visible to every statement after it.
+  Once scopes exist, a binding will be limited to its scope.
+- **Re-binding replaces the binding, including its type.** After `let x = 1` then `x = "a"`,
+  `typeof(x)` is `String`.
+- **A binding shadows a built-in type name.** After `let Number = 5`, `Number` is `5`.
+- Referencing an identifier with no binding raises `Unbound identifier: <name>`.
