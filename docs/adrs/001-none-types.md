@@ -8,7 +8,7 @@
 
 flt had a `Unit` type, written `()`, for the result of an `if` with no `else` whose condition is
 `false`. It also had a separate `None` value for the empty `Option`. Two "empty" values were one
-too many.
+too many, and the type of an `if` without `else` needs a single type for the empty case.
 
 ## Decisions
 
@@ -68,7 +68,6 @@ Replacing `()` with `None` is a breaking change, so the next release is 0.2.0.
 
 - Code and tests that expected `()` now get `None`.
 - `Value::Unit` and `BuiltinType::Unit` are gone; the type is `BuiltinType::None`.
-- Identifier lookup must fall back to built-in type names after variables. Global functions will
-  take a step between the two.
+- Identifier lookup falls back to built-in type names after variables.
 - The spec (`docs/spec.md`) and the type docs (`docs/types.md`, `docs/types/none.md`) describe these
   rules.
