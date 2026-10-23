@@ -55,20 +55,12 @@ inferred type `T | F`. An `if` with no `else` evaluates to `None` when its condi
 [ADR 001](001-none-types.md)), so its inferred type is `T | None`. Until then, types are only
 checked at run time (decision 3).
 
-### 6. Staging
-
-1. **This stage:** `None` and union types, then types as values and `Any`.
-2. **Next:** function definitions and function bodies.
-3. **Later:** static type inference and parametric polymorphism (generics), so that
-   `random_choice(a: A, b: B)` returns `A | B`.
-
 ## Alternatives Considered
 
 - **Make `->` bind more loosely than `|`**, or **use a different symbol for unions of function
   types.** Both were superseded by requiring brackets around a union return type, which keeps `|`
   as the only union operator.
-- **Infer `typeof` statically.** Rejected. flt is dynamically typed, and static inference belongs to
-  a later stage.
+- **Infer `typeof` statically.** Rejected. flt is dynamically typed.
 
 ## Consequences
 
