@@ -2,7 +2,7 @@ Feature: Conditionals
 
   If expressions evaluate a condition (must be boolean), then either the then-branch
   or the else-branch. The else branch is optional; when omitted and the condition
-  is false, the expression evaluates to unit.
+  is false, the expression evaluates to `None`.
 
   Scenario: If with block branches and else
     Given the input "if true { 1 } else { 2 }"
