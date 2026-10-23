@@ -6,8 +6,11 @@
 
 ## Context
 
-flt needs a type that means "either of these". The main drivers, neither implemented yet, are
-function overloading (decision 4) and type inference for `if` (decision 5).
+flt needs a type that means "either of these". The main drivers, none implemented yet, are:
+
+- function overloading (decision 4);
+- type inference for `if` (decision 5);
+- optional parameters, where `T?` is shorthand for `T | None`.
 
 ## Decisions
 
