@@ -7,14 +7,43 @@ use crate::runtime::types::Type;
 impl Type {
     /// The union `a | b`: nested unions are flattened, duplicates are removed (keeping
     /// the first occurrence), and a single remaining member is returned as-is.
-    pub fn union(_a: Type, _b: Type) -> Self {
-        todo!("Type::union")
+    pub fn union(a: Type, b: Type) -> Self {
+        let mut members = Vec::new();
+        add_member(&mut members, a);
+        add_member(&mut members, b);
+        if members.len() == 1 {
+            members.remove(0)
+        } else {
+            Type::Union(members)
+        }
+    }
+}
+
+/// Adds `t` to `members`, flattening nested unions and skipping types already present.
+fn add_member(members: &mut Vec<Type>, t: Type) {
+    match t {
+        Type::Union(inner) => {
+            for member in inner {
+                add_member(members, member);
+            }
+        }
+        other => {
+            if !members.contains(&other) {
+                members.push(other);
+            }
+        }
     }
 }
 
 /// Writes the members of a union separated by ` | `, e.g. `Number | None`.
-pub(super) fn fmt_union(_members: &[Type], _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    todo!("Display for Type::Union")
+pub(super) fn fmt_union(members: &[Type], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for (i, member) in members.iter().enumerate() {
+        if i > 0 {
+            write!(f, " | ")?;
+        }
+        write!(f, "{member}")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
