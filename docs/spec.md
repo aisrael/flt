@@ -1,4 +1,4 @@
-# flt Minimal Language Specification (v0.1.2)
+# flt Minimal Language Specification (v0.2.0)
 
 `flt` is a small, dynamically typed, expression-oriented language. A program is a sequence of
 statements; every statement evaluates to a value.
