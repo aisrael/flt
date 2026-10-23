@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-22
 - **Status:** Accepted and implemented.
-- **PR:** [#16](https://github.com/aisrael/flt/pull/16)
+- **PR:** [#18](https://github.com/aisrael/flt/pull/18)
 
 ## Context
 
@@ -73,5 +73,5 @@ checked at run time (decision 3).
 ## Consequences
 
 - `Type::Union` is added. It is built with `Type::union`, which keeps unions simplified.
-- The spec (`docs/spec.md`) and the type docs (`docs/types/union_types.md`,
-  `docs/types/functions.md`) describe these rules.
+- The spec (`docs/spec.md`) and the union type docs (`docs/types/union_types.md`) describe these
+  rules.
