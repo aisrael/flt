@@ -17,7 +17,7 @@ An `if` with an `else` has the type `<then type> | <else type>`. An `if` without
 | `if b 1 else "one"`     | `Number \| String` |
 | `if b 1 else 2`         | `Number`          |
 
-Types are checked at runtime. [`typeof`](../functions-and-pipe.md#built-in-functions) reports the type of the value an expression actually produced, which is always one of the union's members:
+These are inferred types. flt doesn't infer types yet (see [ADR 002](../adrs/002-union-types.md)), so they can't be observed from a program. Types are checked at runtime: [`typeof`](../functions-and-pipe.md#built-in-functions) reports the type of the value an expression actually produced, which is always one of the union's members:
 
 ```flt
 typeof(if true 1)            # Number
