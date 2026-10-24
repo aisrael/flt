@@ -9,6 +9,12 @@
 
 - Whenever planning or implementing a new language feature, start by writing the documentation under `docs/`, with examples. Then write Cucumber features (under `features/`) and unit tests that match those examples. Only then write the implementation.
 
+# ADRs
+
+- When key decisions are made by the user, offer to create an ADR if the user hasn't explicitly told you to do so
+- Each new ADR should only refer to previous ADRs
+- Forward-looking statements are ok, just not references to future ADRs
+
 # Rust Code Guidelines
 
 - When writing imports, use one `use` statement per line. DO NOT use grouped `use` statements
