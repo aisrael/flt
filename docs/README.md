@@ -20,6 +20,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 001: `None` Types](adrs/001-none-types.md)
 - [ADR 002: Union Types](adrs/002-union-types.md)
 - [ADR 003: Functions as Values](adrs/003-functions-as-values.md)
+- [ADR 004: The Pipe Operator](adrs/004-pipe-operator.md)
 
 ## Scope
 

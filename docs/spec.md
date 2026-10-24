@@ -58,17 +58,20 @@ A union `A | B` is a value of either type (see [union types](types/union_types.m
 
 | Level | Operators                                  | Meaning                     |
 | ----- | ------------------------------------------ | --------------------------- |
-| 1     | `\|>`                                      | pipe                        |
-| 2     | `\|\|`                                     | logical or                  |
-| 3     | `&&`                                       | logical and                 |
-| 4     | `^^`                                       | logical xor                 |
-| 5–7   | `\|`, `^`, `&`                             | bitwise or / xor / and      |
-| 8     | `+` `-` `<>`                               | add, subtract, concatenate  |
-| 9     | `*` `/` `==` `!=` `<` `>` `<=` `>=`        | multiply, divide, compare   |
+| 1     | `\|\|`                                     | logical or                  |
+| 2     | `&&`                                       | logical and                 |
+| 3     | `^^`                                       | logical xor                 |
+| 4     | `==` `!=`                                  | equality                    |
+| 5     | `<` `>` `<=` `>=`                          | ordering                    |
+| 6–8   | `\|`, `^`, `&`                             | bitwise or / xor / and      |
+| 9     | `\|>`                                      | pipe                        |
+| 10    | `+` `-` `<>`                               | add, subtract, concatenate  |
+| 11    | `*` `/`                                    | multiply, divide            |
 | —     | unary `!` `+` `-`, then postfix `.field`   | bind tightest               |
 
-Comparisons share a level with `*` and `/`, so `1 + 2 == 3` parses as `1 + (2 == 3)`. Use
-parentheses: `(1 + 2) == 3`.
+Comparisons bind looser than arithmetic, `<>` and bitwise operators, so `1 + 2 == 3` is `true` and
+`x & 1 == 0` is `(x & 1) == 0`. As in Elixir, `|>` binds looser than `+` `-` `<>` and tighter than
+everything else, so `x |> f == 3` is `(x |> f) == 3` and `a || b |> f` is `a || (b |> f)`.
 
 ## 6. Functions
 
@@ -86,9 +89,14 @@ passed as the final argument, so `foo(1, bar: true)` receives `1, { bar: true }`
 
 ### Pipe
 
-`a |> b |> c` is a left-associative chain at the lowest precedence, e.g.
-`READ("input") |> SELECT(:id) |> WRITE("output")`. It is parsed but not yet evaluated; evaluating it
-raises `Pipe operator not yet supported`.
+`x |> f(a, ...)` evaluates as `f(x, a, ...)`, and `x |> f` as `f(x)`: the left side becomes the
+**first** argument, as in Elixir. Pipes are left-associative, so `a |> f |> g(1)` is `g(f(a), 1)`,
+e.g. `READ("input") |> SELECT(:id) |> WRITE("output")`. `|>` sits at level 9 above.
+
+The left side is evaluated first, then the right side's arguments. The right side must be a call or a
+bare name, resolved and arity-checked like any call, with the piped value counted:
+`1 |> typeof(2)` raises `Function typeof expected 1 argument(s), found 2`. Anything else raises
+`Cannot pipe into <expr>`. Keyword arguments stay last: `x |> f(a, k: v)` passes `x, a, { k: v }`.
 
 ### Built-ins
 

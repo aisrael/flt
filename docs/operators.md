@@ -23,7 +23,7 @@
 | `&` | bitwise and (parsed) | `a & b` |
 | `|` | bitwise or (parsed) | `a | b` |
 | `^` | bitwise xor (parsed) | `a ^ b` |
-| `|>` | pipe | `x |> f` |
+| `|>` | [pipe](./functions-and-pipe.md#pipe-operator) | `x |> f` |
 | `==` | equality | `x == 1` |
 | `!=` | inequality | `x != 0` |
 | `<` | less than | `a < b` |
@@ -33,18 +33,25 @@
 
 ## Precedence (Low to High)
 
-1. `|>`
-2. `||`
-3. `&&`
-4. `^^`
-5. `|`
-6. `^`
-7. `&`
-8. `+`, `-`, `<>`
-9. `*`, `/`
-10. `==`, `!=`, `<`, `>`, `<=`, `>=`
+1. `||`
+2. `&&`
+3. `^^`
+4. `==`, `!=`
+5. `<`, `>`, `<=`, `>=`
+6. `|`
+7. `^`
+8. `&`
+9. `|>`
+10. `+`, `-`, `<>`
+11. `*`, `/`
 
 All binary levels are left-associative.
+
+Comparisons bind looser than arithmetic, string concatenation and the bitwise
+operators, so `1 + 2 == 3` is `true` and `x & 1 == 0` is `(x & 1) == 0`.
+The [pipe](./functions-and-pipe.md#pipe-operator) sits directly below `+`,
+`-` and `<>`, as in Elixir, so `1 + 1 |> f` is `(1 + 1) |> f` and
+`x |> f == 3` is `(x |> f) == 3`.
 
 `.` ([field access](./field-access.md)) is a tight postfix operator that
 binds even tighter than the unary operators above — it applies directly to

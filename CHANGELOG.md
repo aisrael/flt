@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` now evaluates to `None` instead of `()`. `Unit` and `()` are removed.
+- **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` is `(x |> f) == 3`.
 
 ### Highlights
 
@@ -13,7 +14,8 @@
 - **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
 - **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
 - **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002 and 003.
+- **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`. Piping into anything else raises `Cannot pipe into <expr>`.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003 and 004.
 
 ## v0.1.2
 
