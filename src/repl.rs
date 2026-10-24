@@ -219,7 +219,20 @@ impl FltRepl {
         }
     }
 
-    /// Parses and evaluates `args`, reporting specially on bare variable
+    /// Reports on a bare identifier: a variable's value, or a function's type. A variable
+    /// shadows a function of the same name, as in evaluation.
+    fn inspect_identifier(&self, name: &str) -> String {
+        let global_scope = &self.runtime.global_scope;
+        if let Some(value) = global_scope.get_variable(name) {
+            return format!("(variable) {value}");
+        }
+        match global_scope.get_function(name) {
+            Some(function) => format!("(function) {}", function.r#type()),
+            None => "Unbound variable".to_string(),
+        }
+    }
+
+    /// Parses and evaluates `args`, reporting specially on bare variable and function
     /// references and literal expressions.
     fn handle_inspect(&mut self, args: &str) {
         if args.is_empty() {
@@ -235,10 +248,7 @@ impl FltRepl {
         };
 
         if let Statement::Expr(Expr::Ident(name)) = &statement {
-            match self.runtime.global_scope.get_variable(name) {
-                Some(value) => println!("(variable) {}", value),
-                None => println!("Unbound variable"),
-            }
+            println!("{}", self.inspect_identifier(name));
             return;
         }
 
@@ -383,5 +393,28 @@ mod tests {
         let reloaded = Repl::new(TestHandler, Some(history_path)).unwrap();
         let history = reloaded.editor.history();
         assert_eq!(2, history.len());
+    }
+
+    #[test]
+    fn test_inspect_builtin_function() {
+        let repl = FltRepl::new();
+        assert_eq!(
+            repl.inspect_identifier("typeof"),
+            "(function) fn(Any) -> Type"
+        );
+    }
+
+    #[test]
+    fn test_inspect_variable_shadows_function() {
+        let mut repl = FltRepl::new();
+        let statement = FltRepl::parse_full("let typeof = 1").unwrap();
+        repl.runtime.eval(&statement).unwrap();
+        assert_eq!(repl.inspect_identifier("typeof"), "(variable) 1");
+    }
+
+    #[test]
+    fn test_inspect_unbound_identifier() {
+        let repl = FltRepl::new();
+        assert_eq!(repl.inspect_identifier("nope"), "Unbound variable");
     }
 }

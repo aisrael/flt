@@ -105,43 +105,32 @@ pub trait Runtime {
 }
 
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, NativeFunction>,
     pub global_scope: GlobalScope,
 }
 
 impl Default for SimpleRuntime {
+    /// A runtime with the built-in native functions (`typeof`) registered in its global scope.
     fn default() -> Self {
-        Self {
-            built_in_functions: register_builtins(),
-            global_scope: GlobalScope::default(),
-        }
+        let mut global_scope = GlobalScope::default();
+        register_builtins(&mut global_scope);
+        Self { global_scope }
     }
 }
 
-fn register_builtins() -> HashMap<String, NativeFunction> {
-    let mut built_ins = HashMap::new();
-    built_ins.insert(
-        "typeof".to_string(),
-        NativeFunction::new(
-            FunctionDefinition::new(
-                "typeof",
-                Type::type_type(),
-                vec![Argument::new("V", Type::any())],
-            ),
-            builtin_typeof,
+/// Registers the built-in native functions in `global_scope`.
+fn register_builtins(global_scope: &mut GlobalScope) {
+    global_scope.register_function(NativeFunction::new(
+        FunctionDefinition::new(
+            "typeof",
+            Type::type_type(),
+            vec![Argument::new("V", Type::any())],
         ),
-    );
-    built_ins
+        builtin_typeof,
+    ));
 }
 
+/// `typeof(v)`: the type of `v`. The runtime checks the number of arguments before calling it.
 fn builtin_typeof(args: &[Value]) -> Result<Value, Error> {
-    if args.len() != 1 {
-        return Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
-            name: "typeof".to_string(),
-            expected: 1,
-            found: args.len(),
-        }));
-    }
     Ok(Value::Type(args[0].type_of()?))
 }
 
@@ -177,19 +166,16 @@ impl SimpleRuntime {
     }
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
-    /// like an identifier, falling back to the built-in functions (`typeof`).
+    /// like an identifier.
     fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, Error> {
         match self.lookup(name) {
             Some(Value::Function(function)) => function.call(args),
             Some(_) => Err(Error::RuntimeError(RuntimeError::NotCallable(
                 name.to_string(),
             ))),
-            None => match self.built_in_functions.get(name) {
-                Some(function) => function.call(args),
-                None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
-                    name.to_string(),
-                ))),
-            },
+            None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
+                name.to_string(),
+            ))),
         }
     }
 
