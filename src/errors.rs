@@ -37,8 +37,12 @@ pub enum RuntimeError {
     UnboundIdentifier(String),
     #[error("No such field: {0}")]
     NoSuchField(String),
-    #[error("Function calls not yet supported")]
-    UnsupportedFunctionCall,
+    #[error("Pipe operator not yet supported")]
+    UnsupportedPipe,
+    #[error("Undefined function: {0}")]
+    UndefinedFunction(String),
+    #[error("{0} is not a function")]
+    NotCallable(String),
     #[error("Function {name} expected {expected} argument(s), found {found}")]
     ArgumentCountMismatch {
         name: String,
