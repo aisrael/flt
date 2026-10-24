@@ -18,8 +18,8 @@ The evaluator currently supports:
 - Unary numeric `+` and `-`
 - `if`/`else` expressions; an `if` without `else` evaluates to `None` when its condition is `false`
 - `let` bindings (`let x = expr`) and plain assignment (`x = expr`), stored in the global scope; evaluation returns the bound value (what the REPL prints)
-- Identifier lookup against the global scope, falling back to [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type)
-- Calls to registered [built-in functions](./functions-and-pipe.md#built-in-functions) (currently `typeof`)
+- Identifier lookup against the global scope: variables, then [native functions](./functions-and-pipe.md#native-functions) (e.g. `identity` evaluates to `<fn identity>`), then [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type)
+- Calls to registered [built-in functions](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and to host-registered [native functions](./functions-and-pipe.md#native-functions), including through any name a function value is bound to
 
 `<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated).
 
@@ -30,8 +30,10 @@ The evaluator currently supports:
 - `Division By Zero`
 - `Unbound identifier: <name>` - referencing an identifier with no binding in scope
 - `No such field: <name>` - field access on a map that doesn't have that field
-- `Function calls not yet supported` - calling an unregistered function name, or evaluating a pipe (`|>`) expression
-- `Function <name> expected <expected> argument(s), found <found>` - calling a built-in with the wrong arity
+- `Undefined function: <name>` - calling a name that has no binding
+- `<name> is not a function` - calling a name bound to a value that isn't a function
+- `Pipe operator not yet supported` - evaluating a pipe (`|>`) expression
+- `Function <name> expected <expected> argument(s), found <found>` - calling any function with the wrong number of arguments
 
 ## Parsed but Not Yet Evaluated
 
@@ -39,7 +41,6 @@ These constructs parse successfully but are not fully supported by the current e
 
 - Pipe expressions (`|>`)
 - Bitwise operators (`&`, `|`, `^`)
-- Function calls to any name that isn't a registered built-in
 - Standalone keyword expressions (e.g. `return`, `fn`) - they parse as expressions but have no evaluation behavior yet
 
 ## Practical Guidance

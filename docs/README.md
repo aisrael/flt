@@ -15,6 +15,12 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments) and pipe chaining.
 - [`runtime-and-limitations.md`](runtime-and-limitations.md) - Evaluation behavior, errors, and current limitations.
 
+## Architecture Decision Records
+
+- [ADR 001: `None` Types](adrs/001-none-types.md)
+- [ADR 002: Union Types](adrs/002-union-types.md)
+- [ADR 003: Functions as Values](adrs/003-functions-as-values.md)
+
 ## Scope
 
 These docs describe the currently implemented parser and CLI evaluator for version `0.2.0`.
