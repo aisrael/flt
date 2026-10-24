@@ -223,6 +223,24 @@ impl SimpleRuntime {
                 let val = self.eval_expr(inner)?;
                 Self::eval_unary(*op, &val)
             }
+            // `x |> f(a, ...)` calls `f(x, a, ...)`, and `x |> f` calls `f(x)`. The right
+            // side is never evaluated on its own.
+            Expr::BinaryExpr(left, BinaryOp::Pipe, right) => {
+                let value = self.eval_expr(left)?;
+                match right.as_ref() {
+                    Expr::FunctionCall(name, args) => {
+                        let mut values = vec![value];
+                        for arg in args {
+                            values.push(self.eval_expr(arg)?);
+                        }
+                        self.call_function(name.0.as_str(), &values)
+                    }
+                    Expr::Ident(name) => self.call_function(name.as_str(), &[value]),
+                    other => Err(Error::RuntimeError(RuntimeError::InvalidPipeTarget(
+                        other.to_string(),
+                    ))),
+                }
+            }
             Expr::BinaryExpr(left, op, right) => {
                 let l = self.eval_expr(left)?;
                 let r = self.eval_expr(right)?;
@@ -317,7 +335,7 @@ impl SimpleRuntime {
             BinaryOp::Gt => Self::binary_compare(l, r, |a, b| a > b),
             BinaryOp::Lte => Self::binary_compare(l, r, |a, b| a <= b),
             BinaryOp::Gte => Self::binary_compare(l, r, |a, b| a >= b),
-            BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedPipe)),
+            BinaryOp::Pipe => unreachable!("pipes are evaluated by eval_expr"),
         }
     }
 
@@ -430,8 +448,12 @@ impl GlobalScope {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
+
     use super::*;
     use crate::ast::Identifier;
+    use crate::parser::parse_statement;
 
     /// Evaluates a single expression statement in a fresh runtime.
     fn eval(expr: Expr) -> Value {
@@ -760,6 +782,229 @@ mod tests {
             result,
             Err(Error::RuntimeError(RuntimeError::UndefinedFunction(name))) if name == "nope"
         ));
+    }
+
+    /// A fresh runtime with `identity`, a native `sub(a, b)` returning `a - b`, a native
+    /// `args(a, b, c)` returning its arguments as an array, and a native `next()` returning
+    /// 1, 2, 3, ... on successive calls.
+    fn runtime_for_pipes() -> SimpleRuntime {
+        let mut runtime = runtime_with_identity();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "sub",
+                Type::number(),
+                vec![Argument::number("a"), Argument::number("b")],
+            ),
+            |args| SimpleRuntime::binary_number(&args[0], &args[1], |a, b| a - b),
+        ));
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "args",
+                Type::array(),
+                vec![
+                    Argument::new("a", Type::any()),
+                    Argument::new("b", Type::any()),
+                    Argument::new("c", Type::any()),
+                ],
+            ),
+            |args| Ok(Value::Array(args.to_vec())),
+        ));
+        let calls = Arc::new(AtomicU64::new(0));
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new("next", Type::number(), vec![]),
+            move |_args| {
+                Ok(Value::Number(BigDecimal::from(
+                    calls.fetch_add(1, Ordering::SeqCst) + 1,
+                )))
+            },
+        ));
+        runtime
+    }
+
+    /// Parses and evaluates each `;`-separated statement in `input`, returning the last result.
+    fn eval_source(runtime: &mut SimpleRuntime, input: &str) -> Result<Value, Error> {
+        let mut last = Ok(Value::None);
+        for source in input.split(';') {
+            let (rest, statement) = parse_statement(source).expect("input should parse");
+            assert_eq!(rest, "", "unparsed input in {source:?}");
+            last = Ok(runtime.eval(&statement)?);
+        }
+        last
+    }
+
+    fn number(n: i64) -> Value {
+        Value::Number(BigDecimal::from(n))
+    }
+
+    /// `f 1`, `f(1)`, `1 |> f` and `1 |> f()` all evaluate as `f(1)`, for native and
+    /// built-in functions alike.
+    #[test]
+    fn test_call_and_pipe_forms_are_equivalent() {
+        for (name, expected) in [
+            ("identity", number(1)),
+            ("typeof", Value::Type(Type::number())),
+        ] {
+            for form in [
+                format!("{name} 1"),
+                format!("{name}(1)"),
+                format!("1 |> {name}"),
+                format!("1 |> {name}()"),
+            ] {
+                let mut runtime = runtime_for_pipes();
+                assert_eq!(
+                    eval_source(&mut runtime, &form).unwrap(),
+                    expected,
+                    "evaluating {form:?}"
+                );
+            }
+        }
+        // with more arguments, and through another name
+        let mut runtime = runtime_for_pipes();
+        for form in ["sub 10, 3", "sub(10, 3)", "10 |> sub(3)"] {
+            assert_eq!(eval_source(&mut runtime, form).unwrap(), number(7));
+        }
+        eval_source(&mut runtime, "let g = identity").unwrap();
+        for form in ["g 1", "g(1)", "1 |> g", "1 |> g()"] {
+            assert_eq!(eval_source(&mut runtime, form).unwrap(), number(1));
+        }
+    }
+
+    #[test]
+    fn test_pipe_passes_left_side_as_first_argument() {
+        let mut runtime = runtime_for_pipes();
+        assert_eq!(
+            eval_source(&mut runtime, "10 |> sub(3)").unwrap(),
+            number(7)
+        );
+    }
+
+    #[test]
+    fn test_pipe_into_bare_name() {
+        let mut runtime = runtime_for_pipes();
+        assert_eq!(
+            eval_source(&mut runtime, "1 |> typeof").unwrap(),
+            Value::Type(Type::number())
+        );
+        assert_eq!(
+            eval_source(&mut runtime, "let g = identity; 42 |> g").unwrap(),
+            number(42)
+        );
+    }
+
+    #[test]
+    fn test_pipe_keeps_keyword_arguments_last() {
+        let mut runtime = runtime_for_pipes();
+        let value = eval_source(&mut runtime, "1 |> args(2, k: 3)").unwrap();
+        assert_eq!(
+            value,
+            Value::Array(vec![
+                number(1),
+                number(2),
+                Value::Map(HashMap::from([("k".to_string(), number(3))])),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_pipe_chain_passes_previous_result_first() {
+        let mut runtime = runtime_for_pipes();
+        // sub(sub(10, 3), 2)
+        assert_eq!(
+            eval_source(&mut runtime, "10 |> sub(3) |> sub(2)").unwrap(),
+            number(5)
+        );
+        // sub(identity(10), 1)
+        assert_eq!(
+            eval_source(&mut runtime, "10 |> identity |> sub(1)").unwrap(),
+            number(9)
+        );
+    }
+
+    #[test]
+    fn test_pipe_evaluates_left_side_first() {
+        let mut runtime = runtime_for_pipes();
+        // sub(1, 2), not sub(2, 1)
+        assert_eq!(
+            eval_source(&mut runtime, "next() |> sub(next())").unwrap(),
+            number(-1)
+        );
+    }
+
+    #[test]
+    fn test_pipe_right_side_is_not_evaluated_on_its_own() {
+        let mut runtime = runtime_for_pipes();
+        assert!(eval_source(&mut runtime, "typeof()").is_err());
+        assert_eq!(
+            eval_source(&mut runtime, "1 |> typeof()").unwrap(),
+            Value::Type(Type::number())
+        );
+    }
+
+    #[test]
+    fn test_pipe_argument_count_includes_piped_value() {
+        let mut runtime = runtime_for_pipes();
+        let result = eval_source(&mut runtime, "1 |> typeof(2)");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected: 1, found: 2 }))
+                if name == "typeof"
+        ));
+    }
+
+    #[test]
+    fn test_pipe_into_type_name_is_not_callable() {
+        let mut runtime = runtime_for_pipes();
+        let result = eval_source(&mut runtime, "1 |> Number");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "Number"
+        ));
+    }
+
+    #[test]
+    fn test_pipe_into_unknown_function_is_undefined() {
+        let mut runtime = runtime_for_pipes();
+        let result = eval_source(&mut runtime, "1 |> nope()");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::UndefinedFunction(name))) if name == "nope"
+        ));
+    }
+
+    #[test]
+    fn test_pipe_into_non_call_is_invalid() {
+        let mut runtime = runtime_for_pipes();
+        let result = eval_source(&mut runtime, "1 |> 2");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::InvalidPipeTarget(target))) if target == "2"
+        ));
+        let result = eval_source(&mut runtime, "10 |> sub(3) * 2");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::InvalidPipeTarget(target))) if target == "sub(3) * 2"
+        ));
+    }
+
+    #[test]
+    fn test_pipe_groups_with_other_operators() {
+        let mut runtime = runtime_for_pipes();
+        assert_eq!(
+            eval_source(&mut runtime, "1 |> typeof == Number").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_source(&mut runtime, "1 + 1 |> sub(2)").unwrap(),
+            number(0)
+        );
+        assert_eq!(
+            eval_source(&mut runtime, "1 + 2 == 3").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_source(&mut runtime, r#""a" <> "b" == "ab""#).unwrap(),
+            Value::Boolean(true)
+        );
     }
 
     #[test]

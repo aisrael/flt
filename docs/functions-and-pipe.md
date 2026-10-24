@@ -33,16 +33,76 @@ add 1
 add 1, 2
 ```
 
+This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
+
 ## Pipe Operator
 
-The pipe operator is written as `|>`.
+The pipe operator `|>` passes the value on its left as the **first** argument of the function on its right, as in [Elixir](https://elixirschool.com/en/lessons/basics/pipe_operator).
 
 ```flt
-a |> b |> c
+1 |> typeof              # typeof(1)         → Number
+1 |> typeof()            # typeof(1)         → Number
+typeof(1) |> typeof      # typeof(typeof(1)) → Type
+10 |> sub(3)             # sub(10, 3)        → 7
+x |> f(a, k: v)          # f(x, a, {k: v})
+a |> f |> g(1)           # g(f(a), 1)
+1 |> typeof == Number    # (1 |> typeof) == Number → true
 READ("input") |> SELECT(:id) |> WRITE("output")
 ```
 
-The parser treats this as a left-associative binary operator chain.
+Pipes are left-associative, so `a |> f |> g` is `(a |> f) |> g`. The left side is evaluated first, then the arguments on the right, left to right. The call on the right is never evaluated on its own, so `1 |> typeof()` works although `typeof()` alone raises an arity error.
+
+### Grouping With Other Operators
+
+`|>` binds looser than `+`, `-` and `<>`, and tighter than everything else ([precedence](./operators.md#precedence-low-to-high)), as in Elixir:
+
+```flt
+1 + 1 |> typeof          # (1 + 1) |> typeof   → Number
+x |> f == 3              # (x |> f) == 3
+x |> f & 1               # (x |> f) & 1
+a || b |> f              # a || (b |> f)
+```
+
+### The Right Side
+
+The right side is a call, in either [call form](#function-call-forms), or a bare function name. A bare name `f` is the same as `f()`. The name is resolved like any other call ([name resolution](#name-resolution)), so a function bound to another name can be piped into:
+
+```flt
+let g = identity
+42 |> g                  # identity(42) → 42
+```
+
+Keyword arguments are collected into a trailing map, so the piped value goes before them and they stay last: `x |> f(a, k: v)` calls `f` with `x`, `a` and `{k: v}`.
+
+### Equivalent Forms
+
+A call and a pipe into a function are interchangeable. These all evaluate to `identity(1)`, though the last three parse to different trees:
+
+```flt
+identity 1               # parses the same as identity(1)
+identity(1)
+1 |> identity
+1 |> identity()
+```
+
+### Calls Next to a Pipe
+
+A call without parentheses takes everything after its name as its arguments, so it isn't allowed on either side of `|>`:
+
+- On the right, a call needs parentheses. The right side is parsed like an `if` condition, where a name followed by whitespace isn't a call, so `1 |> f 2` is a parse error. Write `1 |> f(2)`. A bare name, as in `1 |> f`, is fine.
+- On the left, a call without parentheses can't take a pipe as an argument. `f 1 |> g()` would mean `f(1 |> g())`, so it's a parse error. Write `f(1) |> g()`, or `f(1 |> g())`.
+
+Inside the parentheses of a call on the right, calls need parentheses too, as in an `if` condition: `x |> f(g(1))`, not `x |> f(g 1)`. And `if x |> f "Ok" else "No"` reads as the condition `x |> f` followed by the `"Ok"` branch.
+
+### Errors
+
+A pipe calls the function exactly as the equivalent call would, so it raises the same [call errors](#calls). The argument count includes the piped value:
+
+- `1 |> typeof(2)` calls `typeof(1, 2)`, and raises `Function typeof expected 1 argument(s), found 2`.
+- `1 |> nope()` raises `Undefined function: nope`.
+- `1 |> Number` raises `Number is not a function`.
+
+Piping into anything other than a call or a name raises `Cannot pipe into <expr>`, e.g. `1 |> 2` raises `Cannot pipe into 2`.
 
 ## Built-in Functions
 
@@ -122,5 +182,5 @@ Before a native function runs, the runtime checks the number of arguments agains
 
 - Parsing for function calls (including keyword arguments) and pipe expressions is implemented.
 - Calling a registered built-in (currently just `typeof`) or a host-registered [native function](#native-functions) evaluates it.
-- `typeof` is not yet a function value, so `typeof` on its own raises `Unbound identifier: typeof`.
-- Runtime evaluation for the pipe operator (`|>`) is not implemented yet; evaluating a pipe expression raises `Pipe operator not yet supported`.
+- `typeof` is not yet a function value, so `typeof` on its own raises `Unbound identifier: typeof`. It can still be piped into by name: `1 |> typeof` is `Number`.
+- Pipes (`|>`) are evaluated. Multi-line pipes in the REPL (a line starting with `|>` continuing the previous one) are not supported yet.

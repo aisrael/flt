@@ -37,8 +37,8 @@ pub enum RuntimeError {
     UnboundIdentifier(String),
     #[error("No such field: {0}")]
     NoSuchField(String),
-    #[error("Pipe operator not yet supported")]
-    UnsupportedPipe,
+    #[error("Cannot pipe into {0}")]
+    InvalidPipeTarget(String),
     #[error("Undefined function: {0}")]
     UndefinedFunction(String),
     #[error("{0} is not a function")]

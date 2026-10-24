@@ -2,6 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
 use nom::combinator::map_res;
+use nom::combinator::verify;
 use nom::error::ErrorKind;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
@@ -10,6 +11,7 @@ use nom::sequence::preceded;
 use nom::IResult;
 use nom::Parser;
 
+use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
@@ -115,12 +117,20 @@ pub fn parse_function_call(
             ),
             preceded(
                 multispace1_or_comment,
-                map_res(
-                    separated_list1(
-                        (multispace0_or_comment, tag(","), multispace0_or_comment),
-                        parse_arg_disallow_unary_plus(parse_expr),
+                verify(
+                    map_res(
+                        separated_list1(
+                            (multispace0_or_comment, tag(","), multispace0_or_comment),
+                            parse_arg_disallow_unary_plus(parse_expr),
+                        ),
+                        collect_args,
                     ),
-                    collect_args,
+                    |(positional_args, keyword_args): &(Vec<Expr>, Vec<KeyValue>)| {
+                        !positional_args
+                            .iter()
+                            .chain(keyword_args.iter().map(|kv| &kv.value))
+                            .any(has_unparenthesized_pipe)
+                    },
                 ),
             ),
         ))
@@ -133,6 +143,24 @@ pub fn parse_function_call(
                 keyword_args,
             },
         ))
+    }
+}
+
+/// Whether `expr` has a pipe that isn't inside parentheses, brackets or a call.
+///
+/// A call without parentheses rejects such an argument, since `f 1 |> g()` would
+/// otherwise mean `f(1 |> g())` rather than `f(1) |> g()`. Operators that bind tighter
+/// than `|>` (`+ - <> * /`) can only hold a pipe through parentheses or string
+/// interpolation, so only the looser operators are searched.
+fn has_unparenthesized_pipe(expr: &Expr) -> bool {
+    match expr {
+        Expr::BinaryExpr(_, BinaryOp::Pipe, _) => true,
+        Expr::BinaryExpr(_, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Concat, _)
+        | Expr::BinaryExpr(_, BinaryOp::Mul | BinaryOp::Div, _) => false,
+        Expr::BinaryExpr(left, _, right) => {
+            has_unparenthesized_pipe(left) || has_unparenthesized_pipe(right)
+        }
+        _ => false,
     }
 }
 

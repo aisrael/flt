@@ -61,7 +61,7 @@ fn parse_if_expr(input: &str) -> IResult<&str, Expr> {
 
     let (input, (condition, then_branch, else_branch)) = alt((
         |input| {
-            let (input, condition) = cut(parse_pipe).parse(input)?;
+            let (input, condition) = cut(parse_or).parse(input)?;
             let (input, _) = multispace0_or_comment(input)?;
             let (input, then_branch) = parse_if_then_branch.parse(input)?;
             let (input, _) = multispace0_or_comment(input)?;
@@ -69,7 +69,7 @@ fn parse_if_expr(input: &str) -> IResult<&str, Expr> {
             Ok((input, (condition, then_branch, else_branch)))
         },
         |input| {
-            let (input, condition) = cut(parse_if_condition_pipe).parse(input)?;
+            let (input, condition) = cut(parse_if_condition_or).parse(input)?;
             let (input, _) = multispace0_or_comment(input)?;
             let (input, then_branch) = parse_if_then_branch.parse(input)?;
             let (input, _) = multispace0_or_comment(input)?;
@@ -188,10 +188,6 @@ fn parse_if_condition_unary_tight(input: &str) -> IResult<&str, Expr> {
     .parse(input)
 }
 
-fn parse_if_condition_pipe(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_if_condition_or, &[BinaryOp::Pipe])
-}
-
 fn parse_if_condition_or(input: &str) -> IResult<&str, Expr> {
     parse_binary_level(input, parse_if_condition_and, &[BinaryOp::Or])
 }
@@ -201,7 +197,23 @@ fn parse_if_condition_and(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_if_condition_xor(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_if_condition_bit_or, &[BinaryOp::Xor])
+    parse_binary_level(input, parse_if_condition_equality, &[BinaryOp::Xor])
+}
+
+fn parse_if_condition_equality(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_if_condition_relational,
+        &[BinaryOp::Eq, BinaryOp::Ne],
+    )
+}
+
+fn parse_if_condition_relational(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_if_condition_bit_or,
+        &[BinaryOp::Lt, BinaryOp::Gt, BinaryOp::Lte, BinaryOp::Gte],
+    )
 }
 
 fn parse_if_condition_bit_or(input: &str) -> IResult<&str, Expr> {
@@ -213,11 +225,11 @@ fn parse_if_condition_bit_xor(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_if_condition_bit_and(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(
-        input,
-        parse_if_condition_add_sub_concat,
-        &[BinaryOp::BitAnd],
-    )
+    parse_binary_level(input, parse_if_condition_pipe, &[BinaryOp::BitAnd])
+}
+
+fn parse_if_condition_pipe(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_if_condition_add_sub_concat, &[BinaryOp::Pipe])
 }
 
 fn parse_if_condition_add_sub_concat(input: &str) -> IResult<&str, Expr> {
@@ -232,16 +244,7 @@ fn parse_if_condition_mul_div(input: &str) -> IResult<&str, Expr> {
     parse_binary_level(
         input,
         parse_if_condition_unary,
-        &[
-            BinaryOp::Mul,
-            BinaryOp::Div,
-            BinaryOp::Eq,
-            BinaryOp::Ne,
-            BinaryOp::Lt,
-            BinaryOp::Gt,
-            BinaryOp::Lte,
-            BinaryOp::Gte,
-        ],
+        &[BinaryOp::Mul, BinaryOp::Div],
     )
 }
 
@@ -273,20 +276,31 @@ fn parse_unary_tight(input: &str) -> IResult<&str, Expr> {
 }
 
 /// Parses binary expressions: `Expr` then `BinaryOp` then `Expr`, with left-associative folding.
-/// Precedence (lowest to highest): ||, &&, ^^, |, ^, &, +/-/<> (add/sub/concat), *, /, ==, !=, <, >, <=, >=
+/// Precedence (lowest to highest): ||, &&, ^^, ==/!=, </>/<=/>=, |, ^, &, |>, +/-/<> (add/sub/concat), *, /
 /// `next` parses the higher-precedence operand; `allowed` restricts which operators this level accepts.
 fn parse_binary_level<'a>(
     input: &'a str,
     next: fn(&str) -> IResult<&str, Expr>,
     allowed: &[BinaryOp],
 ) -> IResult<&'a str, Expr> {
+    parse_binary_level_split(input, next, next, allowed)
+}
+
+/// Like `parse_binary_level`, but parses the first operand with `first` and every operand
+/// after an operator with `rest`.
+fn parse_binary_level_split<'a>(
+    input: &'a str,
+    first: fn(&str) -> IResult<&str, Expr>,
+    rest: fn(&str) -> IResult<&str, Expr>,
+    allowed: &[BinaryOp],
+) -> IResult<&'a str, Expr> {
     let parse_expr_binary_op_expr = (
-        next,
+        first,
         many0((
             multispace0_or_comment,
             verify(parse_binary_op, |o: &BinaryOp| allowed.contains(o)),
             multispace0_or_comment,
-            next,
+            rest,
         )),
     );
     map(
@@ -300,10 +314,6 @@ fn parse_binary_level<'a>(
     .parse(input)
 }
 
-fn parse_pipe(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_or, &[BinaryOp::Pipe])
-}
-
 fn parse_or(input: &str) -> IResult<&str, Expr> {
     parse_binary_level(input, parse_and, &[BinaryOp::Or])
 }
@@ -313,7 +323,19 @@ fn parse_and(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_xor(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_bit_or, &[BinaryOp::Xor])
+    parse_binary_level(input, parse_equality, &[BinaryOp::Xor])
+}
+
+fn parse_equality(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(input, parse_relational, &[BinaryOp::Eq, BinaryOp::Ne])
+}
+
+fn parse_relational(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level(
+        input,
+        parse_bit_or,
+        &[BinaryOp::Lt, BinaryOp::Gt, BinaryOp::Lte, BinaryOp::Gte],
+    )
 }
 
 fn parse_bit_or(input: &str) -> IResult<&str, Expr> {
@@ -325,7 +347,21 @@ fn parse_bit_xor(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_bit_and(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_add_sub_concat, &[BinaryOp::BitAnd])
+    parse_binary_level(input, parse_pipe, &[BinaryOp::BitAnd])
+}
+
+/// `|>` sits directly below `+`, `-` and `<>`, as in Elixir, so `x |> f == 3` is
+/// `(x |> f) == 3` and `1 + 1 |> f` is `(1 + 1) |> f`.
+///
+/// The right side of `|>` is parsed like an `if` condition, so a call there needs
+/// parentheses: `x |> f 2` parses as `x |> f`, leaving `2` unparsed.
+fn parse_pipe(input: &str) -> IResult<&str, Expr> {
+    parse_binary_level_split(
+        input,
+        parse_add_sub_concat,
+        parse_if_condition_add_sub_concat,
+        &[BinaryOp::Pipe],
+    )
 }
 
 fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
@@ -337,26 +373,13 @@ fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_mul_div(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(
-        input,
-        parse_unary,
-        &[
-            BinaryOp::Mul,
-            BinaryOp::Div,
-            BinaryOp::Eq,
-            BinaryOp::Ne,
-            BinaryOp::Lt,
-            BinaryOp::Gt,
-            BinaryOp::Lte,
-            BinaryOp::Gte,
-        ],
-    )
+    parse_binary_level(input, parse_unary, &[BinaryOp::Mul, BinaryOp::Div])
 }
 
 /// Parses an expression: unary and binary with proper precedence.
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_or_comment(input)?;
-    let (input, expr) = parse_pipe(input)?;
+    let (input, expr) = parse_or(input)?;
     let (input, _) = multispace0_or_comment(input)?;
     Ok((input, expr))
 }
@@ -630,14 +653,10 @@ mod tests {
             ))
         );
         assert_eq!(
-            parse_expr("1 |> add 2"),
+            parse_expr("1 |> add"),
             Ok((
                 "",
-                Expr::binary_expr(
-                    Expr::literal_number(1),
-                    BinaryOp::Pipe,
-                    Expr::function_call("add", vec![Expr::literal_number(2)])
-                )
+                Expr::binary_expr(Expr::literal_number(1), BinaryOp::Pipe, Expr::ident("add"))
             ))
         );
         assert_eq!(
@@ -935,6 +954,342 @@ mod tests {
                     )
                 )
             ))
+        );
+    }
+
+    /// Asserts that `input` parses completely to `expected`.
+    fn assert_parses_to(input: &str, expected: Expr) {
+        assert_eq!(parse_expr(input), Ok(("", expected)), "parsing {input:?}");
+    }
+
+    fn bin(left: Expr, op: BinaryOp, right: Expr) -> Expr {
+        Expr::binary_expr(left, op, right)
+    }
+
+    fn num(n: i64) -> Expr {
+        Expr::literal_number(n)
+    }
+
+    fn id(name: &str) -> Expr {
+        Expr::ident(name)
+    }
+
+    #[test]
+    fn test_parse_comparisons_bind_looser_than_arithmetic() {
+        assert_parses_to(
+            "1 + 2 == 3",
+            bin(bin(num(1), BinaryOp::Add, num(2)), BinaryOp::Eq, num(3)),
+        );
+        assert_parses_to(
+            "x == y - 1",
+            bin(id("x"), BinaryOp::Eq, bin(id("y"), BinaryOp::Sub, num(1))),
+        );
+        assert_parses_to(
+            "x * 2 < y",
+            bin(bin(id("x"), BinaryOp::Mul, num(2)), BinaryOp::Lt, id("y")),
+        );
+        assert_parses_to(
+            r#""a" <> "b" == "ab""#,
+            bin(
+                bin(
+                    Expr::literal_string("a"),
+                    BinaryOp::Concat,
+                    Expr::literal_string("b"),
+                ),
+                BinaryOp::Eq,
+                Expr::literal_string("ab"),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_equality_binds_looser_than_ordering() {
+        assert_parses_to(
+            "a < b == c",
+            bin(bin(id("a"), BinaryOp::Lt, id("b")), BinaryOp::Eq, id("c")),
+        );
+        assert_parses_to(
+            "a != b >= c",
+            bin(id("a"), BinaryOp::Ne, bin(id("b"), BinaryOp::Gte, id("c"))),
+        );
+    }
+
+    #[test]
+    fn test_parse_comparisons_bind_looser_than_bitwise() {
+        assert_parses_to(
+            "x & 1 == 0",
+            bin(bin(id("x"), BinaryOp::BitAnd, num(1)), BinaryOp::Eq, num(0)),
+        );
+        assert_parses_to(
+            "x | y < z",
+            bin(
+                bin(id("x"), BinaryOp::BitOr, id("y")),
+                BinaryOp::Lt,
+                id("z"),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_logical_binds_looser_than_comparisons() {
+        assert_parses_to(
+            "a == b && c",
+            bin(bin(id("a"), BinaryOp::Eq, id("b")), BinaryOp::And, id("c")),
+        );
+        assert_parses_to(
+            "a || b < c",
+            bin(id("a"), BinaryOp::Or, bin(id("b"), BinaryOp::Lt, id("c"))),
+        );
+    }
+
+    #[test]
+    fn test_parse_pipe_binds_tighter_than_comparisons_and_logical() {
+        assert_parses_to(
+            "x |> f == 3",
+            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Eq, num(3)),
+        );
+        assert_parses_to(
+            "x |> f < 3",
+            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Lt, num(3)),
+        );
+        assert_parses_to(
+            "a || b |> f",
+            bin(id("a"), BinaryOp::Or, bin(id("b"), BinaryOp::Pipe, id("f"))),
+        );
+        assert_parses_to(
+            "a && b |> f",
+            bin(
+                id("a"),
+                BinaryOp::And,
+                bin(id("b"), BinaryOp::Pipe, id("f")),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_pipe_binds_tighter_than_bitwise() {
+        assert_parses_to(
+            "x |> f & 1",
+            bin(
+                bin(id("x"), BinaryOp::Pipe, id("f")),
+                BinaryOp::BitAnd,
+                num(1),
+            ),
+        );
+        assert_parses_to(
+            "x | y |> f",
+            bin(
+                id("x"),
+                BinaryOp::BitOr,
+                bin(id("y"), BinaryOp::Pipe, id("f")),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_arithmetic_binds_tighter_than_pipe() {
+        assert_parses_to(
+            "1 + 1 |> f",
+            bin(bin(num(1), BinaryOp::Add, num(1)), BinaryOp::Pipe, id("f")),
+        );
+        assert_parses_to(
+            r#""a" <> "b" |> f"#,
+            bin(
+                bin(
+                    Expr::literal_string("a"),
+                    BinaryOp::Concat,
+                    Expr::literal_string("b"),
+                ),
+                BinaryOp::Pipe,
+                id("f"),
+            ),
+        );
+        assert_parses_to(
+            "x |> f(2) * 3",
+            bin(
+                id("x"),
+                BinaryOp::Pipe,
+                bin(
+                    Expr::function_call("f", vec![num(2)]),
+                    BinaryOp::Mul,
+                    num(3),
+                ),
+            ),
+        );
+    }
+
+    /// `if success "Ok" else ...` forces the `if`-condition grammar (no parenless calls),
+    /// so these exercise the `parse_if_condition_*` chain rather than the main one.
+    #[test]
+    fn test_parse_if_condition_precedence() {
+        let if_ok = |condition: Expr| {
+            Expr::if_expr(
+                condition,
+                Expr::literal_string("Ok"),
+                Some(Expr::literal_string("No")),
+            )
+        };
+        assert_parses_to(
+            r#"if 1 + 2 == n "Ok" else "No""#,
+            if_ok(bin(
+                bin(num(1), BinaryOp::Add, num(2)),
+                BinaryOp::Eq,
+                id("n"),
+            )),
+        );
+        assert_parses_to(
+            r#"if x |> f == n "Ok" else "No""#,
+            if_ok(bin(
+                bin(id("x"), BinaryOp::Pipe, id("f")),
+                BinaryOp::Eq,
+                id("n"),
+            )),
+        );
+        assert_parses_to(
+            r#"if x & 1 == n "Ok" else "No""#,
+            if_ok(bin(
+                bin(id("x"), BinaryOp::BitAnd, num(1)),
+                BinaryOp::Eq,
+                id("n"),
+            )),
+        );
+        assert_parses_to(
+            r#"if a || b |> f "Ok" else "No""#,
+            if_ok(bin(
+                id("a"),
+                BinaryOp::Or,
+                bin(id("b"), BinaryOp::Pipe, id("f")),
+            )),
+        );
+        assert_parses_to(
+            r#"if a < b == c "Ok" else "No""#,
+            if_ok(bin(
+                bin(id("a"), BinaryOp::Lt, id("b")),
+                BinaryOp::Eq,
+                id("c"),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_parse_call_forms_next_to_pipe() {
+        // `identity 1` and `identity(1)` parse the same; the pipe forms parse differently
+        let call = Expr::function_call("identity", vec![num(1)]);
+        assert_parses_to("identity 1", call.clone());
+        assert_parses_to("identity(1)", call);
+        assert_parses_to("1 |> identity", bin(num(1), BinaryOp::Pipe, id("identity")));
+        assert_parses_to(
+            "1 |> identity()",
+            bin(
+                num(1),
+                BinaryOp::Pipe,
+                Expr::function_call("identity", vec![]),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_pipe_into_call_without_parens_leaves_arguments_unparsed() {
+        assert_eq!(
+            parse_expr("1 |> f 2"),
+            Ok(("2", bin(num(1), BinaryOp::Pipe, id("f"))))
+        );
+        assert_eq!(
+            parse_expr("1 |> f 2, 3"),
+            Ok(("2, 3", bin(num(1), BinaryOp::Pipe, id("f"))))
+        );
+        assert_eq!(
+            parse_expr("a |> f |> g 1"),
+            Ok((
+                "1",
+                bin(
+                    bin(id("a"), BinaryOp::Pipe, id("f")),
+                    BinaryOp::Pipe,
+                    id("g"),
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_call_without_parens_rejects_piped_argument() {
+        assert_eq!(parse_expr("f 1 |> g()"), Ok(("1 |> g()", id("f"))));
+        assert_eq!(parse_expr("f 1, 2 |> g()"), Ok(("1, 2 |> g()", id("f"))));
+        assert_eq!(
+            parse_expr("f 1 == 2 |> g()"),
+            Ok(("1 == 2 |> g()", id("f")))
+        );
+        assert_eq!(parse_expr("f k: 1 |> g()"), Ok(("k: 1 |> g()", id("f"))));
+    }
+
+    #[test]
+    fn test_parse_pipe_with_parenthesized_calls() {
+        assert_parses_to(
+            "f(1) |> g()",
+            bin(
+                Expr::function_call("f", vec![num(1)]),
+                BinaryOp::Pipe,
+                Expr::function_call("g", vec![]),
+            ),
+        );
+        // the call's own parentheses, with whitespace before them
+        assert_parses_to(
+            "f (1 |> g())",
+            Expr::function_call(
+                "f",
+                vec![bin(
+                    num(1),
+                    BinaryOp::Pipe,
+                    Expr::function_call("g", vec![]),
+                )],
+            ),
+        );
+        // a parenthesized argument
+        assert_parses_to(
+            "f 2, (1 |> g())",
+            Expr::function_call(
+                "f",
+                vec![
+                    num(2),
+                    Expr::parenthesized(bin(
+                        num(1),
+                        BinaryOp::Pipe,
+                        Expr::function_call("g", vec![]),
+                    )),
+                ],
+            ),
+        );
+        // a whitespace-form call on the left, without a pipe in its arguments
+        assert_parses_to(
+            "f 1 + 2",
+            Expr::function_call("f", vec![bin(num(1), BinaryOp::Add, num(2))]),
+        );
+    }
+
+    #[test]
+    fn test_parse_call_without_parens_allows_pipe_in_interpolation() {
+        assert_parses_to(
+            r#"f "a{x |> g()}""#,
+            Expr::function_call(
+                "f",
+                vec![bin(
+                    Expr::literal_string("a"),
+                    BinaryOp::Concat,
+                    bin(id("x"), BinaryOp::Pipe, Expr::function_call("g", vec![])),
+                )],
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_if_condition_ending_in_pipe_into_bare_name() {
+        assert_parses_to(
+            r#"if x |> f "Ok" else "No""#,
+            Expr::if_expr(
+                bin(id("x"), BinaryOp::Pipe, id("f")),
+                Expr::literal_string("Ok"),
+                Some(Expr::literal_string("No")),
+            ),
         );
     }
 }

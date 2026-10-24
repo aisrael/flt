@@ -394,7 +394,41 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_binary_pipe_unsupported() {
+    fn test_eval_binary_pipe_into_bare_name() {
+        let expr = Expr::binary_expr(
+            Expr::literal_number(1),
+            BinaryOp::Pipe,
+            Expr::ident("typeof"),
+        );
+        assert_eq!(eval(&expr).unwrap(), "Number");
+    }
+
+    #[test]
+    fn test_eval_binary_pipe_into_call() {
+        let expr = Expr::binary_expr(
+            Expr::literal_string("a"),
+            BinaryOp::Pipe,
+            Expr::function_call("typeof", vec![]),
+        );
+        assert_eq!(eval(&expr).unwrap(), "String");
+    }
+
+    #[test]
+    fn test_eval_binary_pipe_chain() {
+        let expr = Expr::binary_expr(
+            Expr::binary_expr(
+                Expr::literal_number(1),
+                BinaryOp::Pipe,
+                Expr::ident("typeof"),
+            ),
+            BinaryOp::Pipe,
+            Expr::ident("typeof"),
+        );
+        assert_eq!(eval(&expr).unwrap(), "Type");
+    }
+
+    #[test]
+    fn test_eval_binary_pipe_into_non_call() {
         let expr = Expr::binary_expr(
             Expr::literal_number(1),
             BinaryOp::Pipe,
@@ -403,7 +437,7 @@ mod tests {
         let err = eval(&expr).unwrap_err();
         assert!(matches!(
             err,
-            Error::RuntimeError(RuntimeError::UnsupportedPipe)
+            Error::RuntimeError(RuntimeError::InvalidPipeTarget(target)) if target == "2"
         ));
     }
 

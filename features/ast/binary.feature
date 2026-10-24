@@ -1,7 +1,7 @@
 Feature: Binary expressions
 
   Binary operators combine two expressions. Precedence (lowest to highest):
-  `|>`, `||`, `&&`, `^^`, `|`, `^`, `&`, `+`/`-`/`<>`, `*`, `/`, `==`, `!=`, `<`, `>`, `<=`, `>=`.
+  `||`, `&&`, `^^`, `==`/`!=`, `<`/`>`/`<=`/`>=`, `|`, `^`, `&`, `|>`, `+`/`-`/`<>`, `*`/`/`.
 
   Scenario: Addition
     Given the input "1 + 2"
@@ -87,3 +87,28 @@ Feature: Binary expressions
     Given the input "a >= b"
     When I parse the input
     Then the output should be 'BinaryExpr(Ident("a"), Gte, Ident("b"))'
+
+  Scenario: Arithmetic binds tighter than equality
+    Given the input "1 + 2 == 3"
+    When I parse the input
+    Then the output should be 'BinaryExpr(BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))), Eq, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[3])))))'
+
+  Scenario: Ordering binds tighter than equality
+    Given the input "a < b == c"
+    When I parse the input
+    Then the output should be 'BinaryExpr(BinaryExpr(Ident("a"), Lt, Ident("b")), Eq, Ident("c"))'
+
+  Scenario: A pipe binds tighter than equality
+    Given the input "x |> f == 3"
+    When I parse the input
+    Then the output should be 'BinaryExpr(BinaryExpr(Ident("x"), Pipe, Ident("f")), Eq, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[3])))))'
+
+  Scenario: A pipe binds tighter than logical or
+    Given the input "a || b |> f"
+    When I parse the input
+    Then the output should be 'BinaryExpr(Ident("a"), Or, BinaryExpr(Ident("b"), Pipe, Ident("f")))'
+
+  Scenario: Arithmetic binds tighter than a pipe
+    Given the input "1 + 1 |> f"
+    When I parse the input
+    Then the output should be 'BinaryExpr(BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1]))))), Pipe, Ident("f"))'

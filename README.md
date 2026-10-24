@@ -98,11 +98,12 @@ Binary operators:
 - String concat: `<>`
 - Logical: `&&`, `||`, `^^`
 - Bitwise: `&`, `|`, `^`
-- Pipe: `|>`
+- Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- Pipe: `|>` (`x |> f(a)` evaluates as `f(x, a)`)
 
 ### Precedence (lowest to highest)
 
-`|>` → `||` → `&&` → `^^` → `|` → `^` → `&` → `+`/`-`/`<>` → `*`/`/`
+`||` → `&&` → `^^` → `==`/`!=` → `<`/`>`/`<=`/`>=` → `|` → `^` → `&` → `|>` → `+`/`-`/`<>` → `*`/`/`
 
 Parentheses override precedence as expected.
 
@@ -138,7 +139,7 @@ Print version:
 cargo run -- version
 ```
 
-The runtime evaluates basic expressions and statements (literals, identifiers, unary/binary operators, `if` expressions, and `let` bindings). Function calls and pipe execution are parsed but currently not executed by the runtime; maps/arrays/keyword expressions are also not yet supported.
+The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [`docs/runtime-and-limitations.md`](docs/runtime-and-limitations.md).
 
 ## Public API
 
