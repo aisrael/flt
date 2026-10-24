@@ -14,6 +14,10 @@ use flt::ast::Literal;
 use flt::ast::Statement;
 use flt::parser::parse_expr;
 use flt::parser::parse_statement;
+use flt::runtime::functions::Argument;
+use flt::runtime::functions::FunctionDefinition;
+use flt::runtime::functions::NativeFunction;
+use flt::runtime::types::Type;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 
@@ -27,6 +31,8 @@ pub struct AstWorld {
     pub last_parsed_expr: Option<Expr>,
     /// The displayed value of the last statement evaluated by "I evaluate the input".
     pub result: Option<Result<String, String>>,
+    /// Fixture native functions registered by "the native function" before evaluating.
+    pub natives: Vec<String>,
 }
 
 #[given(expr = r"the input {string}")]
@@ -69,16 +75,44 @@ fn when_i_parse_the_input(world: &mut AstWorld) {
     });
 }
 
+#[given(expr = r"the native function {string}")]
+fn given_the_native_function(world: &mut AstWorld, name: String) {
+    assert!(
+        native_function(&name).is_some(),
+        "no fixture native function named {name:?}"
+    );
+    world.natives.push(name);
+}
+
+/// The fixture native functions that "the native function" can register.
+fn native_function(name: &str) -> Option<NativeFunction> {
+    match name {
+        "identity" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "identity",
+                Type::any(),
+                vec![Argument::new("v", Type::any())],
+            ),
+            |args| Ok(args[0].clone()),
+        )),
+        _ => None,
+    }
+}
+
 #[when(expr = "I evaluate the input")]
 fn when_i_evaluate_the_input(world: &mut AstWorld) {
     let input = world.input.take().expect("input should be set");
-    world.result = Some(evaluate(&input));
+    world.result = Some(evaluate(&input, &world.natives));
 }
 
-/// Parses and evaluates each statement in `input` in a fresh runtime, returning the
-/// displayed value of the last one.
-fn evaluate(input: &str) -> Result<String, String> {
+/// Parses and evaluates each statement in `input` in a fresh runtime with the named
+/// fixture native functions registered, returning the displayed value of the last one.
+fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
     let mut runtime = SimpleRuntime::default();
+    for name in natives {
+        let function = native_function(name).expect("fixture native function should exist");
+        runtime.global_scope.register_function(function);
+    }
     let mut rest = input;
     let mut last = None;
     loop {
