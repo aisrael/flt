@@ -14,6 +14,8 @@ use flt::ast::Literal;
 use flt::ast::Statement;
 use flt::parser::parse_expr;
 use flt::parser::parse_statement;
+use flt::runtime::Runtime;
+use flt::runtime::SimpleRuntime;
 
 #[derive(Debug, Default, World)]
 pub struct AstWorld {
@@ -23,6 +25,8 @@ pub struct AstWorld {
     pub output_statement: Option<Result<Statement, String>>,
     /// Set by array step so "first/second/third element" steps can inspect it.
     pub last_parsed_expr: Option<Expr>,
+    /// The displayed value of the last statement evaluated by "I evaluate the input".
+    pub result: Option<Result<String, String>>,
 }
 
 #[given(expr = r"the input {string}")]
@@ -63,6 +67,52 @@ fn when_i_parse_the_input(world: &mut AstWorld) {
         }
         Err(e) => Err(format!("parse error: {}", e)),
     });
+}
+
+#[when(expr = "I evaluate the input")]
+fn when_i_evaluate_the_input(world: &mut AstWorld) {
+    let input = world.input.take().expect("input should be set");
+    world.result = Some(evaluate(&input));
+}
+
+/// Parses and evaluates each statement in `input` in a fresh runtime, returning the
+/// displayed value of the last one.
+fn evaluate(input: &str) -> Result<String, String> {
+    let mut runtime = SimpleRuntime::default();
+    let mut rest = input;
+    let mut last = None;
+    loop {
+        rest = rest.trim_start_matches(|c: char| c.is_whitespace() || c == ';');
+        if rest.is_empty() {
+            break;
+        }
+        let (remainder, statement) =
+            parse_statement(rest).map_err(|e| format!("parse error: {e}"))?;
+        if remainder.len() == rest.len() {
+            return Err(format!("parse error: no progress at {rest:?}"));
+        }
+        last = Some(runtime.eval(&statement).map_err(|e| e.to_string())?);
+        rest = remainder;
+    }
+    last.map(|value| value.to_string())
+        .ok_or_else(|| "no statements to evaluate".to_string())
+}
+
+#[then(expr = r#"the result should be {string}"#)]
+fn then_the_result_should_be(world: &mut AstWorld, expected: String) {
+    let result = world.result.take().expect("result should be set");
+    let actual = result.expect("evaluation should succeed");
+    assert_eq!(actual, expected);
+}
+
+#[then(expr = r#"the evaluation should fail with {string}"#)]
+fn then_the_evaluation_should_fail_with(world: &mut AstWorld, expected: String) {
+    let result = world.result.take().expect("result should be set");
+    let error = result.expect_err("evaluation should fail");
+    assert!(
+        error.contains(&expected),
+        "expected error containing {expected:?}, got {error:?}"
+    );
 }
 
 #[then(expr = r"the output should be a `Literal::Number\({int}\)`")]

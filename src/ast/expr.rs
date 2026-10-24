@@ -35,7 +35,7 @@ pub enum Expr {
     /// An if expression: `if condition then_branch else else_branch` (else optional).
     ///
     /// When `else_branch` is `None` and `condition` evaluates to `false`, the expression
-    /// evaluates to unit `()`.
+    /// evaluates to `None`.
     IfExpr {
         condition: Box<Expr>,
         then_branch: Box<Expr>,

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.0
+
+### Breaking Changes
+
+- **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` now evaluates to `None` instead of `()`. `Unit` and `()` are removed.
+
+### Highlights
+
+- **`None` is its own type**: `typeof(None)` is `None`, and the `None` value equals the `None` type.
+- **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. A `let` binding shadows a built-in type name.
+- **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
+- **Docs**: A one-page language spec (`docs/spec.md`) and ADR 001.
+
 ## v0.1.2
 
 - **REPL commands**: `/parse`, `/unset`, `/inspect` (alias `/i`), `/quit`, and `/help`.

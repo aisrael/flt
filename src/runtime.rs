@@ -14,7 +14,6 @@ use crate::ast::Expr;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
-use crate::errors::InterpreterError;
 use crate::errors::RuntimeError;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::BuiltinFunction;
@@ -26,9 +25,8 @@ use crate::Error;
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    /// The unit value (like `()` in Rust/Elixir)
-    Unit,
-    /// The `None` sentinel value (the empty `Option`)
+    /// The `None` value: the empty `Option`, and the result of an `if` with no `else`
+    /// whose condition is `false`. Its type is the built-in `None` type.
     None,
     /// A number value
     Number(BigDecimal),
@@ -49,7 +47,6 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Unit => write!(f, "()"),
             Value::None => write!(f, "None"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
@@ -84,20 +81,16 @@ impl fmt::Display for Value {
 
 impl Value {
     /// Map a runtime value to its built-in type.
-    ///
-    /// Bare `None` cannot be typed without contextual information about the
-    /// wrapped `Option<T>`, so it returns `InterpreterError::NotYetImplemented`.
     pub fn type_of(&self) -> Result<Type, Error> {
         match self {
-            Value::Unit => Ok(Type::unit()),
-            Value::None => Err(Error::InterpreterError(InterpreterError::NotYetImplemented)),
+            Value::None => Ok(Type::none()),
             Value::Number(_) => Ok(Type::number()),
             Value::String(_) => Ok(Type::string()),
             Value::Boolean(_) => Ok(Type::boolean()),
             Value::Symbol(_) => Ok(Type::symbol()),
             Value::Map(_) => Ok(Type::map()),
             Value::Array(_) => Ok(Type::array()),
-            Value::Type(_) => Ok(Type::value()),
+            Value::Type(_) => Ok(Type::type_type()),
         }
     }
 }
@@ -127,8 +120,8 @@ fn register_builtins() -> HashMap<String, BuiltinFunction> {
         BuiltinFunction::new(
             FunctionDefinition::new(
                 "typeof",
-                Type::value(),
-                vec![Argument::new("V", Type::value())],
+                Type::type_type(),
+                vec![Argument::new("V", Type::any())],
             ),
             builtin_typeof,
         ),
@@ -165,10 +158,12 @@ impl SimpleRuntime {
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(lit) => Ok(Self::literal_to_value(lit)),
+            // A variable shadows a built-in type name, e.g. after `let Number = 5`
             Expr::Ident(s) => self
                 .global_scope
                 .get_variable(s.as_str())
                 .cloned()
+                .or_else(|| Type::builtin_named(s.as_str()).map(Value::Type))
                 .ok_or_else(|| Error::RuntimeError(RuntimeError::UnboundIdentifier(s.clone()))),
             Expr::IfExpr {
                 condition,
@@ -186,7 +181,7 @@ impl SimpleRuntime {
                 } else {
                     match else_branch {
                         Some(expr) => self.eval_expr(expr),
-                        None => Ok(Value::Unit),
+                        None => Ok(Value::None),
                     }
                 }
             }
@@ -285,13 +280,22 @@ impl SimpleRuntime {
                 Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
             }
             BinaryOp::Concat => Self::binary_string(l, r),
-            BinaryOp::Eq => Ok(Value::Boolean(l == r)),
-            BinaryOp::Ne => Ok(Value::Boolean(l != r)),
+            BinaryOp::Eq => Ok(Value::Boolean(Self::values_equal(l, r))),
+            BinaryOp::Ne => Ok(Value::Boolean(!Self::values_equal(l, r))),
             BinaryOp::Lt => Self::binary_compare(l, r, |a, b| a < b),
             BinaryOp::Gt => Self::binary_compare(l, r, |a, b| a > b),
             BinaryOp::Lte => Self::binary_compare(l, r, |a, b| a <= b),
             BinaryOp::Gte => Self::binary_compare(l, r, |a, b| a >= b),
             BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
+        }
+    }
+
+    /// Equality for `==` and `!=`. `None` is both a value and a type, so the `None`
+    /// value equals the `None` type (e.g. `typeof(None) == None`).
+    fn values_equal(l: &Value, r: &Value) -> bool {
+        match (l, r) {
+            (Value::None, Value::Type(t)) | (Value::Type(t), Value::None) => *t == Type::none(),
+            _ => l == r,
         }
     }
 
@@ -389,10 +393,58 @@ impl GlobalScope {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Identifier;
+
+    /// Evaluates a single expression statement in a fresh runtime.
+    fn eval(expr: Expr) -> Value {
+        SimpleRuntime::default()
+            .eval(&Statement::Expr(expr))
+            .unwrap()
+    }
 
     #[test]
-    fn test_type_of_unit() {
-        assert_eq!(Value::Unit.type_of().unwrap(), Type::unit());
+    fn test_type_of_none() {
+        assert_eq!(Value::None.type_of().unwrap(), Type::none());
+    }
+
+    #[test]
+    fn test_none_value_display() {
+        assert_eq!(Value::None.to_string(), "None");
+    }
+
+    #[test]
+    fn test_if_without_else_evaluates_to_then_branch_when_true() {
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
+        assert_eq!(eval(expr), Value::Number(BigDecimal::from(1)));
+    }
+
+    #[test]
+    fn test_if_without_else_evaluates_to_none_when_false() {
+        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
+        assert_eq!(eval(expr), Value::None);
+    }
+
+    #[test]
+    fn test_typeof_if_without_else_is_none_when_false() {
+        let expr = Expr::function_call(
+            "typeof",
+            vec![Expr::if_expr(
+                Expr::literal_boolean(false),
+                Expr::literal_number(1),
+                None,
+            )],
+        );
+        assert_eq!(eval(expr), Value::Type(Type::none()));
+    }
+
+    #[test]
+    fn test_none_value_equals_none_type() {
+        let typeof_none = Expr::function_call("typeof", vec![Expr::literal_none()]);
+        let expr = Expr::binary_expr(typeof_none.clone(), BinaryOp::Eq, Expr::literal_none());
+        assert_eq!(eval(expr), Value::Boolean(true));
+
+        let expr = Expr::binary_expr(Expr::literal_none(), BinaryOp::Eq, typeof_none);
+        assert_eq!(eval(expr), Value::Boolean(true));
     }
 
     #[test]
@@ -435,19 +487,62 @@ mod tests {
     }
 
     #[test]
-    fn test_type_of_none_is_not_yet_implemented() {
+    fn test_type_of_type_is_type() {
+        assert_eq!(
+            Value::Type(Type::number()).type_of().unwrap(),
+            Type::type_type()
+        );
+    }
+
+    #[test]
+    fn test_builtin_type_name_evaluates_to_type() {
+        assert_eq!(eval(Expr::ident("Number")), Value::Type(Type::number()));
+        assert_eq!(eval(Expr::ident("Type")), Value::Type(Type::type_type()));
+    }
+
+    #[test]
+    fn test_typeof_equals_builtin_type_name() {
+        let typeof_one = Expr::function_call("typeof", vec![Expr::literal_number(1)]);
+        let expr = Expr::binary_expr(typeof_one, BinaryOp::Eq, Expr::ident("Number"));
+        assert_eq!(eval(expr), Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_typeof_builtin_type_name_is_type() {
+        let expr = Expr::function_call("typeof", vec![Expr::ident("Number")]);
+        assert_eq!(eval(expr), Value::Type(Type::type_type()));
+    }
+
+    #[test]
+    fn test_let_shadows_builtin_type_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&Statement::Let(
+                Identifier("Number".to_string()),
+                Expr::literal_number(5),
+            ))
+            .unwrap();
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("Number")))
+            .unwrap();
+        assert_eq!(value, Value::Number(BigDecimal::from(5)));
+    }
+
+    #[test]
+    fn test_any_is_unbound() {
+        let result = SimpleRuntime::default().eval(&Statement::Expr(Expr::ident("Any")));
         assert!(matches!(
-            Value::None.type_of(),
-            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
+            result,
+            Err(Error::RuntimeError(RuntimeError::UnboundIdentifier(name))) if name == "Any"
         ));
     }
 
     #[test]
-    fn test_type_of_type_is_value() {
-        assert_eq!(
-            Value::Type(Type::number()).type_of().unwrap(),
-            Type::value()
-        );
+    fn test_typeof_signature() {
+        let runtime = SimpleRuntime::default();
+        let definition = &runtime.built_in_functions["typeof"].definition;
+        assert_eq!(definition.overloads[0].return_type, Type::type_type());
+        assert_eq!(definition.overloads[0].arguments[0].r#type, Type::any());
     }
 
     #[test]
@@ -466,11 +561,9 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_typeof_propagates_none_error() {
-        assert!(matches!(
-            builtin_typeof(&[Value::None]),
-            Err(Error::InterpreterError(InterpreterError::NotYetImplemented))
-        ));
+    fn test_builtin_typeof_none() {
+        let result = builtin_typeof(&[Value::None]).unwrap();
+        assert_eq!(result, Value::Type(Type::none()));
     }
 
     #[test]

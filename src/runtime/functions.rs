@@ -125,8 +125,8 @@ mod tests {
         let identity = BuiltinFunction::new(
             FunctionDefinition::new(
                 "identity",
-                Type::value(),
-                vec![Argument::new("v", Type::value())],
+                Type::any(),
+                vec![Argument::new("v", Type::any())],
             ),
             |args| Ok(args[0].clone()),
         );
