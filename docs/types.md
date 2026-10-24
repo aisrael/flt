@@ -58,7 +58,14 @@ A function's type is written `fn(P1, P2) -> R`, listing its parameter types and 
 
 `->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
 
-Functions are first-class values. With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument:
+Functions are first-class values, including the built-in [`typeof`](./functions-and-pipe.md#built-in-functions):
+
+```flt
+typeof                # <fn typeof>
+typeof(typeof)        # fn(Any) -> Type
+```
+
+With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument:
 
 ```flt
 identity              # <fn identity>
