@@ -48,7 +48,69 @@ pub(super) fn fmt_union(members: &[Type], f: &mut fmt::Formatter<'_>) -> fmt::Re
 
 #[cfg(test)]
 mod tests {
+    use super::add_member;
     use crate::runtime::types::Type;
+
+    #[test]
+    fn test_add_member_to_empty_members() {
+        let mut members = Vec::new();
+        add_member(&mut members, Type::number());
+        assert_eq!(members, vec![Type::number()]);
+    }
+
+    #[test]
+    fn test_add_member_appends_after_existing_members() {
+        let mut members = vec![Type::number()];
+        add_member(&mut members, Type::string());
+        assert_eq!(members, vec![Type::number(), Type::string()]);
+    }
+
+    #[test]
+    fn test_add_member_skips_a_type_already_present() {
+        let mut members = vec![Type::number(), Type::string()];
+        add_member(&mut members, Type::number());
+        assert_eq!(members, vec![Type::number(), Type::string()]);
+    }
+
+    #[test]
+    fn test_add_member_flattens_a_union_into_its_members() {
+        let mut members = vec![Type::none()];
+        add_member(
+            &mut members,
+            Type::Union(vec![Type::number(), Type::string()]),
+        );
+        assert_eq!(members, vec![Type::none(), Type::number(), Type::string()]);
+    }
+
+    #[test]
+    fn test_add_member_skips_union_members_already_present() {
+        let mut members = vec![Type::string()];
+        add_member(
+            &mut members,
+            Type::Union(vec![Type::number(), Type::string(), Type::none()]),
+        );
+        assert_eq!(members, vec![Type::string(), Type::number(), Type::none()]);
+    }
+
+    #[test]
+    fn test_add_member_flattens_a_hand_built_nested_union() {
+        let mut members = Vec::new();
+        add_member(
+            &mut members,
+            Type::Union(vec![
+                Type::Union(vec![Type::number(), Type::string()]),
+                Type::none(),
+            ]),
+        );
+        assert_eq!(members, vec![Type::number(), Type::string(), Type::none()]);
+    }
+
+    #[test]
+    fn test_add_member_of_an_empty_union_adds_nothing() {
+        let mut members = vec![Type::number()];
+        add_member(&mut members, Type::Union(vec![]));
+        assert_eq!(members, vec![Type::number()]);
+    }
 
     #[test]
     fn test_union_of_two_distinct_types() {
