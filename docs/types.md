@@ -1,6 +1,6 @@
 # Types
 
-Types in `flt` are checked at runtime. Every value has exactly one concrete type, which [`typeof`](./functions-and-pipe.md#built-in-functions) returns.
+Types in `flt` are checked at runtime. Every value has exactly one concrete type.
 
 ## Built-In Types
 
@@ -13,7 +13,7 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 | `Symbol`  | `:id`                 |                                                                    |
 | `Array`   | `[1, 2, 3]`           |                                                                    |
 | `Map`     | `{ foo: 1 }`          |                                                                    |
-| `Type`    | `Number`, `typeof(1)` | The type of a type value; see [Types as Values](#types-as-values)  |
+| `Type`    | `Number`, `String`    | The type of a type value; see [Types as Values](#types-as-values)  |
 
 ## More About Types
 
@@ -26,31 +26,28 @@ Types are first-class values. The name of a built-in type evaluates to that type
 
 ```flt
 Number                 # Number
-typeof(1)              # Number
-typeof(1) == Number    # true
-typeof("a") == Number  # false
-typeof(Number)         # Type
-typeof(typeof(1))      # Type
+Number == Number       # true
+Number == String       # false
 ```
 
-[`None`](./types/none.md) is both a value and a type, and the two compare equal, so `typeof(None) == None` is `true`.
+[`None`](./types/none.md) is both a value and a type, and the two compare equal.
 
 A `let` binding shadows a built-in type name. There are no scopes yet, so the binding applies everywhere after it:
 
 ```flt
 let Number = 5
-typeof(Number)      # Number, the type of 5
+Number              # 5
 ```
 
 A name that is neither a variable nor a built-in type is an error, e.g. `Foo` raises `Unbound identifier: Foo`. This includes [`Any`](#any), which only appears in signatures.
 
 ## `Any`
 
-`Any` is a placeholder used only in type and function signatures, where it means "accepts any value". For example, `typeof` has the type `fn(Any) -> Type`.
+`Any` is a placeholder used only in type and function signatures, where it means "accepts any value". For example, a function that takes one argument of any type and returns its type has the type `fn(Any) -> Type`.
 
 `Any` is also what a declaration gets when no type is given. This applies to a variable, a parameter, or a function's return type.
 
-`Any` is not a real type. No expression ever evaluates to a value of type `Any`, so `typeof` never returns `Any`. `Any` can't be used as a value either: `Any` on its own raises `Unbound identifier: Any`.
+`Any` is not a real type. No expression ever evaluates to a value of type `Any`. `Any` can't be used as a value either: `Any` on its own raises `Unbound identifier: Any`.
 
 ## Function Types
 
@@ -58,18 +55,10 @@ A function's type is written `fn(P1, P2) -> R`, listing its parameter types and 
 
 `->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
 
-Functions are first-class values, including the built-in [`typeof`](./functions-and-pipe.md#built-in-functions):
-
-```flt
-typeof                # <fn typeof>
-typeof(typeof)        # fn(Any) -> Type
-```
-
-With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument:
+Functions are first-class values. With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument and has the type `fn(Any) -> Any`:
 
 ```flt
 identity              # <fn identity>
-typeof(identity)      # fn(Any) -> Any
 let f = identity
 f(42)                 # 42
 f == identity         # true
