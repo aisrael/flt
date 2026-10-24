@@ -110,6 +110,24 @@ The runtime currently registers one built-in function:
 
 - `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`, and `typeof(42) == Number` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
 
+Built-ins are [native functions](#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `fn(Any) -> Type`:
+
+```flt
+typeof                # <fn typeof>
+typeof(typeof)        # fn(Any) -> Type
+let t = typeof
+t("hi")               # String
+1 |> t                # Number
+```
+
+A variable shadows a built-in, and removing the variable (e.g. with `/unset typeof` in the REPL) makes the built-in visible again:
+
+```flt
+let typeof = 1
+typeof                # 1
+typeof(2)             # error: typeof is not a function
+```
+
 ## Native Functions
 
 A host application embedding `flt` can register native functions, written in Rust, in the global scope. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
@@ -144,7 +162,7 @@ runtime.global_scope.register_function(NativeFunction::new(
 ));
 ```
 
-Registering a function under a name that's already registered replaces it.
+Registering a function under a name that's already registered replaces it. That includes the [built-ins](#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
 ```flt
 identity              # <fn identity>
@@ -181,6 +199,5 @@ Before a native function runs, the runtime checks the number of arguments agains
 ## Current Semantics Note
 
 - Parsing for function calls (including keyword arguments) and pipe expressions is implemented.
-- Calling a registered built-in (currently just `typeof`) or a host-registered [native function](#native-functions) evaluates it.
-- `typeof` is not yet a function value, so `typeof` on its own raises `Unbound identifier: typeof`. It can still be piped into by name: `1 |> typeof` is `Number`.
+- Calling a [native function](#native-functions), whether a built-in (currently just `typeof`) or one a host registered, evaluates it.
 - Pipes (`|>`) are evaluated. Multi-line pipes in the REPL (a line starting with `|>` continuing the previous one) are not supported yet.

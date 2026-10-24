@@ -18,9 +18,9 @@ The evaluator currently supports:
 - Unary numeric `+` and `-`
 - `if`/`else` expressions; an `if` without `else` evaluates to `None` when its condition is `false`
 - `let` bindings (`let x = expr`) and plain assignment (`x = expr`), stored in the global scope; evaluation returns the bound value (what the REPL prints)
-- Identifier lookup against the global scope: variables, then [native functions](./functions-and-pipe.md#native-functions) (e.g. `identity` evaluates to `<fn identity>`), then [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type)
+- Identifier lookup against the global scope: variables, then [native functions](./functions-and-pipe.md#native-functions) (e.g. `typeof` evaluates to `<fn typeof>`), then [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type)
 - [Pipes](./functions-and-pipe.md#pipe-operator): `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`
-- Calls to registered [built-in functions](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and to host-registered [native functions](./functions-and-pipe.md#native-functions), including through any name a function value is bound to
+- Calls to [native functions](./functions-and-pipe.md#native-functions), both [built-ins](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and host-registered ones, including through any name a function value is bound to
 
 `<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated).
 

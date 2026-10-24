@@ -105,43 +105,32 @@ pub trait Runtime {
 }
 
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, NativeFunction>,
     pub global_scope: GlobalScope,
 }
 
 impl Default for SimpleRuntime {
+    /// A runtime with the built-in native functions (`typeof`) registered in its global scope.
     fn default() -> Self {
-        Self {
-            built_in_functions: register_builtins(),
-            global_scope: GlobalScope::default(),
-        }
+        let mut global_scope = GlobalScope::default();
+        register_builtins(&mut global_scope);
+        Self { global_scope }
     }
 }
 
-fn register_builtins() -> HashMap<String, NativeFunction> {
-    let mut built_ins = HashMap::new();
-    built_ins.insert(
-        "typeof".to_string(),
-        NativeFunction::new(
-            FunctionDefinition::new(
-                "typeof",
-                Type::type_type(),
-                vec![Argument::new("V", Type::any())],
-            ),
-            builtin_typeof,
+/// Registers the built-in native functions in `global_scope`.
+fn register_builtins(global_scope: &mut GlobalScope) {
+    global_scope.register_function(NativeFunction::new(
+        FunctionDefinition::new(
+            "typeof",
+            Type::type_type(),
+            vec![Argument::new("V", Type::any())],
         ),
-    );
-    built_ins
+        builtin_typeof,
+    ));
 }
 
+/// `typeof(v)`: the type of `v`. The runtime checks the number of arguments before calling it.
 fn builtin_typeof(args: &[Value]) -> Result<Value, Error> {
-    if args.len() != 1 {
-        return Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
-            name: "typeof".to_string(),
-            expected: 1,
-            found: args.len(),
-        }));
-    }
     Ok(Value::Type(args[0].type_of()?))
 }
 
@@ -177,19 +166,16 @@ impl SimpleRuntime {
     }
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
-    /// like an identifier, falling back to the built-in functions (`typeof`).
+    /// like an identifier.
     fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, Error> {
         match self.lookup(name) {
             Some(Value::Function(function)) => function.call(args),
             Some(_) => Err(Error::RuntimeError(RuntimeError::NotCallable(
                 name.to_string(),
             ))),
-            None => match self.built_in_functions.get(name) {
-                Some(function) => function.call(args),
-                None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
-                    name.to_string(),
-                ))),
-            },
+            None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
+                name.to_string(),
+            ))),
         }
     }
 
@@ -600,7 +586,11 @@ mod tests {
     #[test]
     fn test_typeof_signature() {
         let runtime = SimpleRuntime::default();
-        let definition = &runtime.built_in_functions["typeof"].definition;
+        let function = runtime
+            .global_scope
+            .get_function("typeof")
+            .expect("typeof should be registered in the global scope");
+        let definition = &function.definition;
         assert_eq!(definition.overloads[0].return_type, Type::type_type());
         assert_eq!(definition.overloads[0].arguments[0].r#type, Type::any());
     }
@@ -631,9 +621,10 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_typeof_arity_mismatch() {
+    fn test_typeof_arity_checked_by_runtime() {
+        let result = SimpleRuntime::default().eval(&call("typeof", vec![]));
         assert!(matches!(
-            builtin_typeof(&[]),
+            result,
             Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
                 expected: 1,
                 found: 0,
@@ -643,9 +634,67 @@ mod tests {
     }
 
     #[test]
-    fn test_typeof_registered_as_builtin() {
+    fn test_typeof_registered_in_global_scope() {
         let runtime = SimpleRuntime::default();
-        assert!(runtime.built_in_functions.contains_key("typeof"));
+        assert!(runtime.global_scope.get_function("typeof").is_some());
+    }
+
+    #[test]
+    fn test_typeof_evaluates_to_function_value() {
+        let value = eval(Expr::ident("typeof"));
+        assert!(matches!(&value, Value::Function(function) if function.name() == "typeof"));
+        assert_eq!(value.to_string(), "<fn typeof>");
+    }
+
+    #[test]
+    fn test_typeof_of_typeof() {
+        let value = eval(Expr::function_call("typeof", vec![Expr::ident("typeof")]));
+        assert!(matches!(&value, Value::Type(Type::Function(_))));
+        assert_eq!(value.to_string(), "fn(Any) -> Type");
+    }
+
+    #[test]
+    fn test_call_typeof_through_another_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("t", Expr::ident("typeof")))
+            .unwrap();
+        let value = runtime
+            .eval(&call("t", vec![Expr::literal_number(42)]))
+            .unwrap();
+        assert_eq!(value, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_removing_shadowing_variable_restores_typeof() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("typeof", Expr::literal_number(1)))
+            .unwrap();
+        runtime.global_scope.remove_variable("typeof");
+        let value = runtime
+            .eval(&call("typeof", vec![Expr::literal_number(1)]))
+            .unwrap();
+        assert_eq!(value, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_host_function_replaces_typeof() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "typeof",
+                Type::string(),
+                vec![Argument::new("v", Type::any())],
+            ),
+            |_args| Ok(Value::String("mine".to_string())),
+        ));
+        let value = runtime
+            .eval(&call("typeof", vec![Expr::literal_number(1)]))
+            .unwrap();
+        assert_eq!(value, Value::String("mine".to_string()));
+        let function = runtime.global_scope.get_function("typeof").unwrap();
+        assert_eq!(function.r#type().to_string(), "fn(Any) -> String");
     }
 
     /// A fresh runtime with a native `identity` function of type `fn(Any) -> Any`.

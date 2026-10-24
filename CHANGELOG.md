@@ -6,6 +6,7 @@
 
 - **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` now evaluates to `None` instead of `()`. `Unit` and `()` are removed.
 - **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` is `(x |> f) == 3`.
+- **`SimpleRuntime.built_in_functions` is removed**: Built-ins such as `typeof` are native functions in the global scope; read them with `global_scope.get_function`.
 
 ### Highlights
 
@@ -15,7 +16,8 @@
 - **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
 - **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
 - **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`. Piping into anything else raises `Cannot pipe into <expr>`. Calls next to `|>` need parentheses: `1 |> f 2` and `f 1 |> g()` are parse errors.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003 and 004.
+- **`typeof` is a function value**: `typeof` is a native function in the global scope, so `typeof(typeof)` is `fn(Any) -> Type` and `let t = typeof` works. In the REPL, `/inspect` reports a function's type.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004 and 005.
 
 ## v0.1.2
 

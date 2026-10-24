@@ -26,6 +26,11 @@ Feature: Pipe operator
     When I evaluate the input
     Then the result should be "42"
 
+  Scenario: Piping into typeof bound to another name
+    Given the input 'let t = typeof; 1 |> t'
+    When I evaluate the input
+    Then the result should be "Number"
+
   Scenario: The piped value counts as an argument
     Given the input '1 |> typeof(2)'
     When I evaluate the input

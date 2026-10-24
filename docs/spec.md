@@ -106,9 +106,8 @@ mean `f(1 |> g())`) is a parse error too.
 
 ### Built-ins
 
-The runtime registers one built-in, `typeof(v)` of type `fn(Any) -> Type`, which returns `v`'s type (`typeof(42)` is
-`Number`, `typeof(None)` is `None`). The wrong arity raises
-`Function typeof expected 1 argument(s), found N`.
+A runtime may register any number of built-in, native functions. The reference implementation
+(`SimpleRuntime`) registers only `typeof(Any) -> Type`, which returns its argument's type.
 
 ### Native functions and function values
 
