@@ -97,6 +97,12 @@ The left side is evaluated first, then the right side's arguments. The right sid
 bare name, resolved and arity-checked like any call, with the piped value counted:
 `1 |> typeof(2)` raises `Function typeof expected 1 argument(s), found 2`. Anything else raises
 `Cannot pipe into <expr>`. Keyword arguments stay last: `x |> f(a, k: v)` passes `x, a, { k: v }`.
+So `f 1`, `f(1)`, `1 |> f` and `1 |> f()` are equivalent.
+
+The whitespace call form isn't allowed next to `|>`. The right side is parsed like an `if` condition,
+where a name followed by whitespace isn't a call, so `1 |> f 2` is a parse error. On the left, a
+whitespace-form call can't take an unparenthesized pipe as an argument, so `f 1 |> g()` (which would
+mean `f(1 |> g())`) is a parse error too.
 
 ### Built-ins
 

@@ -283,13 +283,24 @@ fn parse_binary_level<'a>(
     next: fn(&str) -> IResult<&str, Expr>,
     allowed: &[BinaryOp],
 ) -> IResult<&'a str, Expr> {
+    parse_binary_level_split(input, next, next, allowed)
+}
+
+/// Like `parse_binary_level`, but parses the first operand with `first` and every operand
+/// after an operator with `rest`.
+fn parse_binary_level_split<'a>(
+    input: &'a str,
+    first: fn(&str) -> IResult<&str, Expr>,
+    rest: fn(&str) -> IResult<&str, Expr>,
+    allowed: &[BinaryOp],
+) -> IResult<&'a str, Expr> {
     let parse_expr_binary_op_expr = (
-        next,
+        first,
         many0((
             multispace0_or_comment,
             verify(parse_binary_op, |o: &BinaryOp| allowed.contains(o)),
             multispace0_or_comment,
-            next,
+            rest,
         )),
     );
     map(
@@ -341,8 +352,16 @@ fn parse_bit_and(input: &str) -> IResult<&str, Expr> {
 
 /// `|>` sits directly below `+`, `-` and `<>`, as in Elixir, so `x |> f == 3` is
 /// `(x |> f) == 3` and `1 + 1 |> f` is `(1 + 1) |> f`.
+///
+/// The right side of `|>` is parsed like an `if` condition, so a call there needs
+/// parentheses: `x |> f 2` parses as `x |> f`, leaving `2` unparsed.
 fn parse_pipe(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_add_sub_concat, &[BinaryOp::Pipe])
+    parse_binary_level_split(
+        input,
+        parse_add_sub_concat,
+        parse_if_condition_add_sub_concat,
+        &[BinaryOp::Pipe],
+    )
 }
 
 fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
@@ -634,14 +653,10 @@ mod tests {
             ))
         );
         assert_eq!(
-            parse_expr("1 |> add 2"),
+            parse_expr("1 |> add"),
             Ok((
                 "",
-                Expr::binary_expr(
-                    Expr::literal_number(1),
-                    BinaryOp::Pipe,
-                    Expr::function_call("add", vec![Expr::literal_number(2)])
-                )
+                Expr::binary_expr(Expr::literal_number(1), BinaryOp::Pipe, Expr::ident("add"))
             ))
         );
         assert_eq!(
@@ -1153,6 +1168,128 @@ mod tests {
                 BinaryOp::Eq,
                 id("c"),
             )),
+        );
+    }
+
+    #[test]
+    fn test_parse_call_forms_next_to_pipe() {
+        // `identity 1` and `identity(1)` parse the same; the pipe forms parse differently
+        let call = Expr::function_call("identity", vec![num(1)]);
+        assert_parses_to("identity 1", call.clone());
+        assert_parses_to("identity(1)", call);
+        assert_parses_to("1 |> identity", bin(num(1), BinaryOp::Pipe, id("identity")));
+        assert_parses_to(
+            "1 |> identity()",
+            bin(
+                num(1),
+                BinaryOp::Pipe,
+                Expr::function_call("identity", vec![]),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_pipe_into_call_without_parens_leaves_arguments_unparsed() {
+        assert_eq!(
+            parse_expr("1 |> f 2"),
+            Ok(("2", bin(num(1), BinaryOp::Pipe, id("f"))))
+        );
+        assert_eq!(
+            parse_expr("1 |> f 2, 3"),
+            Ok(("2, 3", bin(num(1), BinaryOp::Pipe, id("f"))))
+        );
+        assert_eq!(
+            parse_expr("a |> f |> g 1"),
+            Ok((
+                "1",
+                bin(
+                    bin(id("a"), BinaryOp::Pipe, id("f")),
+                    BinaryOp::Pipe,
+                    id("g"),
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_call_without_parens_rejects_piped_argument() {
+        assert_eq!(parse_expr("f 1 |> g()"), Ok(("1 |> g()", id("f"))));
+        assert_eq!(parse_expr("f 1, 2 |> g()"), Ok(("1, 2 |> g()", id("f"))));
+        assert_eq!(
+            parse_expr("f 1 == 2 |> g()"),
+            Ok(("1 == 2 |> g()", id("f")))
+        );
+        assert_eq!(parse_expr("f k: 1 |> g()"), Ok(("k: 1 |> g()", id("f"))));
+    }
+
+    #[test]
+    fn test_parse_pipe_with_parenthesized_calls() {
+        assert_parses_to(
+            "f(1) |> g()",
+            bin(
+                Expr::function_call("f", vec![num(1)]),
+                BinaryOp::Pipe,
+                Expr::function_call("g", vec![]),
+            ),
+        );
+        // the call's own parentheses, with whitespace before them
+        assert_parses_to(
+            "f (1 |> g())",
+            Expr::function_call(
+                "f",
+                vec![bin(
+                    num(1),
+                    BinaryOp::Pipe,
+                    Expr::function_call("g", vec![]),
+                )],
+            ),
+        );
+        // a parenthesized argument
+        assert_parses_to(
+            "f 2, (1 |> g())",
+            Expr::function_call(
+                "f",
+                vec![
+                    num(2),
+                    Expr::parenthesized(bin(
+                        num(1),
+                        BinaryOp::Pipe,
+                        Expr::function_call("g", vec![]),
+                    )),
+                ],
+            ),
+        );
+        // a whitespace-form call on the left, without a pipe in its arguments
+        assert_parses_to(
+            "f 1 + 2",
+            Expr::function_call("f", vec![bin(num(1), BinaryOp::Add, num(2))]),
+        );
+    }
+
+    #[test]
+    fn test_parse_call_without_parens_allows_pipe_in_interpolation() {
+        assert_parses_to(
+            r#"f "a{x |> g()}""#,
+            Expr::function_call(
+                "f",
+                vec![bin(
+                    Expr::literal_string("a"),
+                    BinaryOp::Concat,
+                    bin(id("x"), BinaryOp::Pipe, Expr::function_call("g", vec![])),
+                )],
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_if_condition_ending_in_pipe_into_bare_name() {
+        assert_parses_to(
+            r#"if x |> f "Ok" else "No""#,
+            Expr::if_expr(
+                bin(id("x"), BinaryOp::Pipe, id("f")),
+                Expr::literal_string("Ok"),
+                Some(Expr::literal_string("No")),
+            ),
         );
     }
 }

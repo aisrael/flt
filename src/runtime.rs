@@ -836,6 +836,39 @@ mod tests {
         Value::Number(BigDecimal::from(n))
     }
 
+    /// `f 1`, `f(1)`, `1 |> f` and `1 |> f()` all evaluate as `f(1)`, for native and
+    /// built-in functions alike.
+    #[test]
+    fn test_call_and_pipe_forms_are_equivalent() {
+        for (name, expected) in [
+            ("identity", number(1)),
+            ("typeof", Value::Type(Type::number())),
+        ] {
+            for form in [
+                format!("{name} 1"),
+                format!("{name}(1)"),
+                format!("1 |> {name}"),
+                format!("1 |> {name}()"),
+            ] {
+                let mut runtime = runtime_for_pipes();
+                assert_eq!(
+                    eval_source(&mut runtime, &form).unwrap(),
+                    expected,
+                    "evaluating {form:?}"
+                );
+            }
+        }
+        // with more arguments, and through another name
+        let mut runtime = runtime_for_pipes();
+        for form in ["sub 10, 3", "sub(10, 3)", "10 |> sub(3)"] {
+            assert_eq!(eval_source(&mut runtime, form).unwrap(), number(7));
+        }
+        eval_source(&mut runtime, "let g = identity").unwrap();
+        for form in ["g 1", "g(1)", "1 |> g", "1 |> g()"] {
+            assert_eq!(eval_source(&mut runtime, form).unwrap(), number(1));
+        }
+    }
+
     #[test]
     fn test_pipe_passes_left_side_as_first_argument() {
         let mut runtime = runtime_for_pipes();

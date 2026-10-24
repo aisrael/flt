@@ -41,17 +41,46 @@ a |> f |> g(1)           # g(f(a), 1)
   (ADR 003, decision 3), arity check (decision 4) and errors (decision 5).
 - The right side must be a call or a bare name. Anything else raises `Cannot pipe into <expr>`.
 
+So, for now, these are equivalent, although the last three parse to different trees:
+
+```flt
+identity 1               # identity(1); parses the same as identity(1)
+identity(1)
+1 |> identity
+1 |> identity()
+```
+
 ### 2. A bare function name is allowed on the right
 
 `x |> f` calls `f(x)`. Elixir warns about a bare `f` and prefers `f()`; flt accepts both. Since the
 name goes through the normal lookup, a function bound to another name can be piped into.
 
-### 3. Argument counts include the piped value
+A bare name isn't ambiguous: it always means "call this with the piped value". It's also the only way
+the parser could treat `x |> f` consistently, since it can't tell a global function's name from a
+variable bound to a function value. Both are identifiers, resolved at run time by the same lookup
+(ADR 003, decision 3).
+
+### 3. Calls next to a pipe need parentheses
+
+A call written without parentheses takes everything after its name as its arguments, which makes it
+ambiguous next to a pipe. So the whitespace call form is not allowed on either side of `|>`:
+
+- **On the right**, a call needs parentheses. The right side of `|>` is parsed like an `if`
+  condition, where a name followed by whitespace isn't a call. So `1 |> f 2` is `1 |> f` followed by
+  a stray `2`, which is a parse error. Write `1 |> f(2)`.
+- **On the left**, a call without parentheses can't take a pipe as an argument. `f 1 |> g()` would
+  otherwise mean `f(1 |> g())`, not `f(1) |> g()`, so it's a parse error. Write `f(1) |> g()`, or
+  `f(1 |> g())` if that's what's meant.
+
+Because the right side is parsed like an `if` condition, `if x |> f "Ok" else "No"` reads as the
+condition `x |> f` followed by the `"Ok"` branch.
+
+### 4. Argument counts include the piped value
 
 `1 |> typeof(2)` calls `typeof(1, 2)` and raises
 `Function typeof expected 1 argument(s), found 2`, as Elixir reports `typeof/2`.
 
-### 4. `|>` reads like Elixir
+### 5. `|>` reads like Elixir
 
 `x |> f == 3` is `(x |> f) == 3`, as in Elixir. Elixir puts `|>` below `+`, `-` and `<>`, and above
 comparisons and the logical operators:
@@ -93,6 +122,11 @@ That needs comparisons to bind looser than arithmetic, so the precedence becomes
   surprises anyone coming from Elixir, and makes pipes awkward to compare.
 - **Pipe into the last argument** (as in F# or Clojure's `->>`). Rejected. Elixir's first-argument
   rule suits data-first functions like `select(df, :id)`.
+- **Require parentheses on every function to the right of `|>`, including bare names.** Rejected.
+  The parser can't tell a function's name from a variable bound to a function value, so `x |> f`
+  would have to be rejected for both, though neither is ambiguous.
+- **Warn about calls without parentheses next to a pipe, instead of rejecting them.** Rejected for
+  now. flt has no way to report warnings, and the AST doesn't record whether a call had parentheses.
 - **Pipe into any expression that evaluates to a function**, e.g. `x |> (pick_fn())`. Deferred.
   Calls and bare names cover the use cases so far.
 
@@ -100,6 +134,9 @@ That needs comparisons to bind looser than arithmetic, so the precedence becomes
 
 - The runtime evaluates `|>` and the `Pipe operator not yet supported` error is removed, replaced by
   `Cannot pipe into <expr>`.
+- Calls without parentheses next to a pipe are parse errors. Inside the parentheses of a call on the
+  right of `|>`, calls need parentheses too, as in an `if` condition: `x |> f(g(1))`, not
+  `x |> f(g 1)`.
 - The precedence change is breaking: `"a" <> "b" == "ab"` evaluated to `"afalse"` before, and the
   parse tree changes for AST consumers. Other mixed expressions raised an error before.
 - Multi-line pipes in the REPL (a line starting with `|>` continuing the previous one) are not

@@ -60,3 +60,46 @@ Feature: Pipe operator
     Given the input '1 + 2 == 3'
     When I evaluate the input
     Then the result should be "true"
+
+  Scenario Outline: A call and a pipe into a function are equivalent
+    Given the native function "identity"
+    And the input '<input>'
+    When I evaluate the input
+    Then the result should be "<result>"
+
+    Examples:
+      | input               | result |
+      | identity 1          | 1      |
+      | identity(1)         | 1      |
+      | 1 \|> identity      | 1      |
+      | 1 \|> identity()    | 1      |
+      | typeof 1            | Number |
+      | typeof(1)           | Number |
+      | 1 \|> typeof        | Number |
+      | 1 \|> typeof()      | Number |
+
+  Scenario Outline: A call next to a pipe needs parentheses
+    Given the input '<input>'
+    When I parse the input
+    Then parsing should fail
+
+    Examples:
+      | input              |
+      | 1 \|> f 2          |
+      | 1 \|> f 2, 3       |
+      | 1 \|> f k: 2       |
+      | f 1 \|> g()        |
+      | f 1, 2 \|> g()     |
+      | f 1 == 2 \|> g()   |
+      | f k: 1 \|> g()     |
+
+  Scenario: Piping a parenthesized call
+    Given the native function "identity"
+    And the input 'identity(1) |> typeof'
+    When I evaluate the input
+    Then the result should be "Number"
+
+  Scenario: A parenthesized pipe as a call's argument
+    Given the input 'typeof (1 |> typeof)'
+    When I evaluate the input
+    Then the result should be "Type"

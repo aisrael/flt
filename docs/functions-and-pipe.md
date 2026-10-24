@@ -33,6 +33,8 @@ add 1
 add 1, 2
 ```
 
+This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
+
 ## Pipe Operator
 
 The pipe operator `|>` passes the value on its left as the **first** argument of the function on its right, as in [Elixir](https://elixirschool.com/en/lessons/basics/pipe_operator).
@@ -71,6 +73,26 @@ let g = identity
 ```
 
 Keyword arguments are collected into a trailing map, so the piped value goes before them and they stay last: `x |> f(a, k: v)` calls `f` with `x`, `a` and `{k: v}`.
+
+### Equivalent Forms
+
+A call and a pipe into a function are interchangeable. These all evaluate to `identity(1)`, though the last three parse to different trees:
+
+```flt
+identity 1               # parses the same as identity(1)
+identity(1)
+1 |> identity
+1 |> identity()
+```
+
+### Calls Next to a Pipe
+
+A call without parentheses takes everything after its name as its arguments, so it isn't allowed on either side of `|>`:
+
+- On the right, a call needs parentheses. The right side is parsed like an `if` condition, where a name followed by whitespace isn't a call, so `1 |> f 2` is a parse error. Write `1 |> f(2)`. A bare name, as in `1 |> f`, is fine.
+- On the left, a call without parentheses can't take a pipe as an argument. `f 1 |> g()` would mean `f(1 |> g())`, so it's a parse error. Write `f(1) |> g()`, or `f(1 |> g())`.
+
+Inside the parentheses of a call on the right, calls need parentheses too, as in an `if` condition: `x |> f(g(1))`, not `x |> f(g 1)`. And `if x |> f "Ok" else "No"` reads as the condition `x |> f` followed by the `"Ok"` branch.
 
 ### Errors
 
