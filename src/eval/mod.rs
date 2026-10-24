@@ -61,12 +61,12 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_function_call_unsupported() {
+    fn test_eval_undefined_function() {
         let expr = Expr::function_call("foo", vec![]);
         let err = eval(&expr).unwrap_err();
         assert!(matches!(
             err,
-            Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)
+            Error::RuntimeError(RuntimeError::UndefinedFunction(name)) if name == "foo"
         ));
     }
 
@@ -403,7 +403,7 @@ mod tests {
         let err = eval(&expr).unwrap_err();
         assert!(matches!(
             err,
-            Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)
+            Error::RuntimeError(RuntimeError::UnsupportedPipe)
         ));
     }
 

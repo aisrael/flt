@@ -12,7 +12,8 @@
 - **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. A `let` binding shadows a built-in type name.
 - **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
 - **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001 and 002.
+- **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002 and 003.
 
 ## v0.1.2
 

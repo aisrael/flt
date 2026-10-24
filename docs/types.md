@@ -52,6 +52,24 @@ A name that is neither a variable nor a built-in type is an error, e.g. `Foo` ra
 
 `Any` is not a real type. No expression ever evaluates to a value of type `Any`, so `typeof` never returns `Any`. `Any` can't be used as a value either: `Any` on its own raises `Unbound identifier: Any`.
 
+## Function Types
+
+A function's type is written `fn(P1, P2) -> R`, listing its parameter types and its return type. A function that takes no parameters has the type `fn() -> R`.
+
+`->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
+
+Functions are first-class values. With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument:
+
+```flt
+identity              # <fn identity>
+typeof(identity)      # fn(Any) -> Any
+let f = identity
+f(42)                 # 42
+f == identity         # true
+```
+
+A function value displays as `<fn name>`. Two function values are equal only if they're the same function.
+
 ## Collection Types
 
 - `Map`

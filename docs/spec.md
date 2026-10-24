@@ -88,13 +88,29 @@ passed as the final argument, so `foo(1, bar: true)` receives `1, { bar: true }`
 
 `a |> b |> c` is a left-associative chain at the lowest precedence, e.g.
 `READ("input") |> SELECT(:id) |> WRITE("output")`. It is parsed but not yet evaluated; evaluating it
-raises `Function calls not yet supported`.
+raises `Pipe operator not yet supported`.
 
 ### Built-ins
 
 The runtime registers one built-in, `typeof(v)` of type `fn(Any) -> Type`, which returns `v`'s type (`typeof(42)` is
 `Number`, `typeof(None)` is `None`). The wrong arity raises
-`Function typeof expected 1 argument(s), found N`. Calling any other name raises `Function calls not yet supported`.
+`Function typeof expected 1 argument(s), found N`.
+
+### Native functions and function values
+
+A host can register native functions in the global scope (see
+[native functions](functions-and-pipe.md#native-functions)). A function's name evaluates to a
+function value of type `fn(P1, P2) -> R`, displayed as `<fn name>`, which can be bound with `let`
+and called through any name it's bound to. Two function values are equal only if they're the same
+function.
+
+Identifiers and call names resolve in the order variables, then global functions, then built-in type
+names. Calls raise:
+
+- `Undefined function: <name>` when the name isn't bound;
+- `<name> is not a function` when the name is bound to a value that isn't a function;
+- `Function <name> expected <expected> argument(s), found <found>` when no signature of the
+  function takes that many arguments.
 
 ## 7. Bindings
 

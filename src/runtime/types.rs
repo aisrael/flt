@@ -2,7 +2,10 @@
 
 use std::fmt;
 
+mod function;
 mod union_types;
+
+pub use function::FunctionType;
 
 /// A type is either a builtin type or a custom type
 #[derive(Clone, Debug, PartialEq)]
@@ -14,6 +17,8 @@ pub enum Type {
     /// A union of types: a value of any one of the member types. Build it with
     /// [`Type::union`] so that it stays flattened and free of duplicates.
     Union(Vec<Type>),
+    /// The type of a function, e.g. `fn(Any) -> Any`
+    Function(FunctionType),
 }
 
 impl Type {
@@ -92,6 +97,7 @@ impl fmt::Display for Type {
             Type::Custom(c) => write!(f, "{}", c.name),
             Type::Option(inner) => write!(f, "Option<{inner}>"),
             Type::Union(members) => union_types::fmt_union(members, f),
+            Type::Function(function_type) => write!(f, "{function_type}"),
         }
     }
 }

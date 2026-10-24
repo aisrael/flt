@@ -5,6 +5,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 use bigdecimal::BigDecimal;
 use bigdecimal::Zero;
@@ -16,8 +17,8 @@ use crate::ast::Statement;
 use crate::ast::UnaryOp;
 use crate::errors::RuntimeError;
 use crate::runtime::functions::Argument;
-use crate::runtime::functions::BuiltinFunction;
 use crate::runtime::functions::FunctionDefinition;
+use crate::runtime::functions::NativeFunction;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::Error;
@@ -42,6 +43,8 @@ pub enum Value {
     Array(Vec<Value>),
     /// A type as a first-class value
     Type(Type),
+    /// A function as a first-class value
+    Function(Arc<NativeFunction>),
 }
 
 impl fmt::Display for Value {
@@ -75,6 +78,7 @@ impl fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Type(t) => write!(f, "{t}"),
+            Value::Function(function) => write!(f, "<fn {}>", function.name()),
         }
     }
 }
@@ -91,6 +95,7 @@ impl Value {
             Value::Map(_) => Ok(Type::map()),
             Value::Array(_) => Ok(Type::array()),
             Value::Type(_) => Ok(Type::type_type()),
+            Value::Function(function) => Ok(function.r#type()),
         }
     }
 }
@@ -100,7 +105,7 @@ pub trait Runtime {
 }
 
 pub struct SimpleRuntime {
-    pub built_in_functions: HashMap<String, BuiltinFunction>,
+    pub built_in_functions: HashMap<String, NativeFunction>,
     pub global_scope: GlobalScope,
 }
 
@@ -113,11 +118,11 @@ impl Default for SimpleRuntime {
     }
 }
 
-fn register_builtins() -> HashMap<String, BuiltinFunction> {
+fn register_builtins() -> HashMap<String, NativeFunction> {
     let mut built_ins = HashMap::new();
     built_ins.insert(
         "typeof".to_string(),
-        BuiltinFunction::new(
+        NativeFunction::new(
             FunctionDefinition::new(
                 "typeof",
                 Type::type_type(),
@@ -155,15 +160,44 @@ impl Runtime for SimpleRuntime {
 }
 
 impl SimpleRuntime {
+    /// Looks up `name` as a variable, then a global function, then a built-in type name.
+    /// So a variable shadows a function (e.g. after `let identity = 1`), and a function
+    /// shadows a built-in type name.
+    fn lookup(&self, name: &str) -> Option<Value> {
+        self.global_scope
+            .get_variable(name)
+            .cloned()
+            .or_else(|| {
+                self.global_scope
+                    .get_function(name)
+                    .cloned()
+                    .map(Value::Function)
+            })
+            .or_else(|| Type::builtin_named(name).map(Value::Type))
+    }
+
+    /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
+    /// like an identifier, falling back to the built-in functions (`typeof`).
+    fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, Error> {
+        match self.lookup(name) {
+            Some(Value::Function(function)) => function.call(args),
+            Some(_) => Err(Error::RuntimeError(RuntimeError::NotCallable(
+                name.to_string(),
+            ))),
+            None => match self.built_in_functions.get(name) {
+                Some(function) => function.call(args),
+                None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
+                    name.to_string(),
+                ))),
+            },
+        }
+    }
+
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(lit) => Ok(Self::literal_to_value(lit)),
-            // A variable shadows a built-in type name, e.g. after `let Number = 5`
             Expr::Ident(s) => self
-                .global_scope
-                .get_variable(s.as_str())
-                .cloned()
-                .or_else(|| Type::builtin_named(s.as_str()).map(Value::Type))
+                .lookup(s.as_str())
                 .ok_or_else(|| Error::RuntimeError(RuntimeError::UnboundIdentifier(s.clone()))),
             Expr::IfExpr {
                 condition,
@@ -199,10 +233,7 @@ impl SimpleRuntime {
                     .iter()
                     .map(|arg| self.eval_expr(arg))
                     .collect::<Result<Vec<Value>, Error>>()?;
-                match self.built_in_functions.get(name.0.as_str()) {
-                    Some(function) => function.call(&arg_values),
-                    None => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
-                }
+                self.call_function(name.0.as_str(), &arg_values)
             }
             Expr::Parenthesized(inner) => self.eval_expr(inner),
             Expr::FieldAccess(inner, field) => {
@@ -286,7 +317,7 @@ impl SimpleRuntime {
             BinaryOp::Gt => Self::binary_compare(l, r, |a, b| a > b),
             BinaryOp::Lte => Self::binary_compare(l, r, |a, b| a <= b),
             BinaryOp::Gte => Self::binary_compare(l, r, |a, b| a >= b),
-            BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedFunctionCall)),
+            BinaryOp::Pipe => Err(Error::RuntimeError(RuntimeError::UnsupportedPipe)),
         }
     }
 
@@ -354,7 +385,7 @@ impl SimpleRuntime {
 /// The global scope is the scope that is available to all other scopes.
 #[derive(Default)]
 pub struct GlobalScope {
-    pub functions: HashMap<String, FunctionDefinition>,
+    pub functions: HashMap<String, Arc<NativeFunction>>,
     pub variables: HashMap<String, Value>,
 }
 
@@ -365,8 +396,15 @@ impl GlobalScope {
     }
 
     /// Get a function from the global scope by name.
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDefinition> {
+    pub fn get_function(&self, name: &str) -> Option<&Arc<NativeFunction>> {
         self.functions.get(name)
+    }
+
+    /// Register a native function in the global scope under its name, replacing any
+    /// function already registered under that name.
+    pub fn register_function(&mut self, function: NativeFunction) {
+        self.functions
+            .insert(function.name().to_string(), Arc::new(function));
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -586,5 +624,154 @@ mod tests {
     fn test_typeof_registered_as_builtin() {
         let runtime = SimpleRuntime::default();
         assert!(runtime.built_in_functions.contains_key("typeof"));
+    }
+
+    /// A fresh runtime with a native `identity` function of type `fn(Any) -> Any`.
+    fn runtime_with_identity() -> SimpleRuntime {
+        let mut runtime = SimpleRuntime::default();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "identity",
+                Type::any(),
+                vec![Argument::new("v", Type::any())],
+            ),
+            |args| Ok(args[0].clone()),
+        ));
+        runtime
+    }
+
+    fn let_statement(name: &str, expr: Expr) -> Statement {
+        Statement::Let(Identifier(name.to_string()), expr)
+    }
+
+    fn call(name: &str, args: Vec<Expr>) -> Statement {
+        Statement::Expr(Expr::function_call(name, args))
+    }
+
+    #[test]
+    fn test_registered_function_evaluates_to_function_value() {
+        let mut runtime = runtime_with_identity();
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("identity")))
+            .unwrap();
+        assert!(matches!(&value, Value::Function(function) if function.name() == "identity"));
+        assert_eq!(value.to_string(), "<fn identity>");
+        assert_eq!(value.type_of().unwrap().to_string(), "fn(Any) -> Any");
+    }
+
+    #[test]
+    fn test_call_registered_function() {
+        let mut runtime = runtime_with_identity();
+        let value = runtime
+            .eval(&call("identity", vec![Expr::literal_number(42)]))
+            .unwrap();
+        assert_eq!(value, Value::Number(BigDecimal::from(42)));
+    }
+
+    #[test]
+    fn test_call_function_through_another_name() {
+        let mut runtime = runtime_with_identity();
+        runtime
+            .eval(&let_statement("f", Expr::ident("identity")))
+            .unwrap();
+        let value = runtime
+            .eval(&call("f", vec![Expr::literal_boolean(true)]))
+            .unwrap();
+        assert_eq!(value, Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_function_value_equals_itself() {
+        let mut runtime = runtime_with_identity();
+        let a = runtime
+            .eval(&Statement::Expr(Expr::ident("identity")))
+            .unwrap();
+        let b = runtime
+            .eval(&Statement::Expr(Expr::ident("identity")))
+            .unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_variable_shadows_function() {
+        let mut runtime = runtime_with_identity();
+        runtime
+            .eval(&let_statement("identity", Expr::literal_number(1)))
+            .unwrap();
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("identity")))
+            .unwrap();
+        assert_eq!(value, Value::Number(BigDecimal::from(1)));
+    }
+
+    #[test]
+    fn test_function_shadows_builtin_type_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new("Number", Type::number(), vec![]),
+            |_args| Ok(Value::Number(BigDecimal::from(0))),
+        ));
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("Number")))
+            .unwrap();
+        assert!(matches!(value, Value::Function(_)));
+    }
+
+    #[test]
+    fn test_call_checks_arity() {
+        let mut runtime = runtime_with_identity();
+        let result = runtime.eval(&call(
+            "identity",
+            vec![Expr::literal_number(1), Expr::literal_number(2)],
+        ));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected: 1, found: 2 }))
+                if name == "identity"
+        ));
+    }
+
+    #[test]
+    fn test_call_non_function_is_not_callable() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("x", Expr::literal_number(1)))
+            .unwrap();
+        let result = runtime.eval(&call("x", vec![Expr::literal_number(2)]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "x"
+        ));
+    }
+
+    #[test]
+    fn test_call_builtin_type_name_is_not_callable() {
+        let result = SimpleRuntime::default().eval(&call("Number", vec![]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "Number"
+        ));
+    }
+
+    #[test]
+    fn test_call_unknown_function_is_undefined() {
+        let result = SimpleRuntime::default().eval(&call("nope", vec![]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::UndefinedFunction(name))) if name == "nope"
+        ));
+    }
+
+    #[test]
+    fn test_variable_shadows_builtin_function_in_calls() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("typeof", Expr::literal_number(1)))
+            .unwrap();
+        let result = runtime.eval(&call("typeof", vec![Expr::literal_number(2)]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "typeof"
+        ));
     }
 }
