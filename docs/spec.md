@@ -51,7 +51,8 @@ key        = ident | string ;
 expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
 `typeof(1) == Number` is `true`, and a `let` binding shadows it. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
 
-An `if` without `else` evaluates to `None` when its condition is `false`.
+A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
+`else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
 
 ## 5. Operators (lowest → highest precedence)
 

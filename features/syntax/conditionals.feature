@@ -33,3 +33,26 @@ Feature: Conditionals
     Given the input "if (true) { 1 } else { 2 }"
     When I parse the input
     Then the output should be 'IfExpr { condition: Parenthesized(Literal(Boolean(true))), then_branch: Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), else_branch: Some(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))) }'
+
+  Scenario: An if with else evaluates to the then-branch when the condition is true
+    Given the input 'if true 1 else "one"'
+    When I evaluate the input
+    Then the result should be "1"
+
+  Scenario: An if with else evaluates to the else-branch when the condition is false
+    Given the input 'if false 1 else "one"'
+    When I evaluate the input
+    Then the result should be '"one"'
+
+  Scenario Outline: typeof reports the type of the branch that ran
+    Given the input '<input>'
+    When I evaluate the input
+    Then the result should be "<type>"
+
+    Examples:
+      | input                         | type   |
+      | typeof(if true 1)             | Number |
+      | typeof(if true 1 else "one")  | Number |
+      | typeof(if false 1 else "one") | String |
+      | typeof(if true 1 else 2)      | Number |
+      | typeof(if false 1 else 2)     | Number |

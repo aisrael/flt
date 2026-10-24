@@ -22,3 +22,5 @@ flt has no unit value `()`. `None` fills that role.
   if false 1           # None
   typeof(if false 1)   # None
   ```
+
+  So an `if` without `else` whose then-branch has type `T` has the [union type](./union_types.md) `T | None`.

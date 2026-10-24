@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+mod union_types;
+
 /// A type is either a builtin type or a custom type
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
@@ -9,6 +11,9 @@ pub enum Type {
     Custom(CustomType),
     /// The `Option` wrapper around an inner type (the empty case is `None`)
     Option(Box<Type>),
+    /// A union of types: a value of any one of the member types. Build it with
+    /// [`Type::union`] so that it stays flattened and free of duplicates.
+    Union(Vec<Type>),
 }
 
 impl Type {
@@ -86,6 +91,7 @@ impl fmt::Display for Type {
             Type::Builtin(b) => write!(f, "{b}"),
             Type::Custom(c) => write!(f, "{}", c.name),
             Type::Option(inner) => write!(f, "Option<{inner}>"),
+            Type::Union(members) => union_types::fmt_union(members, f),
         }
     }
 }

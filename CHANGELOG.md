@@ -11,7 +11,8 @@
 - **`None` is its own type**: `typeof(None)` is `None`, and the `None` value equals the `None` type.
 - **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. A `let` binding shadows a built-in type name.
 - **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
-- **Docs**: A one-page language spec (`docs/spec.md`) and ADR 001.
+- **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001 and 002.
 
 ## v0.1.2
 

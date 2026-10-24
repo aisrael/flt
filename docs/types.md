@@ -18,6 +18,7 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 ## More About Types
 
 - [None](./types/none.md): the `None` value and type, and the result of an `if` without `else`.
+- [Union Types](./types/union_types.md): `A | B`, a value of one of several types, and the type of an `if`.
 
 ## Types as Values
 

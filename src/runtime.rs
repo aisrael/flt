@@ -552,6 +552,10 @@ mod tests {
             Value::Type(Type::option(Type::string())).to_string(),
             "Option<String>"
         );
+        assert_eq!(
+            Value::Type(Type::union(Type::number(), Type::none())).to_string(),
+            "Number | None"
+        );
     }
 
     #[test]
