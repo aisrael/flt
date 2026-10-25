@@ -4,26 +4,32 @@
 
 ### Breaking Changes
 
-- **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` now evaluates to `None` instead of `()`. `Unit` and `()` are removed.
-- **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` is `(x |> f) == 3`.
-- **`SimpleRuntime.built_in_functions` is removed**: Built-ins such as `typeof` are native functions in the global scope; read them with `global_scope.get_function`.
-- **Bindings can't shadow types, functions or keywords**: A reserved keyword as a binding name (`let if = 1`) is a parse error. Binding a built-in type name (`None`, `Number`, …, `Any`) or the name of a function, built-in (`typeof`) or registered by the host, raises an error. `GlobalScope::set_variable` returns a `Result`, `register_function` panics on a built-in type name or a name that's already a variable, and `GlobalScope`'s `functions` and `variables` maps are private, so hosts go through those methods.
-- **New enum variants**: `Type::Native`, `Value::Native`, `Error::Native`, `RuntimeError::UnexpectedType`, `RuntimeError::CannotConvert` and `ProtectedName::NativeType`, so hosts that match on these enums exhaustively need a new arm.
-- **`SimpleRuntime` has a private field**: It holds the registered native types, so it can't be built with a struct literal; use `SimpleRuntime::default()`.
+- **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` evaluates to `None` instead of `()`. `Unit` and `()` are gone.
+- **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` means `(x |> f) == 3`.
+- **Bindings can't shadow types, functions or keywords**: `let if = 1` is a parse error, and `let Number = 1` or `let typeof = 1` raises `Cannot bind <name>: …`. The same names are refused when a host binds variables or registers functions.
+- **Built-ins are ordinary functions**: `typeof` is a native function like any other, rather than a special case, so hosts look it up the way they look up their own functions.
 
-### Highlights
+### New Features
 
+#### Language
+
+- **Types as values**: A type name evaluates to that type, so `typeof(1) == Number` is `true` and `typeof(Number)` is `Type`.
 - **`None` is its own type**: `typeof(None)` is `None`, and the `None` value equals the `None` type.
-- **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. Built-in type names can't be rebound.
-- **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
-- **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
-- **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
-- **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`. Piping into anything else raises `Cannot pipe into <expr>`. Calls next to `|>` need parentheses: `1 |> f 2` and `f 1 |> g()` are parse errors.
-- **`typeof` is a function value**: `typeof` is a native function in the global scope, so `typeof(typeof)` is `fn(Any) -> Type` and `let t = typeof` works. In the REPL, `/inspect` reports a function's type.
-- **Native types and values**: A host's Rust type that implements `NativeType` (a name, plus `Display` and `PartialEq`) can be registered with the runtime (`SimpleRuntime::register_native_type`), as can native functions (`SimpleRuntime::register_function`, alongside `GlobalScope::register_function`). Native functions create and read its values (`Value::native`, `get_native`, `downcast_native`), which flt source can bind, pass, pipe, print and compare with `==`/`!=`, but not create or look inside. A native type's name evaluates to that type, can't be bound, and can appear in function types, e.g. `fn(Date, Date) -> Number`.
-- **Host errors**: Native functions can fail with the host's own error (`Error::native`), which is shown unchanged.
-- **Numbers to and from Rust**: `Value::from` accepts `u64`, `i64` and `usize`, and `i32`, `i64`, `u32`, `u64`, `usize` and `f64` implement `TryFrom<&Value>`, raising `Expected Number, found <type>` or `Cannot convert <number> to <type>`.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004, 005, 006 and 007.
+- **Union types**: A value can have type `A | B`, e.g. an `if` without `else` has type `T | None`. Unions are kept simple: `Number | Number` is `Number`. They can't be written in flt source yet.
+- **Functions as values**: A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it, e.g. `let t = typeof; t(1)`. `Any` stands for any value in a signature, so `typeof` has type `fn(Any) -> Type`.
+- **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`, so `read("x") |> filter("a > 1") |> count()` reads left to right.
+- **REPL**: `/inspect` shows a function's type, and `/unset` explains why a type or function can't be unset.
+
+#### Embedding flt
+
+- **Native functions**: A host registers Rust functions with the runtime, with signatures such as `fn(String) -> Number`, and flt source calls and pipes into them like any function.
+- **Native types and values**: A host can make its own Rust types available to flt, e.g. a date or a lazy query plan. flt source can pass these values between native functions, print them, compare them with `==` and `!=`, and get their type (`typeof(d) == Date`), but only the host creates them or looks inside them. Function types can name them, e.g. `fn(Date, Date) -> Number`.
+- **Host errors**: A native function can fail with the host's own error, which is shown exactly as the host writes it.
+- **Numbers to and from Rust**: A host reads number arguments as Rust integers or floats, with clear errors such as `Expected Number, found String` or `Cannot convert -1 to u32`, and returns Rust integers as flt numbers.
+
+#### Docs
+
+- A one-page language spec (`docs/spec.md`), a guide to native functions, types and values (`docs/native-functions-and-values.md`), and ADRs 001 to 007.
 
 ## v0.1.2
 
