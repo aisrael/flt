@@ -2,8 +2,9 @@ Feature: Functions as values
 
   A host can register native functions in the global scope. A function's name
   evaluates to a function value, which has a function type and can be bound to
-  another name and called through it. Names resolve to variables, then global
-  functions, then built-in type names. See docs/functions-and-pipe.md#native-functions.
+  another name and called through it. A name is a variable, a global function or
+  a built-in type, never more than one, so a function's name can't be bound. See
+  docs/functions-and-pipe.md#native-functions.
 
   Background:
     Given the native function "identity"
@@ -33,10 +34,15 @@ Feature: Functions as values
     When I evaluate the input
     Then the result should be "true"
 
-  Scenario: A variable shadows a native function
-    Given the input 'let identity = 1; identity'
+  Scenario: A native function's name can't be bound
+    Given the input 'let identity = 1'
     When I evaluate the input
-    Then the result should be "1"
+    Then the evaluation should fail with "Cannot bind identity: it's a function"
+
+  Scenario: Assigning to a native function's name
+    Given the input 'identity = 1'
+    When I evaluate the input
+    Then the evaluation should fail with "Cannot bind identity: it's a function"
 
   Scenario: Calling with the wrong number of arguments
     Given the input 'identity(1, 2)'

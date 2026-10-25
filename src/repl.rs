@@ -4,9 +4,11 @@ use std::path::PathBuf;
 use crate::ast::Expr;
 use crate::ast::Identifier;
 use crate::ast::Statement;
+use crate::errors::RuntimeError;
 use crate::parser::parse_statement;
 use crate::runtime::Runtime;
 use crate::runtime::SimpleRuntime;
+use crate::Error;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -205,22 +207,33 @@ impl FltRepl {
 
     /// Removes a previously bound variable, so later references raise an unbound identifier error.
     fn handle_unset(&mut self, args: &str) {
-        if args.is_empty() {
-            eprintln!("usage: /unset <identifier>");
-            return;
-        }
-        match Identifier::try_from(args.trim()) {
-            Ok(ident) => {
-                if self.runtime.global_scope.remove_variable(&ident).is_none() {
-                    eprintln!("unbound identifier: {}", ident);
-                }
-            }
-            Err(e) => eprintln!("{:?}", e),
+        if let Err(msg) = self.unset(args) {
+            eprintln!("{msg}");
         }
     }
 
-    /// Reports on a bare identifier: a variable's value, or a function's type. A variable
-    /// shadows a function of the same name, as in evaluation.
+    /// Removes the variable named by `args`, or explains why it can't: there's no such
+    /// variable, or the name is a built-in type or a function, which can't be unset.
+    fn unset(&mut self, args: &str) -> Result<(), String> {
+        if args.is_empty() {
+            return Err("usage: /unset <identifier>".to_string());
+        }
+        let ident = Identifier::try_from(args.trim()).map_err(|e| format!("{e:?}"))?;
+        let global_scope = &mut self.runtime.global_scope;
+        if global_scope.remove_variable(&ident).is_some() {
+            return Ok(());
+        }
+        // A name that can't be bound is a built-in type or a function, not a variable
+        match global_scope.check_bindable(&ident) {
+            Err(Error::RuntimeError(RuntimeError::CannotBind { name, reason })) => {
+                Err(format!("Cannot unset {name}: it's {reason}"))
+            }
+            _ => Err(format!("unbound identifier: {ident}")),
+        }
+    }
+
+    /// Reports on a bare identifier: a variable's value, or a function's type. A name can't be
+    /// both, since a variable can't use a function's name.
     fn inspect_identifier(&self, name: &str) -> String {
         let global_scope = &self.runtime.global_scope;
         if let Some(value) = global_scope.get_variable(name) {
@@ -405,11 +418,73 @@ mod tests {
     }
 
     #[test]
-    fn test_inspect_variable_shadows_function() {
+    fn test_inspect_function_after_refused_binding() {
         let mut repl = FltRepl::new();
         let statement = FltRepl::parse_full("let typeof = 1").unwrap();
+        assert!(repl.runtime.eval(&statement).is_err());
+        assert_eq!(
+            repl.inspect_identifier("typeof"),
+            "(function) fn(Any) -> Type"
+        );
+    }
+
+    #[test]
+    fn test_unset_variable() {
+        let mut repl = FltRepl::new();
+        let statement = FltRepl::parse_full("let x = 1").unwrap();
         repl.runtime.eval(&statement).unwrap();
-        assert_eq!(repl.inspect_identifier("typeof"), "(variable) 1");
+        assert_eq!(repl.unset("x"), Ok(()));
+        assert!(!repl.runtime.global_scope.has_variable("x"));
+        let statement = FltRepl::parse_full("x").unwrap();
+        assert_eq!(
+            repl.runtime.eval(&statement).unwrap_err().to_string(),
+            "Runtime Error: Unbound identifier: x"
+        );
+    }
+
+    #[test]
+    fn test_unset_unbound_identifier() {
+        let mut repl = FltRepl::new();
+        assert_eq!(
+            repl.unset("nope"),
+            Err("unbound identifier: nope".to_string())
+        );
+    }
+
+    #[test]
+    fn test_unset_builtin_type() {
+        let mut repl = FltRepl::new();
+        assert_eq!(
+            repl.unset("Number"),
+            Err("Cannot unset Number: it's a built-in type".to_string())
+        );
+    }
+
+    #[test]
+    fn test_unset_function_keeps_it() {
+        let mut repl = FltRepl::new();
+        assert_eq!(
+            repl.unset("typeof"),
+            Err("Cannot unset typeof: it's a function".to_string())
+        );
+        assert!(repl.runtime.global_scope.has_function("typeof"));
+    }
+
+    #[test]
+    fn test_unset_without_identifier() {
+        let mut repl = FltRepl::new();
+        assert_eq!(
+            repl.unset(""),
+            Err("usage: /unset <identifier>".to_string())
+        );
+    }
+
+    #[test]
+    fn test_inspect_variable() {
+        let mut repl = FltRepl::new();
+        let statement = FltRepl::parse_full("let x = 1").unwrap();
+        repl.runtime.eval(&statement).unwrap();
+        assert_eq!(repl.inspect_identifier("x"), "(variable) 1");
     }
 
     #[test]

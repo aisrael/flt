@@ -1,9 +1,5 @@
-use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete::satisfy;
-use nom::combinator::peek;
-use nom::combinator::value;
-use nom::sequence::terminated;
+use nom::bytes::complete::take_while1;
+use nom::combinator::map_opt;
 use nom::IResult;
 use nom::Parser;
 
@@ -13,33 +9,10 @@ fn is_identifier_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '-' || c == '_'
 }
 
-/// Ensures the next character (if any) is not an identifier continuation,
-/// so that e.g. "if" is recognized but "iffy" is not.
-fn word_boundary(input: &str) -> IResult<&str, ()> {
-    peek(alt((
-        value((), nom::combinator::eof),
-        value((), satisfy(|c: char| !is_identifier_continue(c))),
-    )))
-    .parse(input)
-}
-
-/// Parses a reserved keyword as an expression (word-boundary aware).
+/// Parses a reserved keyword as an expression (word-boundary aware). It reads a whole word, so
+/// e.g. "if" is a keyword but "iffy" is not.
 pub fn parse_keyword(input: &str) -> IResult<&str, Keyword> {
-    alt((
-        value(Keyword::Return, terminated(tag("return"), word_boundary)),
-        value(Keyword::While, terminated(tag("while"), word_boundary)),
-        value(Keyword::Else, terminated(tag("else"), word_boundary)),
-        value(Keyword::For, terminated(tag("for"), word_boundary)),
-        value(Keyword::And, terminated(tag("and"), word_boundary)),
-        value(Keyword::Not, terminated(tag("not"), word_boundary)),
-        value(Keyword::If, terminated(tag("if"), word_boundary)),
-        value(Keyword::In, terminated(tag("in"), word_boundary)),
-        value(Keyword::Let, terminated(tag("let"), word_boundary)),
-        value(Keyword::Or, terminated(tag("or"), word_boundary)),
-        value(Keyword::Do, terminated(tag("do"), word_boundary)),
-        value(Keyword::Fn, terminated(tag("fn"), word_boundary)),
-    ))
-    .parse(input)
+    map_opt(take_while1(is_identifier_continue), Keyword::from_name).parse(input)
 }
 
 #[cfg(test)]

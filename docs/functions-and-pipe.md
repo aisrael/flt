@@ -120,12 +120,10 @@ t("hi")               # String
 1 |> t                # Number
 ```
 
-A variable shadows a built-in, and removing the variable (e.g. with `/unset typeof` in the REPL) makes the built-in visible again:
+A built-in's name can't be bound, like any function's name (see [Name Resolution](#name-resolution)):
 
 ```flt
-let typeof = 1
-typeof                # 1
-typeof(2)             # error: typeof is not a function
+let typeof = 1        # error: Cannot bind typeof: it's a function
 ```
 
 ## Native Functions
@@ -164,6 +162,8 @@ runtime.global_scope.register_function(NativeFunction::new(
 
 Registering a function under a name that's already registered replaces it. That includes the [built-ins](#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
+A function's name can't be bound as a variable, whether the function is a built-in or the host's. `register_function` panics if the name is a built-in type name, such as `Number`, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `global_scope.set_variable` refuses the same names as `let`, and returns an error.
+
 ```flt
 identity              # <fn identity>
 typeof(identity)      # fn(Any) -> Any
@@ -174,18 +174,18 @@ f(42)                 # 42
 
 ### Name Resolution
 
-An identifier, and the name in a call, are looked up in the same order:
+An identifier, and the name in a call, can name one of:
 
-1. variables
-2. global functions
-3. [built-in type names](./types.md#types-as-values)
+1. a variable
+2. a global function
+3. a [built-in type](./types.md#types-as-values)
 
-So a variable shadows a function. There are no scopes yet, so the binding applies everywhere after it:
+A name is never more than one of these, because a binding can't shadow a function or a built-in type ([ADR 006](./adrs/006-no-shadowing.md)). A function value can still be bound to a new name:
 
 ```flt
-let identity = 1
-identity              # 1
-identity(2)           # error: identity is not a function
+let identity = 1      # error: Cannot bind identity: it's a function
+let f = identity      # binds the function value to a new name
+f(42)                 # 42
 ```
 
 ### Calls

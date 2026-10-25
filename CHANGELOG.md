@@ -7,17 +7,18 @@
 - **`None` replaces `Unit`**: An `if` without `else` whose condition is `false` now evaluates to `None` instead of `()`. `Unit` and `()` are removed.
 - **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` is `(x |> f) == 3`.
 - **`SimpleRuntime.built_in_functions` is removed**: Built-ins such as `typeof` are native functions in the global scope; read them with `global_scope.get_function`.
+- **Bindings can't shadow types, functions or keywords**: A reserved keyword as a binding name (`let if = 1`) is a parse error. Binding a built-in type name (`None`, `Number`, …, `Any`) or the name of a function, built-in (`typeof`) or registered by the host, raises an error. `GlobalScope::set_variable` returns a `Result`, `register_function` panics on a built-in type name or a name that's already a variable, and `GlobalScope`'s `functions` and `variables` maps are private, so hosts go through those methods.
 
 ### Highlights
 
 - **`None` is its own type**: `typeof(None)` is `None`, and the `None` value equals the `None` type.
-- **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. A `let` binding shadows a built-in type name.
+- **Types as values**: A built-in type name evaluates to that type, so `typeof(1) == Number` is `true`, and `typeof(Number)` is `Type`. Built-in type names can't be rebound.
 - **`Any`**: A placeholder used only in signatures; `typeof` has type `fn(Any) -> Type`.
 - **Union types**: The runtime has union types `A | B`, kept simplified: nested unions are flattened, duplicates are removed keeping the first, and a single member collapses, so `Number | Number` is `Number`. Union types can't be written in flt source yet.
 - **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
 - **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`. Piping into anything else raises `Cannot pipe into <expr>`. Calls next to `|>` need parentheses: `1 |> f 2` and `f 1 |> g()` are parse errors.
 - **`typeof` is a function value**: `typeof` is a native function in the global scope, so `typeof(typeof)` is `fn(Any) -> Type` and `let t = typeof` works. In the REPL, `/inspect` reports a function's type.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004 and 005.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004, 005 and 006.
 
 ## v0.1.2
 

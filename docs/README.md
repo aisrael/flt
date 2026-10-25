@@ -22,6 +22,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 003: Functions as Values](adrs/003-functions-as-values.md)
 - [ADR 004: The Pipe Operator](adrs/004-pipe-operator.md)
 - [ADR 005: `typeof` as a Native Function](adrs/005-typeof-native-function.md)
+- [ADR 006: Bindings Can't Shadow Types, Functions or Keywords](adrs/006-no-shadowing.md)
 
 ## Scope
 

@@ -35,6 +35,8 @@ The evaluator currently supports:
 - `<name> is not a function` - calling a name bound to a value that isn't a function
 - `Cannot pipe into <expr>` - piping into something other than a call or a function name (e.g. `1 |> 2`)
 - `Function <name> expected <expected> argument(s), found <found>` - calling any function with the wrong number of arguments
+- `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
+- `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 
 ## Parsed but Not Yet Evaluated
 

@@ -49,7 +49,7 @@ key        = ident | string ;
 
 `None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, and `Type`. `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
 expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
-`typeof(1) == Number` is `true`, and a `let` binding shadows it. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
+`typeof(1) == Number` is `true`. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
 `else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
@@ -134,5 +134,4 @@ analysis (e.g. type inference). `let x = expr` and `x = expr` both bind `x`.
   Once scopes exist, a binding will be limited to its scope.
 - **Re-binding replaces the binding, including its type.** After `let x = 1` then `x = "a"`,
   `typeof(x)` is `String`.
-- **A binding shadows a built-in type name.** After `let Number = 5`, `Number` is `5`.
 - Referencing an identifier with no binding raises `Unbound identifier: <name>`.

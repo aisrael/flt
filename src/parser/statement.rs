@@ -15,6 +15,15 @@ use super::expr::parse_expr;
 use super::identifier::parse_identifier;
 use super::keyword::parse_keyword;
 
+/// Parses the name in a binding: an identifier that isn't a reserved keyword, so `let if = 1`
+/// doesn't parse.
+fn parse_binding_name(input: &str) -> IResult<&str, &str> {
+    verify(parse_identifier, |name: &str| {
+        Keyword::from_name(name).is_none()
+    })
+    .parse(input)
+}
+
 /// Parses a let/assignment statement: optional `let` keyword, then identifier, `=`, expression,
 /// with optional whitespace (or comments) between each part.
 /// So both `let x = 1` and `x = 1` are valid and equivalent.
@@ -27,7 +36,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
             (
                 verify(parse_keyword, |k: &Keyword| *k == Keyword::Let),
                 multispace0_or_comment,
-                parse_identifier,
+                parse_binding_name,
                 multispace0_or_comment,
                 tag("="),
                 multispace0_or_comment,
@@ -37,7 +46,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         ),
         map(
             (
-                parse_identifier,
+                parse_binding_name,
                 multispace0_or_comment,
                 tag("="),
                 multispace0_or_comment,
@@ -62,6 +71,8 @@ mod tests {
     use crate::ast::Expr;
     use crate::ast::Identifier;
     use crate::ast::Statement;
+
+    use strum::IntoEnumIterator;
 
     use super::*;
 
@@ -167,5 +178,38 @@ mod tests {
                 Expr::literal_number(1)
             ))
         );
+    }
+
+    /// Whether `input` parses completely as a binding.
+    fn parses_as_binding(input: &str) -> bool {
+        matches!(parse_statement(input), Ok((rest, Statement::Let(_, _))) if rest.trim().is_empty())
+    }
+
+    #[test]
+    fn test_keyword_is_not_a_binding_name() {
+        for keyword in Keyword::iter() {
+            assert!(
+                !parses_as_binding(&format!("let {keyword} = 1")),
+                "let {keyword} = 1 should not parse as a binding"
+            );
+            assert!(
+                !parses_as_binding(&format!("{keyword} = 1")),
+                "{keyword} = 1 should not parse as a binding"
+            );
+        }
+    }
+
+    #[test]
+    fn test_name_starting_with_keyword_is_a_binding_name() {
+        for name in ["iffy", "letter", "fnord", "do-it", "for_each"] {
+            let input = format!("let {name} = 1");
+            let (rest, stmt) = parse_statement(&input).unwrap();
+            assert!(rest.is_empty());
+            assert_eq!(
+                stmt,
+                Statement::Let(Identifier(name.to_string()), Expr::literal_number(1))
+            );
+            assert!(parses_as_binding(&format!("{name} = 1")));
+        }
     }
 }

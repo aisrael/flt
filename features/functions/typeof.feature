@@ -2,8 +2,8 @@ Feature: typeof
 
   `typeof` is a native function that the runtime registers in the global scope,
   of type `fn(Any) -> Type`. It's a function value like any other, so it can be
-  bound to another name, piped into through that name, and shadowed by a
-  variable. See docs/functions-and-pipe.md#built-in-functions.
+  bound to another name and piped into through that name. Like any function's
+  name, `typeof` can't be bound. See docs/functions-and-pipe.md#built-in-functions.
 
   Scenario: typeof's name evaluates to a function value
     Given the input 'typeof'
@@ -25,15 +25,10 @@ Feature: typeof
     When I evaluate the input
     Then the result should be "true"
 
-  Scenario: A variable shadows typeof
-    Given the input 'let typeof = 1; typeof'
+  Scenario: typeof can't be bound
+    Given the input 'let typeof = 1'
     When I evaluate the input
-    Then the result should be "1"
-
-  Scenario: Calling a shadowed typeof
-    Given the input 'let typeof = 1; typeof(2)'
-    When I evaluate the input
-    Then the evaluation should fail with "typeof is not a function"
+    Then the evaluation should fail with "Cannot bind typeof: it's a function"
 
   Scenario: Calling typeof with the wrong number of arguments
     Given the input 'typeof()'
