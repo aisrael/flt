@@ -31,15 +31,19 @@ impl NativeType for DatuPlan {
 The trait requires `Display + PartialEq + Send + Sync + 'static`. The Rust type is the identity:
 one Rust type, one native type, one name.
 
-### 2. The host registers native types with the runtime
+### 2. The host registers native types, and its functions, with the runtime
 
 ```rust
 runtime.register_native_type::<DatuPlan>();
+runtime.register_function(filter);
 ```
 
-Registration comes before the functions that use the type and before any flt source is evaluated.
-Native types belong to the runtime, not the global scope, which still holds only variables and
-functions. The global scope records their names so it can protect them (decision 7).
+Native types are registered before the functions that use them and before any flt source is
+evaluated. Both go through the runtime, which stores them differently:
+
+- a function is a binding, kept in the global scope with the variables and the built-ins;
+- a native type isn't a binding. Like a built-in type, it's resolved by the runtime from its own
+  registry. The global scope records only its name, to protect it (decision 7).
 
 A value of an unregistered native type still works, but its type's name doesn't resolve. That's a
 host bug, like those in [ADR 006](006-no-shadowing.md) (decision 3); creating a value doesn't
@@ -136,7 +140,9 @@ The `NativeType` trait, registration and protected names belong to the reference
 - **A typed handle from registration**, e.g. `NativeTypeHandle<DatuPlan>`. It would catch
   unregistered types at compile time, but every handler would capture a handle and the name would
   live apart from its type.
-- **Registering native types in the global scope.** Rejected: types belong to the runtime.
+- **Storing native types in the global scope**, with variables and functions. Rejected: the global
+  scope holds bindings, and types, built-in or native, aren't bindings. Hosts still register both
+  functions and native types through the runtime (decision 2).
 - **Identity equality**, as for function values. Rejected: two values holding the same data, e.g.
   from two `date(2026, 1, 1)` calls, would compare unequal.
 - **Wrapped display, e.g. `<DatuPlan …>`.** Rejected: printing is the host's choice.
@@ -146,7 +152,8 @@ The `NativeType` trait, registration and protected names belong to the reference
 
 - New Rust API:
   - the `NativeType` trait;
-  - `SimpleRuntime::register_native_type` and `get_native_type`;
+  - `SimpleRuntime::register_native_type` and `get_native_type`, and `SimpleRuntime::register_function`
+    alongside `GlobalScope::register_function`;
   - `Type::Native` and `Type::native::<T>()`;
   - `Value::Native`, `Value::native`, `get_native` and `downcast_native`;
   - `Error::Native` and `Error::native`;

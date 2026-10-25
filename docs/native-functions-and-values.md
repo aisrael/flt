@@ -9,7 +9,7 @@ A native function can also fail with the host's own [error](#host-errors).
 
 ## Native Functions
 
-A host can register native functions, written in Rust, in the global scope. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
+A host can register native functions, written in Rust, with `runtime.register_function`. The runtime keeps them in its global scope, alongside the built-ins. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
 
 ```rust
 use std::sync::atomic::AtomicU64;
@@ -26,7 +26,7 @@ use flt::runtime::Value;
 let mut runtime = SimpleRuntime::default();
 
 // identity(v) returns its argument, and has type fn(Any) -> Any
-runtime.global_scope.register_function(NativeFunction::new(
+runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("identity", Type::any(), vec![Argument::new("v", Type::any())]),
     |args| Ok(args[0].clone()),
 ));
@@ -35,7 +35,7 @@ runtime.global_scope.register_function(NativeFunction::new(
 // mutable state needs Arc<Mutex<_>> or atomics rather than Rc<RefCell<_>>.
 let calls = Arc::new(AtomicU64::new(0));
 let counter = Arc::clone(&calls);
-runtime.global_scope.register_function(NativeFunction::new(
+runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("count", Type::number(), vec![]),
     move |_args| Ok(Value::Number((counter.fetch_add(1, Ordering::SeqCst) + 1).into())),
 ));
@@ -43,7 +43,7 @@ runtime.global_scope.register_function(NativeFunction::new(
 
 Registering a function under a name that's already registered replaces it. That includes the [built-ins](./functions-and-pipe.md#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
-A function's name can't be bound as a variable, whether the function is a built-in or the host's. `register_function` panics if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `global_scope.set_variable` refuses the same names as `let`, and returns an error.
+A function's name can't be bound as a variable, whether the function is a built-in or the host's. `register_function` (which `runtime.global_scope.register_function` also provides) panics if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `global_scope.set_variable` refuses the same names as `let`, and returns an error.
 
 ```flt
 identity              # <fn identity>
@@ -98,7 +98,7 @@ let mut runtime = SimpleRuntime::default();
 runtime.register_native_type::<Date>();
 
 // date(yyyy, mm, dd) creates a date, and has type fn(Number, Number, Number) -> Date
-runtime.global_scope.register_function(NativeFunction::new(
+runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "date",
         Type::native::<Date>(),
@@ -120,7 +120,7 @@ runtime.global_scope.register_function(NativeFunction::new(
 
 // days_between(from, to) counts the days from one date to another, and has type
 // fn(Date, Date) -> Number
-runtime.global_scope.register_function(NativeFunction::new(
+runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "days_between",
         Type::number(),

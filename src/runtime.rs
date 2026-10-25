@@ -299,6 +299,17 @@ impl SimpleRuntime {
         self.native_types.get(name).copied()
     }
 
+    /// Registers a native function, which the runtime keeps in its global scope, so that a host
+    /// registers its functions and native types through the runtime alike.
+    ///
+    /// # Panics
+    ///
+    /// As [`GlobalScope::register_function`] does: if the name is a built-in type name, a native
+    /// type's name, or is already bound as a variable.
+    pub fn register_function(&mut self, function: NativeFunction) {
+        self.global_scope.register_function(function);
+    }
+
     /// Looks up `name` as a variable, then a global function, then a built-in type name, then
     /// a native type name. A name is never more than one of these, since a binding can't
     /// shadow a function or a type, so the order doesn't change the result.
@@ -1376,7 +1387,7 @@ mod tests {
     fn runtime_with_meters() -> SimpleRuntime {
         let mut runtime = SimpleRuntime::default();
         runtime.register_native_type::<Meters>();
-        runtime.global_scope.register_function(NativeFunction::new(
+        runtime.register_function(NativeFunction::new(
             FunctionDefinition::new(
                 "meters",
                 Type::native::<Meters>(),
@@ -1385,6 +1396,24 @@ mod tests {
             |args| Ok(Value::native(Meters(i64::try_from(&args[0])?))),
         ));
         runtime
+    }
+
+    #[test]
+    fn test_register_function_on_runtime_keeps_it_in_global_scope() {
+        let runtime = runtime_with_meters();
+        assert!(runtime.global_scope.has_function("meters"));
+        let function = runtime.global_scope.get_function("meters").unwrap();
+        assert_eq!(function.r#type().to_string(), "fn(Number) -> Meters");
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register function Meters: it's a native type")]
+    fn test_register_function_on_runtime_panics_on_native_type_name() {
+        let mut runtime = runtime_with_meters();
+        runtime.register_function(NativeFunction::new(
+            FunctionDefinition::new("Meters", Type::number(), vec![]),
+            |_args| Ok(Value::Number(BigDecimal::from(0))),
+        ));
     }
 
     #[test]

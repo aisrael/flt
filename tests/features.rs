@@ -220,7 +220,7 @@ fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
     register_native_types(&mut runtime, natives);
     for name in natives {
         let function = native_function(name).expect("fixture native function should exist");
-        runtime.global_scope.register_function(function);
+        runtime.register_function(function);
     }
     let mut rest = input;
     let mut last = None;
