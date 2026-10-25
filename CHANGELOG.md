@@ -8,6 +8,8 @@
 - **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` is `(x |> f) == 3`.
 - **`SimpleRuntime.built_in_functions` is removed**: Built-ins such as `typeof` are native functions in the global scope; read them with `global_scope.get_function`.
 - **Bindings can't shadow types, functions or keywords**: A reserved keyword as a binding name (`let if = 1`) is a parse error. Binding a built-in type name (`None`, `Number`, …, `Any`) or the name of a function, built-in (`typeof`) or registered by the host, raises an error. `GlobalScope::set_variable` returns a `Result`, `register_function` panics on a built-in type name or a name that's already a variable, and `GlobalScope`'s `functions` and `variables` maps are private, so hosts go through those methods.
+- **New enum variants**: `Type::Native`, `Value::Native`, `Error::Native`, `RuntimeError::UnexpectedType`, `RuntimeError::CannotConvert` and `ProtectedName::NativeType`, so hosts that match on these enums exhaustively need a new arm.
+- **`SimpleRuntime` has a private field**: It holds the registered native types, so it can't be built with a struct literal; use `SimpleRuntime::default()`.
 
 ### Highlights
 
@@ -18,7 +20,10 @@
 - **Functions as values**: Hosts can register native functions in the global scope. A function's name evaluates to a function value of type `fn(...) -> R`, which can be bound to another name and called through it. Calling an unknown name raises `Undefined function: <name>`.
 - **Pipe operator**: `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`. Piping into anything else raises `Cannot pipe into <expr>`. Calls next to `|>` need parentheses: `1 |> f 2` and `f 1 |> g()` are parse errors.
 - **`typeof` is a function value**: `typeof` is a native function in the global scope, so `typeof(typeof)` is `fn(Any) -> Type` and `let t = typeof` works. In the REPL, `/inspect` reports a function's type.
-- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004, 005 and 006.
+- **Native types and values**: A host's Rust type that implements `NativeType` (a name, plus `Display` and `PartialEq`) can be registered with the runtime (`SimpleRuntime::register_native_type`). Native functions create and read its values (`Value::native`, `get_native`, `downcast_native`), which flt source can bind, pass, pipe, print and compare with `==`/`!=`, but not create or look inside. A native type's name evaluates to that type, can't be bound, and can appear in function types, e.g. `fn(Date, Date) -> Number`.
+- **Host errors**: Native functions can fail with the host's own error (`Error::native`), which is shown unchanged.
+- **Numbers to and from Rust**: `Value::from` accepts `u64`, `i64` and `usize`, and `i32`, `i64`, `u32`, `u64`, `usize` and `f64` implement `TryFrom<&Value>`, raising `Expected Number, found <type>` or `Cannot convert <number> to <type>`.
+- **Docs**: A one-page language spec (`docs/spec.md`), and ADRs 001, 002, 003, 004, 005, 006 and 007.
 
 ## v0.1.2
 

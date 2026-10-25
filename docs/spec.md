@@ -54,6 +54,12 @@ expression evaluates to `Any`, and `Any` is not a value. Types are first-class v
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
 `else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
 
+A runtime may let its host define **native types** (see [native types](native-functions-and-values.md#native-types-and-values)). A
+native type's name evaluates to that type. Its values come only from the host's functions: flt source
+can bind, pass, compare and print them, but can't create them or look inside them. They print as the
+host chooses, and `==` and `!=` compare them as the host defines. Values of different native types
+are never equal, and native values can't be ordered.
+
 ## 5. Operators (lowest → highest precedence)
 
 | Level | Operators                                  | Meaning                     |
@@ -112,13 +118,14 @@ A runtime may register any number of built-in, native functions. The reference i
 ### Native functions and function values
 
 A host can register native functions in the global scope (see
-[native functions](functions-and-pipe.md#native-functions)). A function's name evaluates to a
+[native functions](native-functions-and-values.md#native-functions)). A function's name evaluates to a
 function value of type `fn(P1, P2) -> R`, displayed as `<fn name>`, which can be bound with `let`
 and called through any name it's bound to. Two function values are equal only if they're the same
-function.
+function. A function type can name native types (§4), e.g. `fn(Date, Date) -> Number`. A native
+function can fail with the host's own error, which is reported unchanged.
 
 Identifiers and call names resolve in the order variables, then global functions, then built-in type
-names. Calls raise:
+names, then native type names. Calls raise:
 
 - `Undefined function: <name>` when the name isn't bound;
 - `<name> is not a function` when the name is bound to a value that isn't a function;
