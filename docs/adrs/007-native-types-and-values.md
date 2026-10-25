@@ -137,7 +137,8 @@ The `NativeType` trait, registration and protected names belong to the reference
   unregistered types at compile time, but every handler would capture a handle and the name would
   live apart from its type.
 - **Registering native types in the global scope.** Rejected: types belong to the runtime.
-- **Identity equality.** Rejected: equal data would compare unequal.
+- **Identity equality**, as for function values. Rejected: two values holding the same data, e.g.
+  from two `date(2026, 1, 1)` calls, would compare unequal.
 - **Wrapped display, e.g. `<DatuPlan …>`.** Rejected: printing is the host's choice.
 - **Checking native arguments in the runtime.** Deferred: the runtime checks no argument types yet.
 
