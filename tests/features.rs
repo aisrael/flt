@@ -1,6 +1,9 @@
+use std::fmt;
 use std::path::Path;
 
 use bigdecimal::BigDecimal;
+use chrono::NaiveDate;
+use chrono::NaiveTime;
 use cucumber::gherkin::Step;
 use cucumber::given;
 use cucumber::then;
@@ -17,9 +20,12 @@ use flt::parser::parse_statement;
 use flt::runtime::functions::Argument;
 use flt::runtime::functions::FunctionDefinition;
 use flt::runtime::functions::NativeFunction;
+use flt::runtime::native::NativeType;
 use flt::runtime::types::Type;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
+use flt::runtime::Value;
+use flt::Error;
 
 #[derive(Debug, Default, World)]
 pub struct AstWorld {
@@ -95,8 +101,109 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             ),
             |args| Ok(args[0].clone()),
         )),
+        "date" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "date",
+                Type::native::<Date>(),
+                vec![
+                    Argument::number("yyyy"),
+                    Argument::number("mm"),
+                    Argument::number("dd"),
+                ],
+            ),
+            |args| {
+                let year = i32::try_from(&args[0])?;
+                let month = u32::try_from(&args[1])?;
+                let day = u32::try_from(&args[2])?;
+                match NaiveDate::from_ymd_opt(year, month, day) {
+                    Some(date) => Ok(Value::native(Date(date))),
+                    None => Err(Error::native(std::io::Error::other(format!(
+                        "{year:04}-{month:02}-{day:02} is not a valid date"
+                    )))),
+                }
+            },
+        )),
+        "days_between" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "days_between",
+                Type::number(),
+                vec![
+                    Argument::new("from", Type::native::<Date>()),
+                    Argument::new("to", Type::native::<Date>()),
+                ],
+            ),
+            |args| {
+                let from = args[0].downcast_native::<Date>()?;
+                let to = args[1].downcast_native::<Date>()?;
+                Ok(Value::from((to.0 - from.0).num_days()))
+            },
+        )),
+        "time" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "time",
+                Type::native::<Time>(),
+                vec![
+                    Argument::number("hh"),
+                    Argument::number("mm"),
+                    Argument::number("ss"),
+                ],
+            ),
+            |args| {
+                let hour = u32::try_from(&args[0])?;
+                let min = u32::try_from(&args[1])?;
+                let sec = u32::try_from(&args[2])?;
+                match NaiveTime::from_hms_opt(hour, min, sec) {
+                    Some(time) => Ok(Value::native(Time(time))),
+                    None => Err(Error::native(std::io::Error::other(format!(
+                        "{hour:02}:{min:02}:{sec:02} is not a valid time"
+                    )))),
+                }
+            },
+        )),
         _ => None,
     }
+}
+
+/// Registers the fixture native types that the named fixture functions use. `Time` is
+/// never registered, so it also stands for a type a host forgot to register.
+fn register_native_types(runtime: &mut SimpleRuntime, natives: &[String]) {
+    if natives
+        .iter()
+        .any(|name| name == "date" || name == "days_between")
+    {
+        runtime.register_native_type::<Date>();
+    }
+}
+
+/// chrono's `NaiveDate` as the native type `Date`. `NaiveDate` is from another crate, so
+/// this crate can't implement `NativeType` for it directly.
+#[derive(PartialEq)]
+struct Date(NaiveDate);
+
+/// A date prints as `yyyy-mm-dd`.
+impl fmt::Display for Date {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl NativeType for Date {
+    const NAME: &'static str = "Date";
+}
+
+/// chrono's `NaiveTime` as the native type `Time`, which the fixtures never register.
+#[derive(PartialEq)]
+struct Time(NaiveTime);
+
+/// A time prints as `hh:mm:ss`.
+impl fmt::Display for Time {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl NativeType for Time {
+    const NAME: &'static str = "Time";
 }
 
 #[when(expr = "I evaluate the input")]
@@ -106,9 +213,11 @@ fn when_i_evaluate_the_input(world: &mut AstWorld) {
 }
 
 /// Parses and evaluates each statement in `input` in a fresh runtime with the named
-/// fixture native functions registered, returning the displayed value of the last one.
+/// fixture native functions, and the native types they use, registered, returning the
+/// displayed value of the last one.
 fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
     let mut runtime = SimpleRuntime::default();
+    register_native_types(&mut runtime, natives);
     for name in natives {
         let function = native_function(name).expect("fixture native function should exist");
         runtime.global_scope.register_function(function);
@@ -137,6 +246,13 @@ fn then_the_result_should_be(world: &mut AstWorld, expected: String) {
     let result = world.result.take().expect("result should be set");
     let actual = result.expect("evaluation should succeed");
     assert_eq!(actual, expected);
+}
+
+#[then(expr = r#"the evaluation should fail with exactly {string}"#)]
+fn then_the_evaluation_should_fail_with_exactly(world: &mut AstWorld, expected: String) {
+    let result = world.result.take().expect("result should be set");
+    let error = result.expect_err("evaluation should fail");
+    assert_eq!(error, expected);
 }
 
 #[then(expr = r#"the evaluation should fail with {string}"#)]

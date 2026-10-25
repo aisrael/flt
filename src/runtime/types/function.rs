@@ -57,6 +57,7 @@ impl fmt::Display for FunctionType {
 mod tests {
     use super::*;
     use crate::runtime::functions::Argument;
+    use crate::runtime::native::fixtures::Meters;
 
     #[test]
     fn test_display_without_parameters() {
@@ -96,5 +97,26 @@ mod tests {
     fn test_type_function_display() {
         let function_type = Type::Function(FunctionType::new(vec![Type::any()], Type::any()));
         assert_eq!(function_type.to_string(), "fn(Any) -> Any");
+    }
+
+    #[test]
+    fn test_display_with_native_types() {
+        let function_type = FunctionType::new(
+            vec![Type::native::<Meters>(), Type::string()],
+            Type::native::<Meters>(),
+        );
+        assert_eq!(function_type.to_string(), "fn(Meters, String) -> Meters");
+    }
+
+    #[test]
+    fn test_from_function_signature_with_native_types() {
+        let signature = FunctionSignature {
+            arguments: vec![Argument::new("m", Type::native::<Meters>())],
+            return_type: Type::number(),
+        };
+        assert_eq!(
+            FunctionType::from(&signature).to_string(),
+            "fn(Meters) -> Number"
+        );
     }
 }
