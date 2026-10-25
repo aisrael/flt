@@ -213,7 +213,8 @@ impl FltRepl {
     }
 
     /// Removes the variable named by `args`, or explains why it can't: there's no such
-    /// variable, or the name is a built-in type or a function, which can't be unset.
+    /// variable, or the name is a built-in type, a function or a native type, which can't be
+    /// unset.
     fn unset(&mut self, args: &str) -> Result<(), String> {
         if args.is_empty() {
             return Err("usage: /unset <identifier>".to_string());
@@ -223,7 +224,8 @@ impl FltRepl {
         if global_scope.remove_variable(&ident).is_some() {
             return Ok(());
         }
-        // A name that can't be bound is a built-in type or a function, not a variable
+        // A name that can't be bound is a built-in type, a function or a native type, not a
+        // variable
         match global_scope.check_bindable(&ident) {
             Err(Error::RuntimeError(RuntimeError::CannotBind { name, reason })) => {
                 Err(format!("Cannot unset {name}: it's {reason}"))
@@ -232,15 +234,19 @@ impl FltRepl {
         }
     }
 
-    /// Reports on a bare identifier: a variable's value, or a function's type. A name can't be
-    /// both, since a variable can't use a function's name.
+    /// Reports on a bare identifier: a variable's value, a function's type, or a native type.
+    /// A name is never more than one of these, since a variable can't use a function's or a
+    /// type's name.
     fn inspect_identifier(&self, name: &str) -> String {
         let global_scope = &self.runtime.global_scope;
         if let Some(value) = global_scope.get_variable(name) {
             return format!("(variable) {value}");
         }
-        match global_scope.get_function(name) {
-            Some(function) => format!("(function) {}", function.r#type()),
+        if let Some(function) = global_scope.get_function(name) {
+            return format!("(function) {}", function.r#type());
+        }
+        match self.runtime.get_native_type(name) {
+            Some(native_type) => format!("(native type) {}", native_type.name()),
             None => "Unbound variable".to_string(),
         }
     }
@@ -308,6 +314,7 @@ mod tests {
     use serial_test::serial;
 
     use super::*;
+    use crate::runtime::native::fixtures::Meters;
 
     struct TestHandler;
 
@@ -468,6 +475,27 @@ mod tests {
             Err("Cannot unset typeof: it's a function".to_string())
         );
         assert!(repl.runtime.global_scope.has_function("typeof"));
+    }
+
+    #[test]
+    fn test_inspect_native_type() {
+        let mut repl = FltRepl::new();
+        repl.runtime.register_native_type::<Meters>();
+        assert_eq!(repl.inspect_identifier("Meters"), "(native type) Meters");
+    }
+
+    #[test]
+    fn test_unset_native_type() {
+        let mut repl = FltRepl::new();
+        repl.runtime.register_native_type::<Meters>();
+        assert_eq!(
+            repl.unset("Meters"),
+            Err("Cannot unset Meters: it's a native type".to_string())
+        );
+        assert_eq!(
+            repl.runtime.get_native_type("Meters").map(|t| t.name()),
+            Some("Meters")
+        );
     }
 
     #[test]

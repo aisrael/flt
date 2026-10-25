@@ -13,6 +13,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`operators.md`](operators.md) - Unary/binary operators and precedence.
 - [`field-access.md`](field-access.md) - Dot-access syntax for reading map fields (`u.foo`).
 - [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments) and pipe chaining.
+- [`native-functions-and-values.md`](native-functions-and-values.md) - Native functions, types and values: extending flt from a Rust host.
 - [`runtime-and-limitations.md`](runtime-and-limitations.md) - Evaluation behavior, errors, and current limitations.
 
 ## Architecture Decision Records
@@ -23,6 +24,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 004: The Pipe Operator](adrs/004-pipe-operator.md)
 - [ADR 005: `typeof` as a Native Function](adrs/005-typeof-native-function.md)
 - [ADR 006: Bindings Can't Shadow Types, Functions or Keywords](adrs/006-no-shadowing.md)
+- [ADR 007: Native Types and Values](adrs/007-native-types-and-values.md)
 
 ## Scope
 

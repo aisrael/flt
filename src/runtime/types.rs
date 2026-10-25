@@ -2,6 +2,9 @@
 
 use std::fmt;
 
+use crate::runtime::native::NativeType;
+use crate::runtime::native::NativeTypeInfo;
+
 mod function;
 mod union_types;
 
@@ -19,9 +22,16 @@ pub enum Type {
     Union(Vec<Type>),
     /// The type of a function, e.g. `fn(Any) -> Any`
     Function(FunctionType),
+    /// A native type, defined by the host
+    Native(NativeTypeInfo),
 }
 
 impl Type {
+    /// The flt type of the native type `T`, e.g. for function signatures
+    pub fn native<T: NativeType>() -> Self {
+        Type::Native(NativeTypeInfo::of::<T>())
+    }
+
     /// The built-in `None` type, the type of the `None` value
     pub fn none() -> Self {
         Type::Builtin(BuiltinType::None)
@@ -104,6 +114,7 @@ impl fmt::Display for Type {
             Type::Option(inner) => write!(f, "Option<{inner}>"),
             Type::Union(members) => union_types::fmt_union(members, f),
             Type::Function(function_type) => write!(f, "{function_type}"),
+            Type::Native(info) => write!(f, "{}", info.name()),
         }
     }
 }

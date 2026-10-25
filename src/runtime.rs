@@ -1,13 +1,16 @@
 //! Runtimes for the `flt` language
 
 pub mod functions;
+pub mod native;
 pub mod types;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
 use bigdecimal::BigDecimal;
+use bigdecimal::ToPrimitive;
 use bigdecimal::Zero;
 
 use crate::ast::BinaryOp;
@@ -20,6 +23,9 @@ use crate::errors::RuntimeError;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::FunctionDefinition;
 use crate::runtime::functions::NativeFunction;
+use crate::runtime::native::NativeType;
+use crate::runtime::native::NativeTypeInfo;
+use crate::runtime::native::NativeValue;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::Error;
@@ -46,6 +52,8 @@ pub enum Value {
     Type(Type),
     /// A function as a first-class value
     Function(Arc<NativeFunction>),
+    /// A value of a native type, created by the host
+    Native(NativeValue),
 }
 
 impl fmt::Display for Value {
@@ -80,6 +88,7 @@ impl fmt::Display for Value {
             }
             Value::Type(t) => write!(f, "{t}"),
             Value::Function(function) => write!(f, "<fn {}>", function.name()),
+            Value::Native(native) => write!(f, "{native}"),
         }
     }
 }
@@ -97,8 +106,106 @@ impl Value {
             Value::Array(_) => Ok(Type::array()),
             Value::Type(_) => Ok(Type::type_type()),
             Value::Function(function) => Ok(function.r#type()),
+            Value::Native(native) => Ok(Type::Native(native.type_info())),
         }
     }
+
+    /// Wraps a host value as an flt value of its native type.
+    pub fn native<T: NativeType>(value: T) -> Self {
+        Value::Native(NativeValue::new(value))
+    }
+
+    /// Borrows the host value inside, if this is a native value of type `T`.
+    pub fn get_native<T: NativeType>(&self) -> Option<&T> {
+        match self {
+            Value::Native(native) => native.get::<T>(),
+            _ => None,
+        }
+    }
+
+    /// Borrows the host value inside, if this is a native value of type `T`, and raises
+    /// `Expected <T::NAME>, found <type>` otherwise.
+    pub fn downcast_native<T: NativeType>(&self) -> Result<&T, Error> {
+        self.get_native::<T>()
+            .ok_or_else(|| unexpected_type(T::NAME, self))
+    }
+
+    /// The number inside, or `Expected Number, found <type>`.
+    fn expect_number(&self) -> Result<&BigDecimal, Error> {
+        match self {
+            Value::Number(n) => Ok(n),
+            other => Err(unexpected_type(&Type::number().to_string(), other)),
+        }
+    }
+}
+
+/// The error for a native function given `value` where it expected a value of type `expected`.
+fn unexpected_type(expected: &str, value: &Value) -> Error {
+    match value.type_of() {
+        Ok(found) => Error::RuntimeError(RuntimeError::UnexpectedType {
+            expected: expected.to_string(),
+            found: found.to_string(),
+        }),
+        Err(error) => error,
+    }
+}
+
+impl From<u64> for Value {
+    fn from(n: u64) -> Self {
+        Value::Number(BigDecimal::from(n))
+    }
+}
+
+impl From<i64> for Value {
+    fn from(n: i64) -> Self {
+        Value::Number(BigDecimal::from(n))
+    }
+}
+
+/// `BigDecimal` has no `From<usize>`, so this goes through `u64`.
+impl From<usize> for Value {
+    fn from(n: usize) -> Self {
+        Value::from(n as u64)
+    }
+}
+
+/// Implements `TryFrom<&Value>` for Rust integer types: the value must be a whole `Number` that
+/// fits the type, or it raises `Expected Number, found <type>` or `Cannot convert <n> to <type>`.
+macro_rules! try_from_value_for_integers {
+    ($($t:ty),*) => {$(
+        impl TryFrom<&Value> for $t {
+            type Error = Error;
+
+            fn try_from(value: &Value) -> Result<Self, Error> {
+                let n = value.expect_number()?;
+                Some(n)
+                    .filter(|n| n.is_integer())
+                    .and_then(|n| n.to_i128())
+                    .and_then(|n| <$t>::try_from(n).ok())
+                    .ok_or_else(|| cannot_convert(n, stringify!($t)))
+            }
+        }
+    )*};
+}
+
+try_from_value_for_integers!(i32, i64, u32, u64, usize);
+
+/// Any `Number` converts to an `f64`, possibly losing precision.
+impl TryFrom<&Value> for f64 {
+    type Error = Error;
+
+    fn try_from(value: &Value) -> Result<Self, Error> {
+        let n = value.expect_number()?;
+        n.to_f64().ok_or_else(|| cannot_convert(n, "f64"))
+    }
+}
+
+/// The error for a number that doesn't fit the Rust number type `target`.
+fn cannot_convert(n: &BigDecimal, target: &'static str) -> Error {
+    Error::RuntimeError(RuntimeError::CannotConvert {
+        number: n.to_string(),
+        target,
+    })
 }
 
 pub trait Runtime {
@@ -107,6 +214,8 @@ pub trait Runtime {
 
 pub struct SimpleRuntime {
     pub global_scope: GlobalScope,
+    /// Native types registered by the host, by name
+    native_types: HashMap<&'static str, NativeTypeInfo>,
 }
 
 impl Default for SimpleRuntime {
@@ -114,7 +223,10 @@ impl Default for SimpleRuntime {
     fn default() -> Self {
         let mut global_scope = GlobalScope::default();
         register_builtins(&mut global_scope);
-        Self { global_scope }
+        Self {
+            global_scope,
+            native_types: HashMap::new(),
+        }
     }
 }
 
@@ -152,9 +264,55 @@ impl Runtime for SimpleRuntime {
 }
 
 impl SimpleRuntime {
-    /// Looks up `name` as a variable, then a global function, then a built-in type name.
-    /// A name is never more than one of these, since a binding can't shadow a function or a
-    /// built-in type, so the order doesn't change the result.
+    /// Registers the native type `T` under `T::NAME`, so that its name evaluates to the type
+    /// and can't be bound.
+    ///
+    /// # Panics
+    ///
+    /// If the name is a built-in type name, a function's name, a variable's name, or an
+    /// already registered native type. Register native types before the functions that use
+    /// them, and before evaluating any flt source.
+    pub fn register_native_type<T: NativeType>(&mut self) {
+        let name = T::NAME;
+        assert!(
+            !Type::is_builtin_name(name),
+            "cannot register native type {name}: it's a built-in type"
+        );
+        assert!(
+            !self.global_scope.has_function(name),
+            "cannot register native type {name}: it's a function"
+        );
+        assert!(
+            !self.global_scope.has_variable(name),
+            "cannot register native type {name}: it's a variable"
+        );
+        assert!(
+            !self.native_types.contains_key(name),
+            "cannot register native type {name}: it's already a native type"
+        );
+        self.native_types.insert(name, NativeTypeInfo::of::<T>());
+        self.global_scope.protect_native_type_name(name);
+    }
+
+    /// A registered native type, by name.
+    pub fn get_native_type(&self, name: &str) -> Option<NativeTypeInfo> {
+        self.native_types.get(name).copied()
+    }
+
+    /// Registers a native function, which the runtime keeps in its global scope, so that a host
+    /// registers its functions and native types through the runtime alike.
+    ///
+    /// # Panics
+    ///
+    /// As [`GlobalScope::register_function`] does: if the name is a built-in type name, a native
+    /// type's name, or is already bound as a variable.
+    pub fn register_function(&mut self, function: NativeFunction) {
+        self.global_scope.register_function(function);
+    }
+
+    /// Looks up `name` as a variable, then a global function, then a built-in type name, then
+    /// a native type name. A name is never more than one of these, since a binding can't
+    /// shadow a function or a type, so the order doesn't change the result.
     fn lookup(&self, name: &str) -> Option<Value> {
         self.global_scope
             .get_variable(name)
@@ -166,6 +324,10 @@ impl SimpleRuntime {
                     .map(Value::Function)
             })
             .or_else(|| Type::builtin_named(name).map(Value::Type))
+            .or_else(|| {
+                self.get_native_type(name)
+                    .map(|info| Value::Type(Type::Native(info)))
+            })
     }
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
@@ -391,13 +553,15 @@ impl SimpleRuntime {
 
 /// The global scope is the scope that is available to all other scopes.
 ///
-/// A name in it is a variable, a function, or a built-in type, never more than one: a variable
-/// can't use a function's name or a built-in type name, and a function can't use a built-in
-/// type name or a variable's name.
+/// A name in it is a variable, a function, a built-in type, or a native type registered with
+/// the runtime, never more than one: a variable can't use a function's name or a type's name,
+/// and a function can't use a type's name or a variable's name.
 #[derive(Default)]
 pub struct GlobalScope {
     functions: HashMap<String, Arc<NativeFunction>>,
     variables: HashMap<String, Value>,
+    /// The names of native types registered with the runtime, which hold the types themselves
+    native_type_names: HashSet<String>,
 }
 
 impl GlobalScope {
@@ -416,13 +580,17 @@ impl GlobalScope {
     ///
     /// # Panics
     ///
-    /// If the name is a built-in type name, or is already bound as a variable. Register
-    /// functions before evaluating any flt source.
+    /// If the name is a built-in type name, a native type's name, or is already bound as a
+    /// variable. Register functions before evaluating any flt source.
     pub fn register_function(&mut self, function: NativeFunction) {
         let name = function.name();
         assert!(
             !Type::is_builtin_name(name),
             "cannot register function {name}: it's a built-in type"
+        );
+        assert!(
+            !self.native_type_names.contains(name),
+            "cannot register function {name}: it's a native type"
         );
         assert!(
             !self.variables.contains_key(name),
@@ -441,13 +609,15 @@ impl GlobalScope {
         self.variables.get(name)
     }
 
-    /// Check that `name` can be bound as a variable: it isn't a built-in type name or a
-    /// function's name.
+    /// Check that `name` can be bound as a variable: it isn't a built-in type name, a
+    /// function's name or a native type's name.
     pub fn check_bindable(&self, name: &str) -> Result<(), Error> {
         let reason = if Type::is_builtin_name(name) {
             ProtectedName::BuiltinType
         } else if self.has_function(name) {
             ProtectedName::Function
+        } else if self.native_type_names.contains(name) {
+            ProtectedName::NativeType
         } else {
             return Ok(());
         };
@@ -457,8 +627,8 @@ impl GlobalScope {
         }))
     }
 
-    /// Set a variable in the global scope by name, unless the name is a built-in type name or
-    /// a function's name.
+    /// Set a variable in the global scope by name, unless the name is a built-in type name, a
+    /// function's name or a native type's name.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
         self.check_bindable(name)?;
         self.variables.insert(name.to_string(), value);
@@ -469,6 +639,12 @@ impl GlobalScope {
     pub fn remove_variable(&mut self, name: &str) -> Option<Value> {
         self.variables.remove(name)
     }
+
+    /// Records that `name` is a native type registered with the runtime, so it can't be bound
+    /// as a variable or used for a function.
+    pub(crate) fn protect_native_type_name(&mut self, name: &str) {
+        self.native_type_names.insert(name.to_string());
+    }
 }
 
 #[cfg(test)]
@@ -476,9 +652,14 @@ mod tests {
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
 
+    use std::str::FromStr;
+
     use super::*;
     use crate::ast::Identifier;
     use crate::parser::parse_statement;
+    use crate::runtime::native::fixtures::Meters;
+    use crate::runtime::native::NativeType;
+    use crate::runtime::native::NativeTypeInfo;
 
     /// Evaluates a single expression statement in a fresh runtime.
     fn eval(expr: Expr) -> Value {
@@ -1199,5 +1380,304 @@ mod tests {
             .eval(&call("typeof", vec![Expr::literal_number(2)]))
             .unwrap();
         assert_eq!(value, Value::Type(Type::number()));
+    }
+
+    /// A fresh runtime with the native type `Meters` registered, and a native
+    /// `meters(n: Number) -> Meters`.
+    fn runtime_with_meters() -> SimpleRuntime {
+        let mut runtime = SimpleRuntime::default();
+        runtime.register_native_type::<Meters>();
+        runtime.register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "meters",
+                Type::native::<Meters>(),
+                vec![Argument::number("n")],
+            ),
+            |args| Ok(Value::native(Meters(i64::try_from(&args[0])?))),
+        ));
+        runtime
+    }
+
+    #[test]
+    fn test_register_function_on_runtime_keeps_it_in_global_scope() {
+        let runtime = runtime_with_meters();
+        assert!(runtime.global_scope.has_function("meters"));
+        let function = runtime.global_scope.get_function("meters").unwrap();
+        assert_eq!(function.r#type().to_string(), "fn(Number) -> Meters");
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register function Meters: it's a native type")]
+    fn test_register_function_on_runtime_panics_on_native_type_name() {
+        let mut runtime = runtime_with_meters();
+        runtime.register_function(NativeFunction::new(
+            FunctionDefinition::new("Meters", Type::number(), vec![]),
+            |_args| Ok(Value::Number(BigDecimal::from(0))),
+        ));
+    }
+
+    #[test]
+    fn test_native_type_name_evaluates_to_type() {
+        let mut runtime = runtime_with_meters();
+        let value = runtime
+            .eval(&Statement::Expr(Expr::ident("Meters")))
+            .unwrap();
+        assert_eq!(value, Value::Type(Type::native::<Meters>()));
+        assert_eq!(value.type_of().unwrap(), Type::type_type());
+    }
+
+    #[test]
+    fn test_get_native_type() {
+        let runtime = runtime_with_meters();
+        assert_eq!(
+            runtime.get_native_type("Meters"),
+            Some(NativeTypeInfo::of::<Meters>())
+        );
+        assert_eq!(runtime.get_native_type("Seconds"), None);
+    }
+
+    #[test]
+    fn test_unregistered_native_type_name_is_unbound() {
+        let result = SimpleRuntime::default().eval(&Statement::Expr(Expr::ident("Meters")));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::UnboundIdentifier(name))) if name == "Meters"
+        ));
+    }
+
+    #[test]
+    fn test_native_values_through_flt() {
+        let mut runtime = runtime_with_meters();
+        let cases = [
+            ("meters(5)", "5m"),
+            ("typeof(meters(5))", "Meters"),
+            ("typeof(meters(5)) == Meters", "true"),
+            ("typeof(meters)", "fn(Number) -> Meters"),
+            ("let m = meters(5); m == m", "true"),
+            ("meters(5) == meters(5)", "true"),
+            ("meters(5) == meters(6)", "false"),
+            ("meters(5) != meters(6)", "true"),
+            ("meters(5) == 5", "false"),
+            ("\"m: \" <> meters(5)", "\"m: \""),
+        ];
+        for (input, expected) in cases {
+            let value = eval_source(&mut runtime, input).unwrap();
+            assert_eq!(value.to_string(), expected, "for {input}");
+        }
+    }
+
+    #[test]
+    fn test_native_values_cannot_be_ordered() {
+        let mut runtime = runtime_with_meters();
+        let result = eval_source(&mut runtime, "meters(5) < meters(6)");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
+        ));
+    }
+
+    #[test]
+    fn test_native_type_name_is_not_callable() {
+        let result = runtime_with_meters().eval(&call("Meters", vec![Expr::literal_number(5)]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "Meters"
+        ));
+    }
+
+    #[test]
+    fn test_field_access_on_native_value_is_invalid() {
+        let mut runtime = runtime_with_meters();
+        let result = eval_source(&mut runtime, "meters(5).n");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::InvalidOperandType))
+        ));
+    }
+
+    #[test]
+    fn test_native_type_name_cannot_be_bound() {
+        let mut runtime = runtime_with_meters();
+        let result = runtime.eval(&let_statement("Meters", Expr::literal_number(1)));
+        assert_cannot_bind(result, "Meters", ProtectedName::NativeType);
+        assert_cannot_bind(
+            runtime.global_scope.set_variable("Meters", Value::None),
+            "Meters",
+            ProtectedName::NativeType,
+        );
+        let error = runtime
+            .eval(&let_statement("Meters", Expr::literal_number(1)))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot bind Meters: it's a native type"
+        );
+    }
+
+    /// A native type named like a built-in type, for the registration panics.
+    #[derive(PartialEq)]
+    struct FakeNumber;
+
+    impl fmt::Display for FakeNumber {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "fake")
+        }
+    }
+
+    impl NativeType for FakeNumber {
+        const NAME: &'static str = "Number";
+    }
+
+    /// A native type named like the built-in `typeof` function.
+    #[derive(PartialEq)]
+    struct FakeTypeof;
+
+    impl fmt::Display for FakeTypeof {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "fake")
+        }
+    }
+
+    impl NativeType for FakeTypeof {
+        const NAME: &'static str = "typeof";
+    }
+
+    /// A second Rust type that uses `Meters`' name.
+    #[derive(PartialEq)]
+    struct OtherMeters;
+
+    impl fmt::Display for OtherMeters {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "other")
+        }
+    }
+
+    impl NativeType for OtherMeters {
+        const NAME: &'static str = "Meters";
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register native type Number: it's a built-in type")]
+    fn test_register_native_type_panics_on_builtin_type_name() {
+        SimpleRuntime::default().register_native_type::<FakeNumber>();
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register native type typeof: it's a function")]
+    fn test_register_native_type_panics_on_function_name() {
+        SimpleRuntime::default().register_native_type::<FakeTypeof>();
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register native type Meters: it's a variable")]
+    fn test_register_native_type_panics_on_variable_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("Meters", Expr::literal_number(1)))
+            .unwrap();
+        runtime.register_native_type::<Meters>();
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register native type Meters: it's already a native type")]
+    fn test_register_native_type_panics_when_registered_twice() {
+        let mut runtime = runtime_with_meters();
+        runtime.register_native_type::<Meters>();
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register native type Meters: it's already a native type")]
+    fn test_register_native_type_panics_on_another_types_name() {
+        let mut runtime = runtime_with_meters();
+        runtime.register_native_type::<OtherMeters>();
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register function Meters: it's a native type")]
+    fn test_register_function_panics_on_native_type_name() {
+        let mut runtime = runtime_with_meters();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new("Meters", Type::number(), vec![]),
+            |_args| Ok(Value::Number(BigDecimal::from(0))),
+        ));
+    }
+
+    #[test]
+    fn test_value_from_rust_integers() {
+        assert_eq!(Value::from(3usize), number(3));
+        assert_eq!(Value::from(3u64), number(3));
+        assert_eq!(Value::from(-3i64), number(-3));
+        assert_eq!(Value::from(u64::MAX).to_string(), u64::MAX.to_string());
+    }
+
+    fn decimal(s: &str) -> Value {
+        Value::Number(BigDecimal::from_str(s).unwrap())
+    }
+
+    #[test]
+    fn test_try_from_value_for_rust_numbers() {
+        assert_eq!(i32::try_from(&number(-5)).unwrap(), -5);
+        assert_eq!(i64::try_from(&number(-5)).unwrap(), -5);
+        assert_eq!(u32::try_from(&number(5)).unwrap(), 5);
+        assert_eq!(
+            u64::try_from(&decimal("18446744073709551615")).unwrap(),
+            u64::MAX
+        );
+        assert_eq!(usize::try_from(&number(5)).unwrap(), 5);
+        assert_eq!(f64::try_from(&decimal("2.5")).unwrap(), 2.5);
+        assert_eq!(f64::try_from(&number(5)).unwrap(), 5.0);
+    }
+
+    /// Asserts that `result` is the error for converting `number` to the Rust type `target`.
+    fn assert_cannot_convert<T: std::fmt::Debug>(
+        result: Result<T, Error>,
+        number: &str,
+        target: &str,
+    ) {
+        match result {
+            Err(Error::RuntimeError(RuntimeError::CannotConvert {
+                number: found_number,
+                target: found_target,
+            })) => {
+                assert_eq!(found_number, number);
+                assert_eq!(found_target, target);
+            }
+            other => panic!("expected CannotConvert for {number} to {target}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_try_from_value_rejects_numbers_that_dont_fit() {
+        assert_cannot_convert(i32::try_from(&decimal("2.5")), "2.5", "i32");
+        assert_cannot_convert(i64::try_from(&decimal("2.5")), "2.5", "i64");
+        assert_cannot_convert(u32::try_from(&number(-1)), "-1", "u32");
+        assert_cannot_convert(u64::try_from(&number(-1)), "-1", "u64");
+        assert_cannot_convert(usize::try_from(&number(-1)), "-1", "usize");
+        assert_cannot_convert(i32::try_from(&number(3_000_000_000)), "3000000000", "i32");
+        assert_cannot_convert(
+            i64::try_from(&decimal("1e30")),
+            &decimal("1e30").to_string(),
+            "i64",
+        );
+        assert_eq!(
+            u32::try_from(&number(-1)).unwrap_err().to_string(),
+            "Runtime Error: Cannot convert -1 to u32"
+        );
+    }
+
+    #[test]
+    fn test_try_from_value_rejects_non_numbers() {
+        let error = i32::try_from(&Value::String("5".to_string())).unwrap_err();
+        assert!(matches!(
+            &error,
+            Error::RuntimeError(RuntimeError::UnexpectedType { expected, found })
+                if expected == "Number" && found == "String"
+        ));
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Expected Number, found String"
+        );
+        assert!(f64::try_from(&Value::Boolean(true)).is_err());
+        assert!(usize::try_from(&Value::native(Meters(5))).is_err());
     }
 }

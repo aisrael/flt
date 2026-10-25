@@ -19,6 +19,7 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 
 - [None](./types/none.md): the `None` value and type, and the result of an `if` without `else`.
 - [Union Types](./types/union_types.md): `A | B`, a value of one of several types, and the type of an `if`.
+- [Native Types](./native-functions-and-values.md#native-types-and-values): types a host defines for its own values, which only its native functions create and read.
 
 ## Types as Values
 
@@ -39,7 +40,9 @@ let Number = 5      # error: Cannot bind Number: it's a built-in type
 let None = 1        # error: Cannot bind None: it's a built-in type
 ```
 
-A name that is neither a variable nor a built-in type is an error, e.g. `Foo` raises `Unbound identifier: Foo`. This includes [`Any`](#any), which only appears in signatures.
+A host's [native types](./native-functions-and-values.md#native-types-and-values) are first-class values the same way.
+
+A name that is neither a variable, a function nor a type is an error, e.g. `Foo` raises `Unbound identifier: Foo`. This includes [`Any`](#any), which only appears in signatures.
 
 ## `Any`
 
@@ -55,7 +58,7 @@ A function's type is written `fn(P1, P2) -> R`, listing its parameter types and 
 
 `->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
 
-Functions are first-class values. With a host that registers a [native function](./functions-and-pipe.md#native-functions) `identity`, which returns its argument and has the type `fn(Any) -> Any`:
+Functions are first-class values. With a host that registers a [native function](./native-functions-and-values.md#native-functions) `identity`, which returns its argument and has the type `fn(Any) -> Any`:
 
 ```flt
 identity              # <fn identity>

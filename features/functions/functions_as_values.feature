@@ -4,7 +4,7 @@ Feature: Functions as values
   evaluates to a function value, which has a function type and can be bound to
   another name and called through it. A name is a variable, a global function or
   a built-in type, never more than one, so a function's name can't be bound. See
-  docs/functions-and-pipe.md#native-functions.
+  docs/native-functions-and-values.md#native-functions.
 
   Background:
     Given the native function "identity"

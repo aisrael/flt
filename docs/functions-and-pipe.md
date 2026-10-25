@@ -110,7 +110,7 @@ The runtime currently registers one built-in function:
 
 - `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`, and `typeof(42) == Number` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
 
-Built-ins are [native functions](#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `fn(Any) -> Type`:
+Built-ins are [native functions](./native-functions-and-values.md#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `fn(Any) -> Type`:
 
 ```flt
 typeof                # <fn typeof>
@@ -128,59 +128,18 @@ let typeof = 1        # error: Cannot bind typeof: it's a function
 
 ## Native Functions
 
-A host application embedding `flt` can register native functions, written in Rust, in the global scope. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
+A host embedding `flt` can register its own functions, written in Rust, and its own types for the values they pass around. See [Native Functions, Types and Values](./native-functions-and-values.md).
 
-```rust
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
-use flt::runtime::functions::Argument;
-use flt::runtime::functions::FunctionDefinition;
-use flt::runtime::functions::NativeFunction;
-use flt::runtime::types::Type;
-use flt::runtime::SimpleRuntime;
-use flt::runtime::Value;
-
-let mut runtime = SimpleRuntime::default();
-
-// identity(v) returns its argument, and has type fn(Any) -> Any
-runtime.global_scope.register_function(NativeFunction::new(
-    FunctionDefinition::new("identity", Type::any(), vec![Argument::new("v", Type::any())]),
-    |args| Ok(args[0].clone()),
-));
-
-// A handler is a closure, so it may capture state. Handlers are Send + Sync, so
-// mutable state needs Arc<Mutex<_>> or atomics rather than Rc<RefCell<_>>.
-let calls = Arc::new(AtomicU64::new(0));
-let counter = Arc::clone(&calls);
-runtime.global_scope.register_function(NativeFunction::new(
-    FunctionDefinition::new("count", Type::number(), vec![]),
-    move |_args| Ok(Value::Number((counter.fetch_add(1, Ordering::SeqCst) + 1).into())),
-));
-```
-
-Registering a function under a name that's already registered replaces it. That includes the [built-ins](#built-in-functions): a host that registers its own `typeof` replaces the default one.
-
-A function's name can't be bound as a variable, whether the function is a built-in or the host's. `register_function` panics if the name is a built-in type name, such as `Number`, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `global_scope.set_variable` refuses the same names as `let`, and returns an error.
-
-```flt
-identity              # <fn identity>
-typeof(identity)      # fn(Any) -> Any
-identity(42)          # 42
-let f = identity
-f(42)                 # 42
-```
-
-### Name Resolution
+## Name Resolution
 
 An identifier, and the name in a call, can name one of:
 
 1. a variable
-2. a global function
+2. a global function, built-in or [native](./native-functions-and-values.md#native-functions)
 3. a [built-in type](./types.md#types-as-values)
+4. a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host
 
-A name is never more than one of these, because a binding can't shadow a function or a built-in type ([ADR 006](./adrs/006-no-shadowing.md)). A function value can still be bound to a new name:
+A name is never more than one of these, because a binding can't shadow a function, a built-in type or a native type ([ADR 006](./adrs/006-no-shadowing.md), [ADR 007](./adrs/007-native-types-and-values.md)). A function value can still be bound to a new name. With a host that registers the [native function](./native-functions-and-values.md#native-functions) `identity`:
 
 ```flt
 let identity = 1      # error: Cannot bind identity: it's a function
@@ -188,9 +147,9 @@ let f = identity      # binds the function value to a new name
 f(42)                 # 42
 ```
 
-### Calls
+## Calls
 
-Before a native function runs, the runtime checks the number of arguments against the function's signature. Argument types aren't checked yet; that is left to the function itself.
+Before a function runs, the runtime checks the number of arguments against the function's signature. Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
 
 - `identity(1, 2)` raises `Function identity expected 1 argument(s), found 2`.
 - `let x = 1; x(2)` raises `x is not a function`.
@@ -199,5 +158,6 @@ Before a native function runs, the runtime checks the number of arguments agains
 ## Current Semantics Note
 
 - Parsing for function calls (including keyword arguments) and pipe expressions is implemented.
-- Calling a [native function](#native-functions), whether a built-in (currently just `typeof`) or one a host registered, evaluates it.
+- Calling a [native function](./native-functions-and-values.md#native-functions), whether a built-in (currently just `typeof`) or one a host registered, evaluates it.
+- [Native values](./native-functions-and-values.md#native-types-and-values) pass through flt between native functions; flt source can't create them.
 - Pipes (`|>`) are evaluated. Multi-line pipes in the REPL (a line starting with `|>` continuing the previous one) are not supported yet.
