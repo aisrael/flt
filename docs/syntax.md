@@ -43,6 +43,8 @@ The following words are reserved and recognized with word boundaries (e.g. `if` 
 | `for` | `in` | `let` |
 | `while` | `do` | `fn` |
 
+A reserved keyword can't be the name in a binding, so `let if = 1` and `fn = 1` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
+
 ## Identifiers
 
 Identifiers are parsed as one or more of:

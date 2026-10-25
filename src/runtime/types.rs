@@ -88,6 +88,12 @@ impl Type {
         };
         Some(Type::Builtin(builtin))
     }
+
+    /// Whether `name` is a built-in type name. This includes `Any`, which isn't a value but
+    /// names a type in signatures.
+    pub fn is_builtin_name(name: &str) -> bool {
+        name == "Any" || Self::builtin_named(name).is_some()
+    }
 }
 
 impl fmt::Display for Type {

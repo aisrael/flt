@@ -49,4 +49,25 @@ pub enum RuntimeError {
         expected: usize,
         found: usize,
     },
+    #[error("Cannot bind {name}: it's {reason}")]
+    CannotBind { name: String, reason: ProtectedName },
+}
+
+/// Why a name can't be bound as a variable
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ProtectedName {
+    /// A built-in type name, e.g. `Number`
+    BuiltinType,
+    /// The name of a function in the global scope, built-in or registered by the host
+    Function,
+}
+
+impl std::fmt::Display for ProtectedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ProtectedName::BuiltinType => "a built-in type",
+            ProtectedName::Function => "a function",
+        };
+        write!(f, "{s}")
+    }
 }

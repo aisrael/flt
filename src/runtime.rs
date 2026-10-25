@@ -15,6 +15,7 @@ use crate::ast::Expr;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
+use crate::errors::ProtectedName;
 use crate::errors::RuntimeError;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::FunctionDefinition;
@@ -138,10 +139,12 @@ impl Runtime for SimpleRuntime {
     fn eval(&mut self, statement: &Statement) -> Result<Value, Error> {
         match statement {
             Statement::Expr(expr) => self.eval_expr(expr),
+            // The name is checked first, so `let Number = f()` doesn't call `f`.
             Statement::Let(ident, expr) => {
+                let name = ident.0.as_str();
+                self.global_scope.check_bindable(name)?;
                 let value = self.eval_expr(expr)?;
-                self.global_scope
-                    .set_variable(ident.0.as_str(), value.clone());
+                self.global_scope.set_variable(name, value.clone())?;
                 Ok(value)
             }
         }
@@ -150,8 +153,8 @@ impl Runtime for SimpleRuntime {
 
 impl SimpleRuntime {
     /// Looks up `name` as a variable, then a global function, then a built-in type name.
-    /// So a variable shadows a function (e.g. after `let identity = 1`), and a function
-    /// shadows a built-in type name.
+    /// A name is never more than one of these, since a binding can't shadow a function or a
+    /// built-in type, so the order doesn't change the result.
     fn lookup(&self, name: &str) -> Option<Value> {
         self.global_scope
             .get_variable(name)
@@ -387,10 +390,14 @@ impl SimpleRuntime {
 }
 
 /// The global scope is the scope that is available to all other scopes.
+///
+/// A name in it is a variable, a function, or a built-in type, never more than one: a variable
+/// can't use a function's name or a built-in type name, and a function can't use a built-in
+/// type name or a variable's name.
 #[derive(Default)]
 pub struct GlobalScope {
-    pub functions: HashMap<String, Arc<NativeFunction>>,
-    pub variables: HashMap<String, Value>,
+    functions: HashMap<String, Arc<NativeFunction>>,
+    variables: HashMap<String, Value>,
 }
 
 impl GlobalScope {
@@ -406,9 +413,22 @@ impl GlobalScope {
 
     /// Register a native function in the global scope under its name, replacing any
     /// function already registered under that name.
+    ///
+    /// # Panics
+    ///
+    /// If the name is a built-in type name, or is already bound as a variable. Register
+    /// functions before evaluating any flt source.
     pub fn register_function(&mut self, function: NativeFunction) {
-        self.functions
-            .insert(function.name().to_string(), Arc::new(function));
+        let name = function.name();
+        assert!(
+            !Type::is_builtin_name(name),
+            "cannot register function {name}: it's a built-in type"
+        );
+        assert!(
+            !self.variables.contains_key(name),
+            "cannot register function {name}: it's a variable"
+        );
+        self.functions.insert(name.to_string(), Arc::new(function));
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -421,9 +441,28 @@ impl GlobalScope {
         self.variables.get(name)
     }
 
-    /// Set a variable in the global scope by name.
-    pub fn set_variable(&mut self, name: &str, value: Value) {
+    /// Check that `name` can be bound as a variable: it isn't a built-in type name or a
+    /// function's name.
+    pub fn check_bindable(&self, name: &str) -> Result<(), Error> {
+        let reason = if Type::is_builtin_name(name) {
+            ProtectedName::BuiltinType
+        } else if self.has_function(name) {
+            ProtectedName::Function
+        } else {
+            return Ok(());
+        };
+        Err(Error::RuntimeError(RuntimeError::CannotBind {
+            name: name.to_string(),
+            reason,
+        }))
+    }
+
+    /// Set a variable in the global scope by name, unless the name is a built-in type name or
+    /// a function's name.
+    pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
+        self.check_bindable(name)?;
         self.variables.insert(name.to_string(), value);
+        Ok(())
     }
 
     /// Remove a variable from the global scope by name, returning its previous value if bound.
@@ -559,19 +598,115 @@ mod tests {
         assert_eq!(eval(expr), Value::Type(Type::type_type()));
     }
 
+    /// Asserts that `result` is the error for binding the protected name `name`.
+    fn assert_cannot_bind<T: std::fmt::Debug>(
+        result: Result<T, Error>,
+        name: &str,
+        reason: ProtectedName,
+    ) {
+        match result {
+            Err(Error::RuntimeError(RuntimeError::CannotBind {
+                name: found_name,
+                reason: found_reason,
+            })) => {
+                assert_eq!(found_name, name);
+                assert_eq!(found_reason, reason);
+            }
+            other => panic!("expected CannotBind for {name}, got {other:?}"),
+        }
+    }
+
     #[test]
-    fn test_let_shadows_builtin_type_name() {
+    fn test_let_cannot_bind_builtin_type_name() {
         let mut runtime = SimpleRuntime::default();
-        runtime
-            .eval(&Statement::Let(
-                Identifier("Number".to_string()),
+        for name in [
+            "None", "Boolean", "Number", "String", "Symbol", "Array", "Map", "Type", "Any",
+        ] {
+            let result = runtime.eval(&Statement::Let(
+                Identifier(name.to_string()),
                 Expr::literal_number(5),
-            ))
-            .unwrap();
+            ));
+            assert_cannot_bind(result, name, ProtectedName::BuiltinType);
+        }
+        // The refused binding leaves the type in place
         let value = runtime
             .eval(&Statement::Expr(Expr::ident("Number")))
             .unwrap();
-        assert_eq!(value, Value::Number(BigDecimal::from(5)));
+        assert_eq!(value, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_cannot_bind_error_message() {
+        let mut runtime = runtime_with_identity();
+        let error = runtime
+            .eval(&let_statement("Number", Expr::literal_number(5)))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot bind Number: it's a built-in type"
+        );
+        let error = runtime
+            .eval(&let_statement("identity", Expr::literal_number(5)))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot bind identity: it's a function"
+        );
+    }
+
+    #[test]
+    fn test_refused_binding_does_not_evaluate_its_value() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let counter = Arc::clone(&calls);
+        let mut runtime = SimpleRuntime::default();
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new("tick", Type::number(), vec![]),
+            move |_args| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok(Value::Number(BigDecimal::from(1)))
+            },
+        ));
+        let result = runtime.eval(&let_statement(
+            "Number",
+            Expr::function_call("tick", vec![]),
+        ));
+        assert_cannot_bind(result, "Number", ProtectedName::BuiltinType);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_set_variable_refuses_protected_names() {
+        let mut runtime = runtime_with_identity();
+        let scope = &mut runtime.global_scope;
+        assert_cannot_bind(
+            scope.set_variable("Number", Value::None),
+            "Number",
+            ProtectedName::BuiltinType,
+        );
+        assert_cannot_bind(
+            scope.set_variable("typeof", Value::None),
+            "typeof",
+            ProtectedName::Function,
+        );
+        assert_cannot_bind(
+            scope.set_variable("identity", Value::None),
+            "identity",
+            ProtectedName::Function,
+        );
+        assert!(!scope.has_variable("Number"));
+        assert!(scope.set_variable("x", Value::None).is_ok());
+        assert_eq!(scope.get_variable("x"), Some(&Value::None));
+    }
+
+    #[test]
+    fn test_scope_without_builtins_protects_only_type_names() {
+        let mut scope = GlobalScope::default();
+        assert_cannot_bind(
+            scope.set_variable("Number", Value::None),
+            "Number",
+            ProtectedName::BuiltinType,
+        );
+        assert!(scope.set_variable("typeof", Value::None).is_ok());
     }
 
     #[test]
@@ -666,19 +801,6 @@ mod tests {
     }
 
     #[test]
-    fn test_removing_shadowing_variable_restores_typeof() {
-        let mut runtime = SimpleRuntime::default();
-        runtime
-            .eval(&let_statement("typeof", Expr::literal_number(1)))
-            .unwrap();
-        runtime.global_scope.remove_variable("typeof");
-        let value = runtime
-            .eval(&call("typeof", vec![Expr::literal_number(1)]))
-            .unwrap();
-        assert_eq!(value, Value::Type(Type::number()));
-    }
-
-    #[test]
     fn test_host_function_replaces_typeof() {
         let mut runtime = SimpleRuntime::default();
         runtime.global_scope.register_function(NativeFunction::new(
@@ -695,6 +817,9 @@ mod tests {
         assert_eq!(value, Value::String("mine".to_string()));
         let function = runtime.global_scope.get_function("typeof").unwrap();
         assert_eq!(function.r#type().to_string(), "fn(Any) -> String");
+        // The replacement is a function too, so its name is still protected
+        let result = runtime.eval(&let_statement("typeof", Expr::literal_number(1)));
+        assert_cannot_bind(result, "typeof", ProtectedName::Function);
     }
 
     /// A fresh runtime with a native `identity` function of type `fn(Any) -> Any`.
@@ -764,28 +889,37 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_shadows_function() {
+    fn test_let_cannot_bind_host_function() {
         let mut runtime = runtime_with_identity();
-        runtime
-            .eval(&let_statement("identity", Expr::literal_number(1)))
-            .unwrap();
+        let result = runtime.eval(&let_statement("identity", Expr::literal_number(1)));
+        assert_cannot_bind(result, "identity", ProtectedName::Function);
         let value = runtime
             .eval(&Statement::Expr(Expr::ident("identity")))
             .unwrap();
-        assert_eq!(value, Value::Number(BigDecimal::from(1)));
+        assert!(matches!(value, Value::Function(_)));
     }
 
     #[test]
-    fn test_function_shadows_builtin_type_name() {
+    #[should_panic(expected = "cannot register function Number: it's a built-in type")]
+    fn test_register_function_panics_on_builtin_type_name() {
         let mut runtime = SimpleRuntime::default();
         runtime.global_scope.register_function(NativeFunction::new(
             FunctionDefinition::new("Number", Type::number(), vec![]),
             |_args| Ok(Value::Number(BigDecimal::from(0))),
         ));
-        let value = runtime
-            .eval(&Statement::Expr(Expr::ident("Number")))
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot register function x: it's a variable")]
+    fn test_register_function_panics_on_variable_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval(&let_statement("x", Expr::literal_number(1)))
             .unwrap();
-        assert!(matches!(value, Value::Function(_)));
+        runtime.global_scope.register_function(NativeFunction::new(
+            FunctionDefinition::new("x", Type::number(), vec![]),
+            |_args| Ok(Value::Number(BigDecimal::from(0))),
+        ));
     }
 
     #[test]
@@ -1057,15 +1191,13 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_shadows_builtin_function_in_calls() {
+    fn test_let_cannot_bind_builtin_function() {
         let mut runtime = SimpleRuntime::default();
-        runtime
-            .eval(&let_statement("typeof", Expr::literal_number(1)))
+        let result = runtime.eval(&let_statement("typeof", Expr::literal_number(1)));
+        assert_cannot_bind(result, "typeof", ProtectedName::Function);
+        let value = runtime
+            .eval(&call("typeof", vec![Expr::literal_number(2)]))
             .unwrap();
-        let result = runtime.eval(&call("typeof", vec![Expr::literal_number(2)]));
-        assert!(matches!(
-            result,
-            Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "typeof"
-        ));
+        assert_eq!(value, Value::Type(Type::number()));
     }
 }

@@ -32,11 +32,11 @@ Number == String       # false
 
 [`None`](./types/none.md) is both a value and a type, and the two compare equal.
 
-A `let` binding shadows a built-in type name. There are no scopes yet, so the binding applies everywhere after it:
+A built-in type name can't be bound, so it always means the type ([ADR 006](./adrs/006-no-shadowing.md)). That includes [`Any`](#any):
 
 ```flt
-let Number = 5
-Number              # 5
+let Number = 5      # error: Cannot bind Number: it's a built-in type
+let None = 1        # error: Cannot bind None: it's a built-in type
 ```
 
 A name that is neither a variable nor a built-in type is an error, e.g. `Foo` raises `Unbound identifier: Foo`. This includes [`Any`](#any), which only appears in signatures.
