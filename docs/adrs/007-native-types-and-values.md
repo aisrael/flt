@@ -5,27 +5,22 @@
 
 ## Context
 
-[ADR 003](003-functions-as-values.md) lets a host register native functions, but those functions
-can only take and return flt's own values: numbers, strings, symbols, arrays, maps, types and
-functions. A host often needs to pass its own data between calls. For example, datu evaluates
+Native functions ([ADR 003](003-functions-as-values.md)) take and return only flt's own values. A
+host often needs to pass its own data between calls. In datu,
 
 ```flt
 read("x.parquet") |> filter("a > 1") |> count()
 ```
 
-where `read` returns a lazy query plan, `filter` adds a stage to it, and `count` runs it. The plan is
-a Rust value that only datu understands, and it must travel through flt between the calls.
+`read` returns a lazy query plan, `filter` adds to it and `count` runs it. The plan is a Rust value
+that only datu understands.
 
-A host could translate its data into maps and arrays, but then it needs conversion code in both
-directions, flt source can build a fake value by writing the same map by hand, the value has no type
-of its own, and live resources such as an open file or a query engine can't be translated at all.
+Translating such data into maps and arrays needs conversion code both ways, lets flt source forge
+values, gives them no type of their own, and can't represent live resources such as an open file.
 
 ## Decisions
 
-### 1. A native type is a host's Rust type that implements `NativeType`
-
-A host makes one of its Rust types usable in flt by implementing the `NativeType` trait, which gives
-the type's name in flt:
+### 1. A native type is a Rust type that implements `NativeType`
 
 ```rust
 impl NativeType for DatuPlan {
@@ -33,38 +28,30 @@ impl NativeType for DatuPlan {
 }
 ```
 
-The trait requires `Display + PartialEq + Send + Sync + 'static`, so every native type can be
-printed and compared (decisions 4 and 5), and shared between threads like the rest of the runtime.
-The Rust type is the native type's identity: one Rust type is one native type, with one name.
+The trait requires `Display + PartialEq + Send + Sync + 'static`. The Rust type is the identity:
+one Rust type, one native type, one name.
 
 ### 2. The host registers native types with the runtime
-
-A host registers each native type with the runtime before it registers the functions that use it,
-and before it evaluates any flt source:
 
 ```rust
 runtime.register_native_type::<DatuPlan>();
 ```
 
-Native types are bound in the runtime, not in the global scope. The global scope still holds only
-variables and functions ([ADR 006](006-no-shadowing.md), decision 4), but it learns the names of
-native types, so that it can protect them (decision 7).
+Registration comes before the functions that use the type and before any flt source is evaluated.
+Native types belong to the runtime, not the global scope, which still holds only variables and
+functions. The global scope records their names so it can protect them (decision 7).
 
-Registering a native type is what makes its name resolve in flt source (decision 6). A value of a
-type that was never registered still works, prints and compares, and `typeof` names its type, but
-that name is unbound. That's a host bug, like the registration mistakes in
-[ADR 006](006-no-shadowing.md) (decision 3). The runtime can't catch it when the value is created,
-since creating a value doesn't involve the runtime.
+A value of an unregistered native type still works, but its type's name doesn't resolve. That's a
+host bug, like those in [ADR 006](006-no-shadowing.md) (decision 3); creating a value doesn't
+involve the runtime, so nothing catches it.
 
 ### 3. Only the host creates and reads native values
 
-A native value is a value of a native type. The host's Rust code creates it, e.g. with
-`Value::native(plan)`, and reads it back as the Rust type, e.g. with
-`value.downcast_native::<DatuPlan>()`. Native functions do this in their handlers; they capture
-nothing and need no access to the runtime.
+Host code creates a native value with `Value::native(plan)` and reads it with
+`value.downcast_native::<DatuPlan>()`. Handlers need no access to the runtime.
 
-To flt source, a native value is opaque. It can be bound, passed to functions, piped, compared,
-printed and given to `typeof`. It can't be created, looked inside or changed:
+flt source can bind, pass, pipe, compare and print native values and get their type, but can't
+create them, look inside them or change them:
 
 ```flt
 let p = read("x.parquet")
@@ -73,36 +60,27 @@ DatuPlan(1)              # DatuPlan is not a function
 p.stages                 # Invalid Operand Type
 ```
 
-As with function values, `<>` treats a native value as the empty string.
+`<>` treats a native value as the empty string, as it does a function.
 
-### 4. Native values print as the host displays them
+### 4. Native values print with the host's `Display`
 
-A native value prints exactly as its `Display` implementation writes it, with nothing added. That's
-how the REPL shows it:
+Nothing is added, e.g. no `<DatuPlan …>` wrapper:
 
 ```flt
 read("x.parquet") |> filter("a > 1")   # read("x.parquet") |> filter("a > 1")
 ```
 
-How a value prints is the host's choice, so flt doesn't wrap it, e.g. as `<DatuPlan …>`.
-
-### 5. Native values compare with the host's equality
-
-`==` and `!=` compare native values with the native type's `PartialEq`:
+### 5. Native values compare with the host's `PartialEq`
 
 ```flt
-read("x") == read("x")    # true, if the host's PartialEq says the two plans are equal
+read("x") == read("x")    # true, if the host's PartialEq says so
 read("x") == read("y")    # false
 ```
 
-Values of different native types are never equal, and a native value never equals any other kind of
-value. Native values can't be ordered: `<`, `>`, `<=` and `>=` raise `Invalid Operand Type`, as
-they do for maps.
+Values of different native types are never equal, nor is a native value equal to any other value.
+Native values can't be ordered: `<`, `>`, `<=` and `>=` raise `Invalid Operand Type`.
 
 ### 6. A native type's name evaluates to that type
-
-Once registered, a native type's name evaluates to the type, which is a value like any other type
-([ADR 001](001-none-types.md)):
 
 ```flt
 typeof(p)               # DatuPlan
@@ -110,26 +88,21 @@ typeof(p) == DatuPlan   # true
 typeof(DatuPlan)        # Type
 ```
 
-Name lookup checks native types after variables, functions and built-in types. As
-[ADR 006](006-no-shadowing.md) (decision 4) explains, the order doesn't change the result, since a
-name in the global scope means only one thing.
+Lookup checks native types after variables, functions and built-in types. Since a global name means
+only one thing ([ADR 006](006-no-shadowing.md), decision 4), the order doesn't change the result.
 
 ### 7. Native type names are protected
 
-[ADR 006](006-no-shadowing.md) expects every new kind of global name to be protected the same way
-(decision 4). In the reference runtime, `SimpleRuntime`:
+Following [ADR 006](006-no-shadowing.md) (decision 4), in `SimpleRuntime`:
 
-- a native type's name can't be bound: `let DatuPlan = 1` raises
-  `Cannot bind DatuPlan: it's a native type`, and so does binding it through the host API;
-- in the REPL, `/unset DatuPlan` reports `Cannot unset DatuPlan: it's a native type`, and
-  `/inspect DatuPlan` reports `(native type) DatuPlan`;
-- registering a function under a native type's name, or a native type under a built-in type name,
-  a function's name, a variable's name or another native type's name, is a host bug and panics.
+- `let DatuPlan = 1`, or binding the name through the host API, raises
+  `Cannot bind DatuPlan: it's a native type`;
+- in the REPL, `/unset DatuPlan` is refused for the same reason, and `/inspect DatuPlan` reports
+  `(native type) DatuPlan`;
+- registering a function under a native type's name, or a native type under any name already in
+  use, panics.
 
 ### 8. Function types can name native types
-
-A native function's type is still an flt function type ([ADR 003](003-functions-as-values.md)).
-Its parameters and its return type can be native types:
 
 ```flt
 typeof(filter)          # fn(DatuPlan, String) -> DatuPlan
@@ -137,73 +110,53 @@ typeof(filter)          # fn(DatuPlan, String) -> DatuPlan
 
 ### 9. The runtime still checks only arity
 
-The runtime checks the number of arguments to a native function, not their types
-([ADR 003](003-functions-as-values.md), decision 4), and a native type in a signature doesn't
-change that. A handler checks a native argument when it reads it: given any other value,
-`downcast_native` raises `Expected DatuPlan, found Number`, so `filter(1, "a > 1")` fails with that
-error.
+A native type in a signature isn't enforced ([ADR 003](003-functions-as-values.md), decision 4).
+Handlers check their arguments as they read them: `filter(1, "a > 1")` raises
+`Expected DatuPlan, found Number` from `downcast_native`.
 
-### 10. Host errors are reported unchanged
+### 10. Host errors are shown unchanged
 
-A native function can fail with the host's own error. The runtime reports it exactly as the host's
-error displays, with no `Runtime Error:` prefix, and the host can recover the original error from
-it.
+A native function can fail with the host's own error. It displays exactly as the host's error
+does, with no `Runtime Error:` prefix, and the host can recover the original.
 
-### 11. Native types are part of the language; the Rust API is the runtime's
+### 11. The concept is the language's; the Rust API is the runtime's
 
-The language allows a runtime to let its host define native types, with the behaviour in decisions
-3 to 6, 8 and 10: opaque values that only the host creates and reads, that print and compare as
-the host defines, and whose type names evaluate to types. The language spec describes that, without
-the reference runtime's Rust API.
-
-The `NativeType` trait, registration on `SimpleRuntime`, and protected names (decision 7) belong to
-the reference runtime, as [ADR 006](006-no-shadowing.md) (decision 5) treats its own rules.
+The spec says a runtime may let its host define native types, with decisions 3 to 6, 8 and 10.
+The `NativeType` trait, registration and protected names belong to the reference runtime, as in
+[ADR 006](006-no-shadowing.md) (decision 5).
 
 ## Alternatives Considered
 
-- **Opaque values with a type name given per value**, e.g. `NativeValue::new("DatuPlan", plan)`,
-  printed as `<DatuPlan>` and compared by identity. Rejected. The type name wasn't bound, so
-  `typeof(p) == DatuPlan` raised `Unbound identifier: DatuPlan`, nothing stopped two values from
-  using one name for different Rust types, and the host had no say in how values print or compare.
-- **Translating host data into maps and arrays.** Rejected. It needs conversion code in both
-  directions, flt source can forge a value by writing the map by hand, the value has no type of its
-  own, and live resources can't be translated.
-- **Structs.** A struct, a value with a named type and fixed fields, would give host data a type of
-  its own. Rejected for this need: it's a much larger language feature, the host would still convert
-  its data into fields, flt source could still build a struct by hand, and live resources still
-  couldn't be held. Structs remain a possible feature for data written in flt.
-- **A typed handle returned by registration**, e.g. `NativeTypeHandle<DatuPlan>`, through which the
-  host creates and reads values. It would guarantee at compile time that every value's type is
-  registered. Rejected: every handler would capture a handle, and the type's name would live apart
-  from the type it names. The trait keeps the name with the type, and an unregistered type is a host
-  bug (decision 2).
-- **Registering native types in the global scope.** Rejected. The global scope holds variables and
-  functions; types belong to the runtime.
-- **Comparing native values by identity.** Rejected. Two values holding the same data would be
-  unequal, so the REPL couldn't usefully compare them.
-- **Wrapping printed values, e.g. `<DatuPlan …>`.** Rejected. The host decides how its values print.
-- **Checking native arguments in the runtime.** Not now. The runtime checks no argument types yet,
-  and checking only native ones would be a special case. Handlers check them with one call.
+- **A type name per value**, e.g. `NativeValue::new("DatuPlan", plan)`, printed as `<DatuPlan>`
+  and compared by identity. Rejected: the name wasn't bound, so `typeof(p) == DatuPlan` failed,
+  one name could cover different Rust types, and the host couldn't control printing or equality.
+- **Translating host data into maps and arrays.** Rejected for the reasons in the Context.
+- **Structs.** Rejected for this need: a much larger feature that still needs conversion, can still
+  be forged from flt source, and can't hold live resources. Structs remain possible for flt data.
+- **A typed handle from registration**, e.g. `NativeTypeHandle<DatuPlan>`. It would catch
+  unregistered types at compile time, but every handler would capture a handle and the name would
+  live apart from its type.
+- **Registering native types in the global scope.** Rejected: types belong to the runtime.
+- **Identity equality.** Rejected: equal data would compare unequal.
+- **Wrapped display, e.g. `<DatuPlan …>`.** Rejected: printing is the host's choice.
+- **Checking native arguments in the runtime.** Deferred: the runtime checks no argument types yet.
 
 ## Consequences
 
-- The Rust API gains:
+- New Rust API:
   - the `NativeType` trait;
   - `SimpleRuntime::register_native_type` and `get_native_type`;
-  - `Type::native::<T>()` and `Type::Native`;
+  - `Type::Native` and `Type::native::<T>()`;
   - `Value::Native`, `Value::native`, `get_native` and `downcast_native`;
-  - `Error::Native` and `Error::native`, for host errors;
-  - `From<u64>`, `From<i64>` and `From<usize>` for `Value`, and `TryFrom<&Value>` for `i32`, `i64`,
-    `u32`, `u64`, `usize` and `f64`, so hosts can return and read numbers without depending on
-    `bigdecimal`. `TryFrom` borrows the value, since handlers get `&[Value]`.
-- **Breaking changes:**
-  - `Type`, `Value`, `Error`, `RuntimeError` and `ProtectedName` gain variants, so hosts that match
-    on them exhaustively need a new arm;
-  - `SimpleRuntime` gains a private field, so it can't be built with a struct literal; use
-    `SimpleRuntime::default()`.
-- New errors: `Expected <type>, found <type>` (also raised by `TryFrom<&Value>` for a value that
-  isn't a number), `Cannot convert <number> to <type>` (a number that doesn't fit the Rust type,
-  e.g. `2.5` or `-1` as a `u32`), and `Cannot bind <name>: it's a native type`.
-- The trait impl a host writes is one constant. A macro, either a `macro_rules!` macro in flt or a
-  derive in a separate proc-macro crate, could write it later without changing any behaviour.
+  - `Error::Native` and `Error::native`;
+  - `From<u64 | i64 | usize>` for `Value`, and `TryFrom<&Value>` for `i32`, `i64`, `u32`, `u64`,
+    `usize` and `f64`, so hosts needn't depend on `bigdecimal`.
+- New errors:
+  - `Expected <type>, found <type>`, also raised by `TryFrom<&Value>` for a non-number;
+  - `Cannot convert <number> to <type>`, e.g. `2.5` or `-1` as a `u32`;
+  - `Cannot bind <name>: it's a native type`.
+- Breaking changes:
+  - `Type`, `Value`, `Error`, `RuntimeError` and `ProtectedName` gain variants;
+  - `SimpleRuntime` gains a private field, so build it with `SimpleRuntime::default()`.
+- A macro, either `macro_rules!` or a derive, could later write the one-constant `NativeType` impl.
 - `Type::Custom` stays unused.
