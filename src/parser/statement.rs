@@ -72,6 +72,8 @@ mod tests {
     use crate::ast::Identifier;
     use crate::ast::Statement;
 
+    use strum::IntoEnumIterator;
+
     use super::*;
 
     #[test]
@@ -185,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_keyword_is_not_a_binding_name() {
-        for keyword in Keyword::ALL {
+        for keyword in Keyword::iter() {
             assert!(
                 !parses_as_binding(&format!("let {keyword} = 1")),
                 "let {keyword} = 1 should not parse as a binding"
