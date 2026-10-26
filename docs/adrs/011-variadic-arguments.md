@@ -1,4 +1,4 @@
-# ADR 010: Variadic Arguments
+# ADR 011: Variadic Arguments
 
 - **Date:** 2026-10-26
 - **Status:** Proposed.
