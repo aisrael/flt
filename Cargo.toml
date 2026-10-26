@@ -9,6 +9,7 @@ repository = "https://github.com/aisrael/flt"
 [dependencies]
 bigdecimal = "0.4.11"
 env_logger = "0.11.11"
+indexmap = "2.14.2"
 log = "0.4.34"
 nom = "8.0.0"
 regex = "1.13.1"

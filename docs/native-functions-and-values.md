@@ -23,22 +23,33 @@ use flt::runtime::types::Type;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
+use flt::Error;
+
+/// identity(v) returns its argument
+fn identity(args: &[Value]) -> Result<Value, Error> {
+    Ok(args[0].clone())
+}
+
+/// Makes a handler that counts its calls. A handler can be any `Fn`, so one built by a
+/// function like this may capture state. Handlers are Send + Sync, so mutable state needs
+/// Arc<Mutex<_>> or atomics rather than Rc<RefCell<_>>.
+fn counter(calls: Arc<AtomicU64>) -> impl Fn(&[Value]) -> Result<Value, Error> + Send + Sync {
+    move |_args| Ok(Value::from(calls.fetch_add(1, Ordering::SeqCst) + 1))
+}
 
 let mut runtime = SimpleRuntime::default();
 
-// identity(v) returns its argument, and has type fn(Any) -> Any
+// identity has type fn(Any) -> Any
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("identity", Type::any(), vec![Argument::new("v", Type::any())]),
-    |args| Ok(args[0].clone()),
+    identity,
 ))?;
 
-// A handler is a closure, so it may capture state. Handlers are Send + Sync, so
-// mutable state needs Arc<Mutex<_>> or atomics rather than Rc<RefCell<_>>.
+// count() returns how many times it has been called, and has type fn() -> Number
 let calls = Arc::new(AtomicU64::new(0));
-let counter = Arc::clone(&calls);
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("count", Type::number(), vec![]),
-    move |_args| Ok(Value::Number((counter.fetch_add(1, Ordering::SeqCst) + 1).into())),
+    counter(Arc::clone(&calls)),
 ))?;
 ```
 
@@ -55,6 +66,29 @@ f(42)                 # 42
 ```
 
 Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
+
+A map arrives as `Value::Map(flt::runtime::Map)`. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal, or the trailing map of a call's [keyword arguments](./functions-and-pipe.md#keyword-arguments), sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
+
+```rust
+use flt::runtime::Map;
+
+/// keys(map) returns the map's keys, in order: keys({b: 1, a: 2}) is ["b", "a"]
+fn keys(args: &[Value]) -> Result<Value, Error> {
+    match &args[0] {
+        Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::String).collect())),
+        _ => Ok(Value::Array(vec![])),
+    }
+}
+
+runtime.register_function(NativeFunction::new(
+    FunctionDefinition::new("keys", Type::array(), vec![Argument::new("map", Type::map())]),
+    keys,
+))?;
+
+let mut point = Map::new();
+point.insert("x".to_string(), Value::from(1u64));
+runtime.set_variable("point", Value::Map(point))?;
+```
 
 ## Native Types and Values
 
@@ -96,34 +130,43 @@ impl NativeType for Date {
     const NAME: &'static str = "Date";
 }
 
+/// date(yyyy, mm, dd) creates a date
+fn date(args: &[Value]) -> Result<Value, Error> {
+    let year = i32::try_from(&args[0])?;
+    let month = u32::try_from(&args[1])?;
+    let day = u32::try_from(&args[2])?;
+    match NaiveDate::from_ymd_opt(year, month, day) {
+        Some(date) => Ok(Value::native(Date(date))),
+        // A host error, shown unchanged (see Host Errors)
+        None => Err(Error::native(std::io::Error::other(format!(
+            "{year:04}-{month:02}-{day:02} is not a valid date"
+        )))),
+    }
+}
+
+/// days_between(from, to) counts the days from one date to another
+fn days_between(args: &[Value]) -> Result<Value, Error> {
+    let from = args[0].downcast_native::<Date>()?;
+    let to = args[1].downcast_native::<Date>()?;
+    Ok(Value::from((to.0 - from.0).num_days()))
+}
+
 /// Registers `Date` and the functions that use it. It uses only the `Runtime` trait, so it
 /// works with any runtime.
 fn install(runtime: &mut impl Runtime) -> Result<(), Error> {
     runtime.register_native_type::<Date>()?;
 
-    // date(yyyy, mm, dd) creates a date, and has type fn(Number, Number, Number) -> Date
+    // date has type fn(Number, Number, Number) -> Date
     runtime.register_function(NativeFunction::new(
         FunctionDefinition::new(
             "date",
             Type::native::<Date>(),
             vec![Argument::number("yyyy"), Argument::number("mm"), Argument::number("dd")],
         ),
-        |args| {
-            let year = i32::try_from(&args[0])?;
-            let month = u32::try_from(&args[1])?;
-            let day = u32::try_from(&args[2])?;
-            match NaiveDate::from_ymd_opt(year, month, day) {
-                Some(date) => Ok(Value::native(Date(date))),
-                // A host error, shown unchanged (see Host Errors)
-                None => Err(Error::native(std::io::Error::other(format!(
-                    "{year:04}-{month:02}-{day:02} is not a valid date"
-                )))),
-            }
-        },
+        date,
     ))?;
 
-    // days_between(from, to) counts the days from one date to another, and has type
-    // fn(Date, Date) -> Number
+    // days_between has type fn(Date, Date) -> Number
     runtime.register_function(NativeFunction::new(
         FunctionDefinition::new(
             "days_between",
@@ -133,11 +176,7 @@ fn install(runtime: &mut impl Runtime) -> Result<(), Error> {
                 Argument::new("to", Type::native::<Date>()),
             ],
         ),
-        |args| {
-            let from = args[0].downcast_native::<Date>()?;
-            let to = args[1].downcast_native::<Date>()?;
-            Ok(Value::from((to.0 - from.0).num_days()))
-        },
+        days_between,
     ))?;
     Ok(())
 }
