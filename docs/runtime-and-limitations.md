@@ -39,7 +39,9 @@ runtime.eval("")?;                              // None
 runtime.eval("let c = 1; let = 2");             // Err: Parser Error: …, and c stays unbound
 ```
 
-`eval_statement(&statement)` evaluates a statement the host has already parsed, e.g. with `flt::parser::parse_statement`. It's for hosts that parse source themselves, such as a REPL that builds statements from what the user types.
+`eval(source)` is the same as parsing `source` with `flt::parser::parse_statements`, then calling `eval_statement` on each statement.
+
+`eval_statement(&statement)` evaluates a statement the host has already parsed, e.g. with `flt::parser::parse_statements` or `parse_statement`. It's for hosts that parse source themselves, such as a REPL that builds statements from what the user types.
 
 ### Calling the Trait Through `dyn Runtime`
 

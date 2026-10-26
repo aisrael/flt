@@ -26,7 +26,7 @@
 - **Native functions**: A host registers Rust functions with the runtime, with signatures such as `fn(String) -> Number`, and flt source calls and pipes into them like any function.
 - **Native types and values**: A host can make its own Rust types available to flt, e.g. a date or a lazy query plan. flt source can pass these values between native functions, print them, compare them with `==` and `!=`, and get their type (`typeof(d) == Date`), but only the host creates them or looks inside them. Function types can name them, e.g. `fn(Date, Date) -> Number`.
 - **Host errors**: A native function can fail with the host's own error, which is shown exactly as the host writes it.
-- **Evaluating source**: `runtime.eval` parses and runs flt source, with several statements separated by newlines or `;`, and returns the last value. A syntax error runs nothing.
+- **Evaluating source**: `runtime.eval` parses and runs flt source, with several statements separated by newlines or `;`, and returns the last value. A syntax error runs nothing. `flt::parser::parse_statements` parses such source without running it.
 - **REPL on the host's runtime**: `FltRepl::with_runtime` runs flt's REPL on a runtime the host has set up, with its functions and native types.
 - **Numbers to and from Rust**: A host reads number arguments as Rust integers or floats, with clear errors such as `Expected Number, found String` or `Cannot convert -1 to u32`, and returns Rust integers as flt numbers.
 

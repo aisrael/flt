@@ -142,6 +142,7 @@ The runtime evaluates expressions and statements: literals (including maps and a
 - `flt::parser`:
   - `parse_expr`
   - `parse_statement`
+  - `parse_statements` (all of a source's statements, separated by newlines or `;`)
   - `parse_literal`
   - `parse_identifier`
   - `parse_number`

@@ -20,8 +20,7 @@ use crate::ast::Statement;
 use crate::ast::UnaryOp;
 use crate::errors::ProtectedName;
 use crate::errors::RuntimeError;
-use crate::parser::multispace0_or_comment;
-use crate::parser::parse_statement;
+use crate::parser::parse_statements;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::FunctionDefinition;
 use crate::runtime::functions::NativeFunction;
@@ -219,15 +218,15 @@ fn cannot_convert(n: &BigDecimal, target: &'static str) -> Error {
 /// error for a name it won't bind, and the `register_*` methods may panic for a name it won't
 /// register.
 pub trait Runtime {
-    /// Parses all of `source`, then evaluates its statements in order and returns the last
-    /// one's value, or `None` if there are none.
+    /// Parses all of `source` with [`parse_statements`], then evaluates its statements in
+    /// order and returns the last one's value, or `None` if there are none.
     ///
     /// Statements are separated by newlines or by `;`. A syntax error, including two
     /// statements on one line with no `;` between them, is an [`Error::ParserError`], and no
     /// statement is evaluated.
     fn eval(&mut self, source: &str) -> Result<Value, Error> {
         let mut value = Value::None;
-        for statement in parse_source(source)? {
+        for statement in parse_statements(source)? {
             value = self.eval_statement(&statement)?;
         }
         Ok(value)
@@ -270,31 +269,6 @@ pub trait Runtime {
 
     /// The global function `name`.
     fn get_function(&self, name: &str) -> Option<Arc<NativeFunction>>;
-}
-
-/// Parses every statement in `source`, which are separated by newlines or by `;`.
-fn parse_source(source: &str) -> Result<Vec<Statement>, Error> {
-    let parse_error = |e: nom::Err<nom::error::Error<&str>>| Error::ParserError(e.to_string());
-    let mut statements = Vec::new();
-    let (mut rest, _) = multispace0_or_comment(source).map_err(parse_error)?;
-    while !rest.is_empty() {
-        let (remainder, statement) = parse_statement(rest).map_err(parse_error)?;
-        // What follows the statement, up to the next one: whitespace, comments and any `;`
-        let consumed = &rest[..rest.len() - remainder.len()];
-        let statement_end = consumed
-            .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
-            .len();
-        let separator = &consumed[statement_end..];
-        if !remainder.is_empty() && !separator.contains([';', '\n']) {
-            let next = remainder.lines().next().unwrap_or_default();
-            return Err(Error::ParserError(format!(
-                "expected `;` or a newline before {next:?}"
-            )));
-        }
-        statements.push(statement);
-        (rest, _) = multispace0_or_comment(remainder).map_err(parse_error)?;
-    }
-    Ok(statements)
 }
 
 /// The reference runtime. Create one with `SimpleRuntime::default()`, which registers the
