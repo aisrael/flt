@@ -6,7 +6,7 @@ use crate::runtime::SimpleRuntime;
 
 pub fn eval(expr: &Expr) -> Result<String, Error> {
     let mut rt = SimpleRuntime::default();
-    let value = rt.eval(&Statement::Expr(expr.clone()))?;
+    let value = rt.eval_statement(&Statement::Expr(expr.clone()))?;
     Ok(value.to_string())
 }
 

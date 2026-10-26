@@ -136,34 +136,43 @@ fn history_path_from(env_value: Option<OsString>) -> Option<PathBuf> {
     }
 }
 
-/// The concrete implementation of the REPL context for `flt`
+/// Parses a full statement from `line`, treating any leftover, non-whitespace
+/// input after the statement as a parse error.
+fn parse_full(line: &str) -> Result<Statement, String> {
+    match parse_statement(line) {
+        Ok((remainder, statement)) => {
+            let remainder = remainder.trim();
+            if remainder.is_empty() {
+                Ok(statement)
+            } else {
+                Err(format!(
+                    "parse error: unexpected input after statement: {:?}",
+                    remainder
+                ))
+            }
+        }
+        Err(e) => Err(format!("parse error: {:?}", e)),
+    }
+}
+
+/// The concrete implementation of the REPL context for `flt`, on any [`Runtime`]
 #[derive(Default)]
-pub struct FltRepl {
-    runtime: SimpleRuntime,
+pub struct FltRepl<R: Runtime = SimpleRuntime> {
+    runtime: R,
 }
 
 impl FltRepl {
+    /// A REPL on a new `SimpleRuntime`
     pub fn new() -> Self {
         Self::default()
     }
+}
 
-    /// Parses a full statement from `line`, treating any leftover, non-whitespace
-    /// input after the statement as a parse error.
-    fn parse_full(line: &str) -> Result<Statement, String> {
-        match parse_statement(line) {
-            Ok((remainder, statement)) => {
-                let remainder = remainder.trim();
-                if remainder.is_empty() {
-                    Ok(statement)
-                } else {
-                    Err(format!(
-                        "parse error: unexpected input after statement: {:?}",
-                        remainder
-                    ))
-                }
-            }
-            Err(e) => Err(format!("parse error: {:?}", e)),
-        }
+impl<R: Runtime> FltRepl<R> {
+    /// A REPL on `runtime`, which the host has already set up, e.g. with its native functions
+    /// and types registered
+    pub fn with_runtime(runtime: R) -> Self {
+        Self { runtime }
     }
 
     /// Dispatches a slash command. Returns `false` if the REPL should exit.
@@ -199,7 +208,7 @@ impl FltRepl {
             eprintln!("usage: /parse <expression>");
             return;
         }
-        match Self::parse_full(args) {
+        match parse_full(args) {
             Ok(statement) => println!("{:?}", statement),
             Err(msg) => eprintln!("{}", msg),
         }
@@ -220,13 +229,12 @@ impl FltRepl {
             return Err("usage: /unset <identifier>".to_string());
         }
         let ident = Identifier::try_from(args.trim()).map_err(|e| format!("{e:?}"))?;
-        let global_scope = &mut self.runtime.global_scope;
-        if global_scope.remove_variable(&ident).is_some() {
+        if self.runtime.remove_variable(&ident).is_some() {
             return Ok(());
         }
         // A name that can't be bound is a built-in type, a function or a native type, not a
         // variable
-        match global_scope.check_bindable(&ident) {
+        match self.runtime.check_bindable(&ident) {
             Err(Error::RuntimeError(RuntimeError::CannotBind { name, reason })) => {
                 Err(format!("Cannot unset {name}: it's {reason}"))
             }
@@ -238,11 +246,10 @@ impl FltRepl {
     /// A name is never more than one of these, since a variable can't use a function's or a
     /// type's name.
     fn inspect_identifier(&self, name: &str) -> String {
-        let global_scope = &self.runtime.global_scope;
-        if let Some(value) = global_scope.get_variable(name) {
+        if let Some(value) = self.runtime.get_variable(name) {
             return format!("(variable) {value}");
         }
-        if let Some(function) = global_scope.get_function(name) {
+        if let Some(function) = self.runtime.get_function(name) {
             return format!("(function) {}", function.r#type());
         }
         match self.runtime.get_native_type(name) {
@@ -258,7 +265,7 @@ impl FltRepl {
             eprintln!("usage: /inspect <expression>");
             return;
         }
-        let statement = match Self::parse_full(args) {
+        let statement = match parse_full(args) {
             Ok(statement) => statement,
             Err(msg) => {
                 eprintln!("{}", msg);
@@ -276,7 +283,7 @@ impl FltRepl {
             Statement::Expr(Expr::Literal(_) | Expr::ArrayLiteral(_) | Expr::MapLiteral(_))
         );
 
-        match self.runtime.eval(&statement) {
+        match self.runtime.eval_statement(&statement) {
             Ok(value) if is_literal => match value.type_of() {
                 Ok(ty) => println!("{}", ty),
                 Err(e) => eprintln!("eval error: {:?}", e),
@@ -287,10 +294,10 @@ impl FltRepl {
     }
 }
 
-impl ReplHandler for FltRepl {
+impl<R: Runtime> ReplHandler for FltRepl<R> {
     fn eval(&mut self, line: &str) -> eyre::Result<()> {
-        match Self::parse_full(line) {
-            Ok(statement) => match self.runtime.eval(&statement) {
+        match parse_full(line) {
+            Ok(statement) => match self.runtime.eval_statement(&statement) {
                 Ok(val) => println!("{}", val),
                 Err(e) => eprintln!("eval error: {:?}", e),
             },
@@ -300,7 +307,7 @@ impl ReplHandler for FltRepl {
     }
 
     fn handle_command(&mut self, rest: &str) -> eyre::Result<bool> {
-        Ok(FltRepl::handle_command(self, rest))
+        Ok(FltRepl::<R>::handle_command(self, rest))
     }
 }
 
@@ -427,8 +434,8 @@ mod tests {
     #[test]
     fn test_inspect_function_after_refused_binding() {
         let mut repl = FltRepl::new();
-        let statement = FltRepl::parse_full("let typeof = 1").unwrap();
-        assert!(repl.runtime.eval(&statement).is_err());
+        let statement = parse_full("let typeof = 1").unwrap();
+        assert!(repl.runtime.eval_statement(&statement).is_err());
         assert_eq!(
             repl.inspect_identifier("typeof"),
             "(function) fn(Any) -> Type"
@@ -438,13 +445,16 @@ mod tests {
     #[test]
     fn test_unset_variable() {
         let mut repl = FltRepl::new();
-        let statement = FltRepl::parse_full("let x = 1").unwrap();
-        repl.runtime.eval(&statement).unwrap();
+        let statement = parse_full("let x = 1").unwrap();
+        repl.runtime.eval_statement(&statement).unwrap();
         assert_eq!(repl.unset("x"), Ok(()));
-        assert!(!repl.runtime.global_scope.has_variable("x"));
-        let statement = FltRepl::parse_full("x").unwrap();
+        assert_eq!(repl.runtime.get_variable("x"), None);
+        let statement = parse_full("x").unwrap();
         assert_eq!(
-            repl.runtime.eval(&statement).unwrap_err().to_string(),
+            repl.runtime
+                .eval_statement(&statement)
+                .unwrap_err()
+                .to_string(),
             "Runtime Error: Unbound identifier: x"
         );
     }
@@ -474,7 +484,17 @@ mod tests {
             repl.unset("typeof"),
             Err("Cannot unset typeof: it's a function".to_string())
         );
-        assert!(repl.runtime.global_scope.has_function("typeof"));
+        assert!(repl.runtime.get_function("typeof").is_some());
+    }
+
+    #[test]
+    fn test_with_runtime_uses_the_hosts_runtime() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.register_native_type::<Meters>();
+        runtime.eval("let x = 1").unwrap();
+        let repl = FltRepl::with_runtime(runtime);
+        assert_eq!(repl.inspect_identifier("Meters"), "(native type) Meters");
+        assert_eq!(repl.inspect_identifier("x"), "(variable) 1");
     }
 
     #[test]
@@ -510,8 +530,8 @@ mod tests {
     #[test]
     fn test_inspect_variable() {
         let mut repl = FltRepl::new();
-        let statement = FltRepl::parse_full("let x = 1").unwrap();
-        repl.runtime.eval(&statement).unwrap();
+        let statement = parse_full("let x = 1").unwrap();
+        repl.runtime.eval_statement(&statement).unwrap();
         assert_eq!(repl.inspect_identifier("x"), "(variable) 1");
     }
 

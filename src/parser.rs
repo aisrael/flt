@@ -19,6 +19,7 @@ pub use crate::ast::BinaryOp;
 pub use crate::ast::Expr;
 pub use crate::ast::Literal;
 pub use crate::ast::UnaryOp;
+pub(crate) use comment::multispace0_or_comment;
 pub use expr::parse_expr;
 pub use identifier::parse_identifier;
 pub use literal::parse_literal;
