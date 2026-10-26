@@ -209,8 +209,8 @@ fn cannot_convert(n: &BigDecimal, target: &'static str) -> Error {
     })
 }
 
-/// flt's runtime API (ADR 008): evaluating flt source, registering native functions and native
-/// types, and reading and binding global variables. Every runtime implements it, and a host
+/// flt's runtime API: evaluating flt source, registering native functions and native types,
+/// and reading and binding global variables. Every runtime implements it, and a host
 /// works with a runtime only through it.
 ///
 /// The trait defines operations, not rules. Which names a runtime refuses to bind or register
@@ -275,7 +275,7 @@ pub trait Runtime {
 /// built-in functions, and work with it through the [`Runtime`] trait.
 ///
 /// A global name is a variable, a function, a built-in type or a native type, never more than
-/// one (ADRs 006 and 007):
+/// one:
 ///
 /// - [`Runtime::set_variable`] refuses a built-in type name, a function's name and a native
 ///   type's name, as `let` does.
@@ -1721,7 +1721,7 @@ mod tests {
         assert!(usize::try_from(&Value::native(Meters(5))).is_err());
     }
 
-    // The `Runtime` trait (ADR 008)
+    // The `Runtime` trait
 
     /// Registers the native type `Meters` and `meters` through the trait alone, as a host
     /// holding a `dyn Runtime` would.
