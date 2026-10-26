@@ -56,7 +56,7 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
 
-A map arrives as `Value::Map(flt::runtime::Map)`. In `SimpleRuntime`, `Map` is an `IndexMap<String, Value>` that keeps its entries in insertion order, so a handler iterating a map literal, or the trailing map of a call's [keyword arguments](./functions-and-pipe.md#keyword-arguments), sees them in source order. Hosts build maps with `flt::runtime::Map` too, without depending on `indexmap` themselves.
+A map arrives as `Value::Map(flt::runtime::Map)`. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal, or the trailing map of a call's [keyword arguments](./functions-and-pipe.md#keyword-arguments), sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
 
 ```rust
 use flt::runtime::Map;
