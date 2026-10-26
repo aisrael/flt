@@ -8,6 +8,7 @@ use super::literal::Literal;
 use super::operands::BinaryOp;
 use super::operands::UnaryOp;
 use crate::utils::escape_string;
+use crate::utils::is_bare_name;
 
 /// An expression in the language.
 #[derive(Clone, Debug, PartialEq)]
@@ -204,13 +205,10 @@ pub struct KeyValue {
 
 impl Display for KeyValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self
-            .key
-            .contains(|c: char| !c.is_alphanumeric() && c != '_')
-        {
-            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
-        } else {
+        if is_bare_name(&self.key) {
             write!(f, "{}: {}", self.key, self.value)
+        } else {
+            write!(f, "\"{}\": {}", escape_string(&self.key), self.value)
         }
     }
 }
@@ -224,6 +222,7 @@ mod tests {
     use super::super::operands::BinaryOp;
     use super::super::operands::UnaryOp;
     use super::Expr;
+    use super::KeyValue;
 
     fn n(s: &str) -> BigDecimal {
         BigDecimal::from_str(s).unwrap()
@@ -249,6 +248,22 @@ mod tests {
     #[test]
     fn test_display_literal_symbol() {
         assert_eq!(Expr::literal_symbol("foo").to_string(), "foo");
+    }
+
+    #[test]
+    fn test_display_key_value_quotes_keys_that_are_not_bare_names() {
+        let kv = |key: &str| {
+            KeyValue {
+                key: key.to_string(),
+                value: Expr::literal_number(1),
+            }
+            .to_string()
+        };
+        assert_eq!(kv("b"), "b: 1");
+        assert_eq!(kv("foo_bar"), "foo_bar: 1");
+        assert_eq!(kv("c d"), r#""c d": 1"#);
+        assert_eq!(kv("_tmp"), r#""_tmp": 1"#);
+        assert_eq!(kv("1x"), r#""1x": 1"#);
     }
 
     #[test]

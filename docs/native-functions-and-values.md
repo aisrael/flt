@@ -67,15 +67,16 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
 
-A map arrives as `Value::Map(flt::runtime::Map)`. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal, or the trailing map of a call's [keyword arguments](./functions-and-pipe.md#keyword-arguments), sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
+A map arrives as `Value::Map(flt::runtime::Map)`, keyed by `MapKey`. A key written in flt source, in a map literal or as a call's [keyword argument](./functions-and-pipe.md#keyword-arguments), is a symbol, `MapKey::Symbol`. A host can also use string keys, `MapKey::String`, which flt source can't write yet; a symbol and a string with the same text are different keys. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal or a call's keyword arguments sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
 
 ```rust
 use flt::runtime::Map;
+use flt::runtime::MapKey;
 
-/// keys(map) returns the map's keys, in order: keys({b: 1, a: 2}) is ["b", "a"]
+/// keys(map) returns the map's keys, in order: keys({b: 1, a: 2}) is [:b, :a]
 fn keys(args: &[Value]) -> Result<Value, Error> {
     match &args[0] {
-        Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::String).collect())),
+        Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::from).collect())),
         _ => Ok(Value::Array(vec![])),
     }
 }
@@ -86,9 +87,13 @@ runtime.register_function(NativeFunction::new(
 ))?;
 
 let mut point = Map::new();
-point.insert("x".to_string(), Value::from(1u64));
-runtime.set_variable("point", Value::Map(point))?;
+point.insert(MapKey::symbol("x"), Value::from(1u64));
+runtime.set_variable("point", Value::Map(point))?;   // point is {x: 1}
 ```
+
+- `MapKey::symbol(name)` and `MapKey::string(s)` make keys.
+- `Value::from(key)` turns a key into the flt value it stands for, a `Symbol` or a `String`.
+- A string key prints as `"b" => 1`, which flt can't parse yet.
 
 ## Native Types and Values
 

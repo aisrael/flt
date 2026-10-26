@@ -73,7 +73,7 @@ Examples:
 
 ### Maps
 
-A literal map is a dictionary-like collection with unique keys mapping to their associated values. They start with `{` and end with `}`. Keys are similar to symbols, they can be bare keys (a valid identifier sequence), or quoted, then followed by a `:`. The value is any valid expression.
+A literal map is a dictionary-like collection with unique keys mapping to their associated values. They start with `{` and end with `}`. Each key is a [symbol](#symbols), written bare (a letter, then letters, digits or `_`) or quoted, then followed by a `:`. The value is any valid expression.
 
 Examples:
 
@@ -88,6 +88,10 @@ Examples:
 ```flt
 { "spaced out": (1 + 1) }
 ```
+
+A bare key `foo:` is shorthand for the symbol `:foo`, and a quoted key `"spaced out":` for the quoted symbol `:"spaced out"`, as in [Elixir](https://hexdocs.pm/elixir/keywords-and-maps.html). So `{ foo: 1 }` and `{ "foo": 1 }` are the same map, and `{ foo: 1, "foo": 2 }` has one key, `:foo`, with the value `2`. A map prints its keys as they'd be written: `{ "foo": 1 }` prints `{foo: 1}`, and `{ "spaced out": 2 }` prints `{"spaced out": 2}`.
+
+flt source can't write a string key yet ([ADR 009](./adrs/009-symbol-keys-and-ordered-maps.md)).
 
 Fields can be read back off a map with [dot-access syntax](./field-access.md), e.g. `{ foo: "bar" }.foo`.
 

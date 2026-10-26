@@ -9,7 +9,8 @@
 - **Bindings can't shadow types, functions or keywords**: `let if = 1` is a parse error, and `let Number = 1` or `let typeof = 1` raises `Cannot bind <name>: …`. The same names are refused when a host binds variables or registers functions.
 - **Built-ins are ordinary functions**: `typeof` is a native function like any other, rather than a special case, so hosts look it up the way they look up their own functions.
 - **The `Runtime` trait is the host API**: A host works with any runtime through `flt::runtime::Runtime`, so it needs `use flt::runtime::Runtime` to register functions and native types or to read and bind variables. `runtime.eval` takes flt source, e.g. `runtime.eval("1 + 2")`, and what was `eval(&statement)` is `eval_statement`. Registering a function or native type returns a `Result`: a name that's already in use is a `Cannot register …` error rather than a panic. `SimpleRuntime.global_scope` is no longer public.
-- **Maps keep insertion order**: In `SimpleRuntime`, maps keep insertion order, and `Value::Map` holds a `flt::runtime::Map`. Maps print in insertion order instead of sorted, e.g. `{b: 1, a: 2}` prints `{"b": 1, "a": 2}`. Equality still ignores order.
+- **Map keys are symbols**: `{b: 1}` has the key `:b`, and a quoted key `{"c d": 1}` the quoted symbol `:"c d"`, so `{b: 1} == {"b": 1}`. Keyword arguments get symbol keys too, and `m.b` reads `:b`. Maps print keys as they'd be written, e.g. `{b: 1, "c d": 2}`. `Value::Map` holds a `flt::runtime::Map` keyed by `MapKey`. Symbols print quoted when their name isn't a bare name, e.g. `:"hello world"`.
+- **Maps keep insertion order**: In `SimpleRuntime`, maps keep insertion order, and print in insertion order instead of sorted, e.g. `{b: 1, a: 2}` prints `{b: 1, a: 2}`. Equality still ignores order.
 
 ### New Features
 
@@ -30,11 +31,11 @@
 - **Evaluating source**: `runtime.eval` parses and runs flt source, with several statements separated by newlines or `;`, and returns the last value. A syntax error runs nothing. `flt::parser::parse_statements` parses such source without running it.
 - **REPL on the host's runtime**: `FltRepl::with_runtime` runs flt's REPL on a runtime the host has set up, with its functions and native types.
 - **Numbers to and from Rust**: A host reads number arguments as Rust integers or floats, with clear errors such as `Expected Number, found String` or `Cannot convert -1 to u32`, and returns Rust integers as flt numbers.
-- **Ordered maps**: A native function sees a map's entries, including a call's keyword arguments, in source order. Hosts build maps with `flt::runtime::Map`.
+- **Ordered maps**: A native function sees a map's entries, including a call's keyword arguments, in source order. Hosts build maps with `flt::runtime::Map`, with symbol or string keys (`MapKey`).
 
 #### Docs
 
-- A one-page language spec (`docs/spec.md`), a guide to native functions, types and values (`docs/native-functions-and-values.md`), a guide to the `Runtime` trait (`docs/runtime-and-limitations.md`), and ADRs 001 to 008.
+- A one-page language spec (`docs/spec.md`), a guide to native functions, types and values (`docs/native-functions-and-values.md`), a guide to the `Runtime` trait (`docs/runtime-and-limitations.md`), and ADRs 001 to 009.
 
 ## v0.1.2
 
