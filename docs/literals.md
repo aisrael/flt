@@ -110,7 +110,7 @@ Examples:
 
 ### KeywordArgs
 
-`KeywordArgs` are a special case of `Map`: trailing `key: value` pairs in a function call are collected into a single map and passed as the call's final argument. See [Keyword Arguments](./functions-and-pipe.md#keyword-arguments) for the call syntax, e.g.:
+Trailing `key: value` pairs in a function call are keyword arguments. They're written like a map's entries, but aren't a map: the function gets them by name, separately from its positional arguments. See [Keyword Arguments](./functions-and-pipe.md#keyword-arguments), e.g.:
 
 ```flt
 foo(1, bar: true)

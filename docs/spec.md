@@ -49,7 +49,7 @@ key        = ident | string ;
 
 `None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, and `Type`. `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
 expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
-`typeof(1) == Number` is `true`. The `None` value equals the `None` type. Keyword arguments are passed as a `Map`.
+`typeof(1) == Number` is `true`. The `None` value equals the `None` type.
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
 `else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
@@ -90,8 +90,18 @@ foo(1, bar: true)    # trailing keyword arguments
 ```
 
 Positional arguments come first; after the first keyword argument, no positional argument may
-follow. Keyword keys follow map-key rules, so each is a symbol. The parser collects keyword arguments into a single `Map`
-passed as the final argument, so `foo(1, bar: true)` receives `1, { bar: true }`.
+follow. Keyword keys follow map-key rules, so each is a symbol, and a call can't repeat one: a
+duplicate keyword is a syntax error.
+
+Keyword arguments are passed by name, separately from positional ones, so `foo(1, bar: true)`
+passes `1` positionally and `bar` by keyword, while `foo(1, { bar: true })` passes two positional
+arguments. A function declares the keywords it accepts, each with a default that a call may leave
+out. A positional argument never fills a keyword. A call's arguments are checked by count against
+the function's positional parameters, then its keywords against the keywords that function
+declares: an undeclared keyword raises `Function <name> got an unexpected keyword argument: <key>`,
+unless the function declares that it accepts any keywords. Keyword values aren't type-checked.
+Positional arguments are evaluated left to right, then keyword values left to right. A function
+type lists its keywords after its parameters, e.g. `fn(String, greeting: String) -> String`.
 
 ### Pipe
 
@@ -102,7 +112,8 @@ e.g. `READ("input") |> SELECT(:id) |> WRITE("output")`. `|>` sits at level 9 abo
 The left side is evaluated first, then the right side's arguments. The right side must be a call or a
 bare name, resolved and arity-checked like any call, with the piped value counted:
 `1 |> typeof(2)` raises `Function typeof expected 1 argument(s), found 2`. Anything else raises
-`Cannot pipe into <expr>`. Keyword arguments stay last: `x |> f(a, k: v)` passes `x, a, { k: v }`.
+`Cannot pipe into <expr>`. The piped value is positional: `x |> f(a, k: v)` passes `x` and `a`
+positionally and `k` by keyword.
 So `f 1`, `f(1)`, `1 |> f` and `1 |> f()` are equivalent.
 
 The whitespace call form isn't allowed next to `|>`. The right side is parsed like an `if` condition,

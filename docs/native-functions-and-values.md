@@ -67,7 +67,7 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
 
-A map arrives as `Value::Map(flt::runtime::Map)`, keyed by `MapKey`. A key written in flt source, in a map literal or as a call's [keyword argument](./functions-and-pipe.md#keyword-arguments), is a symbol, `MapKey::Symbol`. A host can also use string keys, `MapKey::String`, which flt source can't write yet; a symbol and a string with the same text are different keys. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal or a call's keyword arguments sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
+A map arrives as `Value::Map(flt::runtime::Map)`, keyed by `MapKey`. A key written in flt source, in a map literal or as a call's [keyword argument](#keyword-arguments), is a symbol, `MapKey::Symbol`. A host can also use string keys, `MapKey::String`, which flt source can't write yet; a symbol and a string with the same text are different keys. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
 
 ```rust
 use flt::runtime::Map;
@@ -94,6 +94,62 @@ runtime.set_variable("point", Value::Map(point))?;   // point is {x: 1}
 - `MapKey::symbol(name)` and `MapKey::string(s)` make keys.
 - `Value::from(key)` turns a key into the flt value it stands for, a `Symbol` or a `String`.
 - A string key prints as `"b" => 1`, which flt can't parse yet.
+
+### Keyword Arguments
+
+A native function can declare optional [keyword arguments](./functions-and-pipe.md#keyword-arguments), each with a type and a default, with `FunctionDefinition::keyword` ([ADR 010](./adrs/010-keyword-arguments.md)). Its handler, registered with `NativeFunction::with_keywords`, gets the call's keywords as a `Map`, separately from its positional arguments:
+
+```rust
+use flt::runtime::Map;
+use flt::runtime::MapKey;
+
+/// greet(name, greeting: "Hello") returns "<greeting>, <name>"
+fn greet(args: &[Value], keywords: &Map) -> Result<Value, Error> {
+    match (&args[0], &keywords[&MapKey::symbol("greeting")]) {
+        (Value::String(name), Value::String(greeting)) => {
+            Ok(Value::String(format!("{greeting}, {name}")))
+        }
+        _ => Ok(Value::None),
+    }
+}
+
+// greet has type fn(String, greeting: String) -> String
+runtime.register_function(NativeFunction::with_keywords(
+    FunctionDefinition::new("greet", Type::string(), vec![Argument::string("name")])
+        .keyword("greeting", Type::string(), Value::String("Hello".into())),
+    greet,
+))?;
+```
+
+```flt
+greet("Ann")                   # "Hello, Ann"
+greet("Ann", greeting: "Hi")   # "Hi, Ann"
+greet("Ann", tone: "warm")     # error: Function greet got an unexpected keyword argument: tone
+```
+
+- **The map holds every declared keyword**, with the call's value or else the default, so `keywords[&MapKey::symbol("greeting")]` is always there. Its keys are symbols, in declaration order.
+- **`keyword` adds to the most recently added overload**, so each overload declares its own keywords. The runtime picks the overload by the number of positional arguments, then checks the call's keywords against that overload's.
+- **Keyword values aren't type-checked**, like positional arguments. The handler checks them itself, as `greet` does.
+- **`NativeFunction::new` is for functions without keywords.** It panics if the definition declares any, since its handler couldn't see them. Its handler is never called with keywords: a call that passes any raises `Function <name> got an unexpected keyword argument: <key>`.
+
+A function that takes any keywords, such as one whose keywords name things the user picks, declares rest keywords with `FunctionDefinition::rest_keywords`. They follow the declared keywords in the map, in call order:
+
+```rust
+/// options() returns the keywords it was given, as a map
+fn options(_args: &[Value], keywords: &Map) -> Result<Value, Error> {
+    Ok(Value::Map(keywords.clone()))
+}
+
+// options has type fn(**Any) -> Map
+runtime.register_function(NativeFunction::with_keywords(
+    FunctionDefinition::new("options", Type::map(), vec![]).rest_keywords(Type::any()),
+    options,
+))?;
+```
+
+```flt
+options(b: 1, a: 2)            # {b: 1, a: 2}
+```
 
 ## Native Types and Values
 
