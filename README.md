@@ -25,21 +25,17 @@ flt = "0.2.0"
 ## Quick start
 
 ```rust
-use flt::parser::parse_statement;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 
 fn main() {
-    let input = "1 + 2";
-
-    let (_remainder, statement) =
-        parse_statement(input).expect("input should parse as a statement");
-
     let mut runtime = SimpleRuntime::default();
-    let value = runtime.eval(&statement).expect("evaluation should succeed");
-    println!("{}", value);
+    let value = runtime.eval("let x = 1 + 2; x * 2").expect("evaluation should succeed");
+    println!("{value}");
 }
 ```
+
+A host works with a runtime only through the `Runtime` trait, and names `SimpleRuntime`, the reference implementation, only to create one. See [The `Runtime` Trait](docs/runtime-and-limitations.md#the-runtime-trait), and [Native Functions, Types and Values](docs/native-functions-and-values.md) for extending flt from Rust.
 
 ## Language syntax
 
@@ -162,9 +158,10 @@ The runtime evaluates expressions and statements: literals (including maps and a
   - `UnaryOp`
 - `flt::repl`:
   - `Repl`
+  - `FltRepl` (`FltRepl::with_runtime` runs the REPL on a host's runtime)
 - `flt::runtime`:
-  - `Runtime`
-  - `SimpleRuntime`
+  - `Runtime` (the runtime API: `eval`, `eval_statement`, registering native functions and types, and global variables)
+  - `SimpleRuntime` (the reference implementation)
   - `Value`
 - `flt::eval`:
   - `eval` (evaluate a parsed `Expr` with a fresh runtime)

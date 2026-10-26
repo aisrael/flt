@@ -9,7 +9,7 @@ A native function can also fail with the host's own [error](#host-errors).
 
 ## Native Functions
 
-A host can register native functions, written in Rust, with `runtime.register_function`. The runtime keeps them in its global scope, alongside the built-ins. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
+A host can register native functions, written in Rust, with `runtime.register_function`, a method of the [`Runtime` trait](./runtime-and-limitations.md#the-runtime-trait). The runtime keeps them in its global scope, alongside the built-ins. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
 
 ```rust
 use std::sync::atomic::AtomicU64;
@@ -20,6 +20,7 @@ use flt::runtime::functions::Argument;
 use flt::runtime::functions::FunctionDefinition;
 use flt::runtime::functions::NativeFunction;
 use flt::runtime::types::Type;
+use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
 
@@ -43,7 +44,7 @@ runtime.register_function(NativeFunction::new(
 
 Registering a function under a name that's already registered replaces it. That includes the [built-ins](./functions-and-pipe.md#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
-A function's name can't be bound as a variable, whether the function is a built-in or the host's. `register_function` (which `runtime.global_scope.register_function` also provides) panics if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `global_scope.set_variable` refuses the same names as `let`, and returns an error.
+A function's name can't be bound as a variable, whether the function is a built-in or the host's. In `SimpleRuntime`, `register_function` panics if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `runtime.set_variable` refuses the same names as `let`, and returns an error. `runtime.check_bindable` reports whether a name can be bound without binding it. Other runtimes may have other rules ([Rules Belong to the Runtime](./runtime-and-limitations.md#rules-belong-to-the-runtime)).
 
 ```flt
 identity              # <fn identity>
@@ -74,6 +75,7 @@ use flt::runtime::functions::FunctionDefinition;
 use flt::runtime::functions::NativeFunction;
 use flt::runtime::native::NativeType;
 use flt::runtime::types::Type;
+use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
 use flt::Error;
@@ -94,57 +96,64 @@ impl NativeType for Date {
     const NAME: &'static str = "Date";
 }
 
+/// Registers `Date` and the functions that use it. It uses only the `Runtime` trait, so it
+/// works with any runtime.
+fn install(runtime: &mut impl Runtime) {
+    runtime.register_native_type::<Date>();
+
+    // date(yyyy, mm, dd) creates a date, and has type fn(Number, Number, Number) -> Date
+    runtime.register_function(NativeFunction::new(
+        FunctionDefinition::new(
+            "date",
+            Type::native::<Date>(),
+            vec![Argument::number("yyyy"), Argument::number("mm"), Argument::number("dd")],
+        ),
+        |args| {
+            let year = i32::try_from(&args[0])?;
+            let month = u32::try_from(&args[1])?;
+            let day = u32::try_from(&args[2])?;
+            match NaiveDate::from_ymd_opt(year, month, day) {
+                Some(date) => Ok(Value::native(Date(date))),
+                // A host error, shown unchanged (see Host Errors)
+                None => Err(Error::native(std::io::Error::other(format!(
+                    "{year:04}-{month:02}-{day:02} is not a valid date"
+                )))),
+            }
+        },
+    ));
+
+    // days_between(from, to) counts the days from one date to another, and has type
+    // fn(Date, Date) -> Number
+    runtime.register_function(NativeFunction::new(
+        FunctionDefinition::new(
+            "days_between",
+            Type::number(),
+            vec![
+                Argument::new("from", Type::native::<Date>()),
+                Argument::new("to", Type::native::<Date>()),
+            ],
+        ),
+        |args| {
+            let from = args[0].downcast_native::<Date>()?;
+            let to = args[1].downcast_native::<Date>()?;
+            Ok(Value::from((to.0 - from.0).num_days()))
+        },
+    ));
+}
+
 let mut runtime = SimpleRuntime::default();
-runtime.register_native_type::<Date>();
-
-// date(yyyy, mm, dd) creates a date, and has type fn(Number, Number, Number) -> Date
-runtime.register_function(NativeFunction::new(
-    FunctionDefinition::new(
-        "date",
-        Type::native::<Date>(),
-        vec![Argument::number("yyyy"), Argument::number("mm"), Argument::number("dd")],
-    ),
-    |args| {
-        let year = i32::try_from(&args[0])?;
-        let month = u32::try_from(&args[1])?;
-        let day = u32::try_from(&args[2])?;
-        match NaiveDate::from_ymd_opt(year, month, day) {
-            Some(date) => Ok(Value::native(Date(date))),
-            // A host error, shown unchanged (see Host Errors)
-            None => Err(Error::native(std::io::Error::other(format!(
-                "{year:04}-{month:02}-{day:02} is not a valid date"
-            )))),
-        }
-    },
-));
-
-// days_between(from, to) counts the days from one date to another, and has type
-// fn(Date, Date) -> Number
-runtime.register_function(NativeFunction::new(
-    FunctionDefinition::new(
-        "days_between",
-        Type::number(),
-        vec![
-            Argument::new("from", Type::native::<Date>()),
-            Argument::new("to", Type::native::<Date>()),
-        ],
-    ),
-    |args| {
-        let from = args[0].downcast_native::<Date>()?;
-        let to = args[1].downcast_native::<Date>()?;
-        Ok(Value::from((to.0 - from.0).num_days()))
-    },
-));
+install(&mut runtime);
 ```
 
 - `Value::native(Date(date))` makes a native value.
 - `value.downcast_native::<Date>()` reads one back. Given any other value, it raises `Expected Date, found <type>`.
 - `value.get_native::<Date>()` reads one back as an `Option`, for a handler that accepts more than one kind of value.
 - `Type::native::<Date>()` names the native type in a signature.
+- `runtime.register_native_type::<Date>()` registers the type. Through a `&mut dyn Runtime`, call `runtime.register_native_type_info(NativeTypeInfo::of::<Date>())` instead, since the generic method can't be called there.
 - `Value::from` turns a Rust `u64`, `i64` or `usize` into a `Number`.
 - `i32::try_from(&value)` reads a `Number` back as a Rust number. It's implemented for `i32`, `i64`, `u32`, `u64`, `usize` and `f64`. A value that isn't a number raises `Expected Number, found <type>`, and a number that doesn't fit the type raises `Cannot convert <number> to <type>`, e.g. `Cannot convert 2.5 to u32`. Conversion to `f64` accepts any number, and may lose precision.
 
-`register_native_type` panics if the type's name is a built-in type name, a function's name, a variable's name or another native type's name. A value of a native type that was never registered still works, but its type's name doesn't resolve in flt source.
+In `SimpleRuntime`, `register_native_type` panics if the type's name is a built-in type name, a function's name, a variable's name or another native type's name. A value of a native type that was never registered still works, but its type's name doesn't resolve in flt source.
 
 ### Native Values in flt
 
