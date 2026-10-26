@@ -30,7 +30,7 @@ let mut runtime = SimpleRuntime::default();
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("identity", Type::any(), vec![Argument::new("v", Type::any())]),
     |args| Ok(args[0].clone()),
-));
+))?;
 
 // A handler is a closure, so it may capture state. Handlers are Send + Sync, so
 // mutable state needs Arc<Mutex<_>> or atomics rather than Rc<RefCell<_>>.
@@ -39,12 +39,12 @@ let counter = Arc::clone(&calls);
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new("count", Type::number(), vec![]),
     move |_args| Ok(Value::Number((counter.fetch_add(1, Ordering::SeqCst) + 1).into())),
-));
+))?;
 ```
 
 Registering a function under a name that's already registered replaces it. That includes the [built-ins](./functions-and-pipe.md#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
-A function's name can't be bound as a variable, whether the function is a built-in or the host's. In `SimpleRuntime`, `register_function` panics if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `runtime.set_variable` refuses the same names as `let`, and returns an error. `runtime.check_bindable` reports whether a name can be bound without binding it. Other runtimes may have other rules ([Rules Belong to the Runtime](./runtime-and-limitations.md#rules-belong-to-the-runtime)).
+A function's name can't be bound as a variable, whether the function is a built-in or the host's. Registration returns a `Result`. In `SimpleRuntime`, `register_function` fails with `Cannot register function <name>: …` if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `runtime.set_variable` refuses the same names as `let`, and returns an error. `runtime.check_bindable` reports whether a name can be bound without binding it. Other runtimes may have other rules ([Rules Belong to the Runtime](./runtime-and-limitations.md#rules-belong-to-the-runtime)).
 
 ```flt
 identity              # <fn identity>
@@ -98,8 +98,8 @@ impl NativeType for Date {
 
 /// Registers `Date` and the functions that use it. It uses only the `Runtime` trait, so it
 /// works with any runtime.
-fn install(runtime: &mut impl Runtime) {
-    runtime.register_native_type::<Date>();
+fn install(runtime: &mut impl Runtime) -> Result<(), Error> {
+    runtime.register_native_type::<Date>()?;
 
     // date(yyyy, mm, dd) creates a date, and has type fn(Number, Number, Number) -> Date
     runtime.register_function(NativeFunction::new(
@@ -120,7 +120,7 @@ fn install(runtime: &mut impl Runtime) {
                 )))),
             }
         },
-    ));
+    ))?;
 
     // days_between(from, to) counts the days from one date to another, and has type
     // fn(Date, Date) -> Number
@@ -138,11 +138,12 @@ fn install(runtime: &mut impl Runtime) {
             let to = args[1].downcast_native::<Date>()?;
             Ok(Value::from((to.0 - from.0).num_days()))
         },
-    ));
+    ))?;
+    Ok(())
 }
 
 let mut runtime = SimpleRuntime::default();
-install(&mut runtime);
+install(&mut runtime)?;
 ```
 
 - `Value::native(Date(date))` makes a native value.
@@ -153,7 +154,7 @@ install(&mut runtime);
 - `Value::from` turns a Rust `u64`, `i64` or `usize` into a `Number`.
 - `i32::try_from(&value)` reads a `Number` back as a Rust number. It's implemented for `i32`, `i64`, `u32`, `u64`, `usize` and `f64`. A value that isn't a number raises `Expected Number, found <type>`, and a number that doesn't fit the type raises `Cannot convert <number> to <type>`, e.g. `Cannot convert 2.5 to u32`. Conversion to `f64` accepts any number, and may lose precision.
 
-In `SimpleRuntime`, `register_native_type` panics if the type's name is a built-in type name, a function's name, a variable's name or another native type's name. A value of a native type that was never registered still works, but its type's name doesn't resolve in flt source.
+In `SimpleRuntime`, `register_native_type` fails with `Cannot register native type <name>: …` if the type's name is a built-in type name, a function's name, a variable's name or another native type's name. A value of a native type that was never registered still works, but its type's name doesn't resolve in flt source.
 
 ### Native Values in flt
 

@@ -26,13 +26,14 @@ concrete runtime only to create one:
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 
-fn install(runtime: &mut impl Runtime) {
-    runtime.register_native_type::<Date>();
-    runtime.register_function(date);
+fn install(runtime: &mut impl Runtime) -> Result<(), Error> {
+    runtime.register_native_type::<Date>()?;
+    runtime.register_function(date)?;
+    Ok(())
 }
 
 let mut runtime = SimpleRuntime::default();
-install(&mut runtime);
+install(&mut runtime)?;
 runtime.eval("days_between(date(2026, 1, 1), date(2026, 10, 25))")?;   // 297
 ```
 
@@ -42,8 +43,8 @@ runtime.eval("days_between(date(2026, 1, 1), date(2026, 10, 25))")?;   // 297
 | --------------------------------- | -------------------------------------------------------------------- |
 | `eval(source)`                    | parses and evaluates flt source, returning the last statement's value |
 | `eval_statement(statement)`       | evaluates one parsed statement                                       |
-| `register_function(function)`     | registers a native function, replacing one of the same name          |
-| `register_native_type::<T>()`     | registers the native type `T`                                        |
+| `register_function(function)`     | registers a native function, replacing one of the same name, or fails |
+| `register_native_type::<T>()`     | registers the native type `T`, or fails                              |
 | `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                 |
 | `get_native_type(name)`           | a registered native type                                             |
 | `set_variable(name, value)`       | binds a global variable, or fails                                    |
@@ -87,20 +88,37 @@ runtime needn't store values in a form it can lend out.
 The trait doesn't say which names a runtime refuses:
 
 - `set_variable` and `check_bindable` return an error for a name the runtime won't bind;
-- the `register_*` methods may panic for a name the runtime won't register. As in
-  [ADR 006](006-no-shadowing.md) (decision 3), that's a host bug.
+- the `register_*` methods return an error for a name the runtime won't register (decision 7).
 
 `SimpleRuntime` keeps the rules of [ADR 006](006-no-shadowing.md) and of
 [ADR 007](007-native-types-and-values.md) (decision 7). This refines ADR 007's decision 11:
 registration is part of the trait every runtime implements, while protected names stay each
 runtime's own, as ADR 006 (decision 5) says.
 
-### 7. `SimpleRuntime`'s global scope is private
+### 7. Registration returns a `Result`
+
+`register_function`, `register_native_type` and `register_native_type_info` return
+`Result<(), Error>`. In `SimpleRuntime`, registering under a name that's already in use fails
+instead of panicking:
+
+```rust
+runtime.register_function(meters)?;   // Cannot register function Meters: it's a native type
+```
+
+- a function can't use a built-in type's name, a native type's name or a variable's name.
+  Registering a function under an existing function's name still replaces it;
+- a native type can't use a built-in type's name, a function's name, a variable's name or another
+  native type's name.
+
+This replaces the panics of [ADR 006](006-no-shadowing.md) (decision 3) and
+[ADR 007](007-native-types-and-values.md) (decision 7). The names refused are the same.
+
+### 8. `SimpleRuntime`'s global scope is private
 
 `SimpleRuntime`'s `Runtime` methods go through its global scope, so ADR 006's decision 3 still
 holds within `SimpleRuntime`: the global scope enforces the rule.
 
-### 8. The REPL runs on any runtime
+### 9. The REPL runs on any runtime
 
 `FltRepl` is generic over its runtime and uses only the trait. `FltRepl::new()` runs on a
 `SimpleRuntime`, and `FltRepl::with_runtime(runtime)` runs on one the host has set up.
@@ -121,17 +139,22 @@ holds within `SimpleRuntime`: the global scope enforces the rule.
   decision 5).
 - **Getters that return references.** Rejected: they'd tie every runtime to storing values a
   certain way.
-- **Registration that returns a `Result`.** Rejected: registration mistakes are host bugs, made
-  before any flt source runs.
+- **Panicking on a name that's in use**, as ADRs 006 and 007 did. Rejected: a host can't recover
+  from a panic, e.g. one that registers functions from plugins or user configuration, and the
+  trait would make every runtime panic.
 
 ## Consequences
 
 - Breaking changes:
   - `Runtime::eval` takes flt source; what was `eval(&Statement)` is `eval_statement`;
   - hosts `use flt::runtime::Runtime` to call the host methods;
+  - `register_function`, `register_native_type` and `register_native_type_info` return a
+    `Result`, and a name that's in use is a `Cannot register …` error rather than a panic;
   - `SimpleRuntime.global_scope` and `GlobalScope` are no longer public;
   - any other `Runtime` implementation must implement the new methods;
   - `FltRepl` gains a type parameter, defaulting to `SimpleRuntime`.
 - New Rust API: `Runtime::eval_statement`, `register_native_type_info`, `set_variable`,
   `get_variable`, `remove_variable`, `check_bindable` and `get_function`, and
-  `FltRepl::with_runtime`.- The spec doesn't change: the trait is the reference implementation's Rust API.
+  `FltRepl::with_runtime`.- New error: `Cannot register <function|native type> <name>: it's <a built-in type|a function|a
+  variable|a native type>`.
+- The spec doesn't change: the trait is the reference implementation's Rust API.

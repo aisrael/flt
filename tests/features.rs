@@ -166,13 +166,14 @@ fn native_function(name: &str) -> Option<NativeFunction> {
 
 /// Registers the fixture native types that the named fixture functions use. `Time` is
 /// never registered, so it also stands for a type a host forgot to register.
-fn register_native_types(runtime: &mut impl Runtime, natives: &[String]) {
+fn register_native_types(runtime: &mut impl Runtime, natives: &[String]) -> Result<(), Error> {
     if natives
         .iter()
         .any(|name| name == "date" || name == "days_between")
     {
-        runtime.register_native_type::<Date>();
+        runtime.register_native_type::<Date>()?;
     }
+    Ok(())
 }
 
 /// chrono's `NaiveDate` as the native type `Date`. `NaiveDate` is from another crate, so
@@ -214,19 +215,20 @@ fn when_i_evaluate_the_input(world: &mut AstWorld) {
 
 /// Registers the named fixture native functions, and the native types they use, through
 /// the `Runtime` trait alone, as a host does.
-fn install(runtime: &mut impl Runtime, natives: &[String]) {
-    register_native_types(runtime, natives);
+fn install(runtime: &mut impl Runtime, natives: &[String]) -> Result<(), Error> {
+    register_native_types(runtime, natives)?;
     for name in natives {
         let function = native_function(name).expect("fixture native function should exist");
-        runtime.register_function(function);
+        runtime.register_function(function)?;
     }
+    Ok(())
 }
 
 /// Evaluates `input` in a fresh runtime with the named fixture native functions installed,
 /// returning the displayed value of its last statement.
 fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
     let mut runtime = SimpleRuntime::default();
-    install(&mut runtime, natives);
+    install(&mut runtime, natives).expect("fixtures should register");
     runtime
         .eval(input)
         .map(|value| value.to_string())

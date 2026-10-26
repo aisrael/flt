@@ -8,7 +8,7 @@
 - **Operator precedence**: Comparisons bind looser than arithmetic, so `1 + 2 == 3` is `true`. `|>` binds tighter than comparisons and logical operators, as in Elixir, so `x |> f == 3` means `(x |> f) == 3`.
 - **Bindings can't shadow types, functions or keywords**: `let if = 1` is a parse error, and `let Number = 1` or `let typeof = 1` raises `Cannot bind <name>: …`. The same names are refused when a host binds variables or registers functions.
 - **Built-ins are ordinary functions**: `typeof` is a native function like any other, rather than a special case, so hosts look it up the way they look up their own functions.
-- **The `Runtime` trait is the host API**: A host works with any runtime through `flt::runtime::Runtime`, so it needs `use flt::runtime::Runtime` to register functions and native types or to read and bind variables. `runtime.eval` takes flt source, e.g. `runtime.eval("1 + 2")`, and what was `eval(&statement)` is `eval_statement`. `SimpleRuntime.global_scope` is no longer public.
+- **The `Runtime` trait is the host API**: A host works with any runtime through `flt::runtime::Runtime`, so it needs `use flt::runtime::Runtime` to register functions and native types or to read and bind variables. `runtime.eval` takes flt source, e.g. `runtime.eval("1 + 2")`, and what was `eval(&statement)` is `eval_statement`. Registering a function or native type returns a `Result`: a name that's already in use is a `Cannot register …` error rather than a panic. `SimpleRuntime.global_scope` is no longer public.
 
 ### New Features
 

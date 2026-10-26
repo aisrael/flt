@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn test_with_runtime_uses_the_hosts_runtime() {
         let mut runtime = SimpleRuntime::default();
-        runtime.register_native_type::<Meters>();
+        runtime.register_native_type::<Meters>().unwrap();
         runtime.eval("let x = 1").unwrap();
         let repl = FltRepl::with_runtime(runtime);
         assert_eq!(repl.inspect_identifier("Meters"), "(native type) Meters");
@@ -500,14 +500,14 @@ mod tests {
     #[test]
     fn test_inspect_native_type() {
         let mut repl = FltRepl::new();
-        repl.runtime.register_native_type::<Meters>();
+        repl.runtime.register_native_type::<Meters>().unwrap();
         assert_eq!(repl.inspect_identifier("Meters"), "(native type) Meters");
     }
 
     #[test]
     fn test_unset_native_type() {
         let mut repl = FltRepl::new();
-        repl.runtime.register_native_type::<Meters>();
+        repl.runtime.register_native_type::<Meters>().unwrap();
         assert_eq!(
             repl.unset("Meters"),
             Err("Cannot unset Meters: it's a native type".to_string())

@@ -61,6 +61,13 @@ pub enum RuntimeError {
     },
     #[error("Cannot bind {name}: it's {reason}")]
     CannotBind { name: String, reason: ProtectedName },
+    /// A host registered a function or a native type (`kind`) under a name that's in use
+    #[error("Cannot register {kind} {name}: it's {reason}")]
+    CannotRegister {
+        kind: &'static str,
+        name: String,
+        reason: ProtectedName,
+    },
     /// A native function was given a value of the wrong type, e.g. for a native or number argument
     #[error("Expected {expected}, found {found}")]
     UnexpectedType { expected: String, found: String },
@@ -72,7 +79,7 @@ pub enum RuntimeError {
     },
 }
 
-/// Why a name can't be bound as a variable
+/// What a name already is, which stops it from being bound as a variable or registered
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProtectedName {
     /// A built-in type name, e.g. `Number`
@@ -81,6 +88,8 @@ pub enum ProtectedName {
     Function,
     /// The name of a native type registered by the host
     NativeType,
+    /// The name of a variable, which a function or a native type can't use
+    Variable,
 }
 
 impl std::fmt::Display for ProtectedName {
@@ -89,6 +98,7 @@ impl std::fmt::Display for ProtectedName {
             ProtectedName::BuiltinType => "a built-in type",
             ProtectedName::Function => "a function",
             ProtectedName::NativeType => "a native type",
+            ProtectedName::Variable => "a variable",
         };
         write!(f, "{s}")
     }
@@ -144,5 +154,42 @@ mod tests {
             "Runtime Error: Cannot convert 2.5 to u32"
         );
         assert_eq!(ProtectedName::NativeType.to_string(), "a native type");
+    }
+
+    #[test]
+    fn test_cannot_register_error_message() {
+        for (kind, name, reason, expected) in [
+            (
+                "function",
+                "Number",
+                ProtectedName::BuiltinType,
+                "Cannot register function Number: it's a built-in type",
+            ),
+            (
+                "function",
+                "x",
+                ProtectedName::Variable,
+                "Cannot register function x: it's a variable",
+            ),
+            (
+                "native type",
+                "typeof",
+                ProtectedName::Function,
+                "Cannot register native type typeof: it's a function",
+            ),
+            (
+                "native type",
+                "Date",
+                ProtectedName::NativeType,
+                "Cannot register native type Date: it's a native type",
+            ),
+        ] {
+            let error = Error::RuntimeError(RuntimeError::CannotRegister {
+                kind,
+                name: name.to_string(),
+                reason,
+            });
+            assert_eq!(error.to_string(), format!("Runtime Error: {expected}"));
+        }
     }
 }

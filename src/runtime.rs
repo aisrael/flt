@@ -215,8 +215,7 @@ fn cannot_convert(n: &BigDecimal, target: &'static str) -> Error {
 ///
 /// The trait defines operations, not rules. Which names a runtime refuses to bind or register
 /// is up to the runtime: [`Runtime::set_variable`] and [`Runtime::check_bindable`] return an
-/// error for a name it won't bind, and the `register_*` methods may panic for a name it won't
-/// register.
+/// error for a name it won't bind, and the `register_*` methods for a name it won't register.
 pub trait Runtime {
     /// Parses all of `source` with [`parse_statements`], then evaluates its statements in
     /// order and returns the last one's value, or `None` if there are none.
@@ -236,19 +235,20 @@ pub trait Runtime {
     fn eval_statement(&mut self, statement: &Statement) -> Result<Value, Error>;
 
     /// Registers a native function under its name, replacing any function already registered
-    /// under that name.
-    fn register_function(&mut self, function: NativeFunction);
+    /// under that name, unless the runtime refuses the name.
+    fn register_function(&mut self, function: NativeFunction) -> Result<(), Error>;
 
-    /// Registers a native type, so that its name evaluates to the type. Unlike
-    /// [`Runtime::register_native_type`], it can be called through `dyn Runtime`.
-    fn register_native_type_info(&mut self, info: NativeTypeInfo);
+    /// Registers a native type, so that its name evaluates to the type, unless the runtime
+    /// refuses the name. Unlike [`Runtime::register_native_type`], it can be called through
+    /// `dyn Runtime`.
+    fn register_native_type_info(&mut self, info: NativeTypeInfo) -> Result<(), Error>;
 
-    /// Registers the native type `T`.
-    fn register_native_type<T: NativeType>(&mut self)
+    /// Registers the native type `T`, unless the runtime refuses its name.
+    fn register_native_type<T: NativeType>(&mut self) -> Result<(), Error>
     where
         Self: Sized,
     {
-        self.register_native_type_info(NativeTypeInfo::of::<T>());
+        self.register_native_type_info(NativeTypeInfo::of::<T>())
     }
 
     /// A registered native type, by name.
@@ -279,10 +279,11 @@ pub trait Runtime {
 ///
 /// - [`Runtime::set_variable`] refuses a built-in type name, a function's name and a native
 ///   type's name, as `let` does.
-/// - [`Runtime::register_function`] panics if the name is a built-in type name, a native type's
-///   name, or is already bound as a variable.
-/// - [`Runtime::register_native_type_info`] panics if the name is a built-in type name, a
-///   function's name, a variable's name, or an already registered native type.
+/// - [`Runtime::register_function`] refuses a built-in type name, a native type's name and a
+///   variable's name, with `Cannot register function <name>: …`.
+/// - [`Runtime::register_native_type_info`] refuses a built-in type name, a function's name, a
+///   variable's name and an already registered native type's name, with
+///   `Cannot register native type <name>: …`.
 ///
 /// Register native types before the functions that use them, and both before evaluating any
 /// flt source.
@@ -306,14 +307,16 @@ impl Default for SimpleRuntime {
 
 /// Registers the built-in native functions in `global_scope`.
 fn register_builtins(global_scope: &mut GlobalScope) {
-    global_scope.register_function(NativeFunction::new(
-        FunctionDefinition::new(
-            "typeof",
-            Type::type_type(),
-            vec![Argument::new("V", Type::any())],
-        ),
-        builtin_typeof,
-    ));
+    global_scope
+        .register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "typeof",
+                Type::type_type(),
+                vec![Argument::new("V", Type::any())],
+            ),
+            builtin_typeof,
+        ))
+        .expect("a new global scope has no names in use");
 }
 
 /// `typeof(v)`: the type of `v`. The runtime checks the number of arguments before calling it.
@@ -336,30 +339,26 @@ impl Runtime for SimpleRuntime {
         }
     }
 
-    fn register_function(&mut self, function: NativeFunction) {
-        self.global_scope.register_function(function);
+    fn register_function(&mut self, function: NativeFunction) -> Result<(), Error> {
+        self.global_scope.register_function(function)
     }
 
-    fn register_native_type_info(&mut self, info: NativeTypeInfo) {
+    fn register_native_type_info(&mut self, info: NativeTypeInfo) -> Result<(), Error> {
         let name = info.name();
-        assert!(
-            !Type::is_builtin_name(name),
-            "cannot register native type {name}: it's a built-in type"
-        );
-        assert!(
-            !self.global_scope.has_function(name),
-            "cannot register native type {name}: it's a function"
-        );
-        assert!(
-            !self.global_scope.has_variable(name),
-            "cannot register native type {name}: it's a variable"
-        );
-        assert!(
-            !self.native_types.contains_key(name),
-            "cannot register native type {name}: it's already a native type"
-        );
-        self.native_types.insert(name, info);
-        self.global_scope.protect_native_type_name(name);
+        let reason = if Type::is_builtin_name(name) {
+            ProtectedName::BuiltinType
+        } else if self.global_scope.has_function(name) {
+            ProtectedName::Function
+        } else if self.global_scope.has_variable(name) {
+            ProtectedName::Variable
+        } else if self.native_types.contains_key(name) {
+            ProtectedName::NativeType
+        } else {
+            self.native_types.insert(name, info);
+            self.global_scope.protect_native_type_name(name);
+            return Ok(());
+        };
+        Err(cannot_register("native type", name, reason))
     }
 
     fn get_native_type(&self, name: &str) -> Option<NativeTypeInfo> {
@@ -629,6 +628,16 @@ impl SimpleRuntime {
     }
 }
 
+/// The error for registering a `kind` of thing, a function or a native type, under `name`,
+/// which is already `reason`.
+fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Error {
+    Error::RuntimeError(RuntimeError::CannotRegister {
+        kind,
+        name: name.to_string(),
+        reason,
+    })
+}
+
 /// The global scope is the scope that is available to all other scopes.
 ///
 /// A name in it is a variable, a function, a built-in type, or a native type registered with
@@ -654,27 +663,21 @@ impl GlobalScope {
     }
 
     /// Register a native function in the global scope under its name, replacing any
-    /// function already registered under that name.
-    ///
-    /// # Panics
-    ///
-    /// If the name is a built-in type name, a native type's name, or is already bound as a
-    /// variable. Register functions before evaluating any flt source.
-    pub(crate) fn register_function(&mut self, function: NativeFunction) {
+    /// function already registered under that name, unless the name is a built-in type name,
+    /// a native type's name, or is already bound as a variable.
+    pub(crate) fn register_function(&mut self, function: NativeFunction) -> Result<(), Error> {
         let name = function.name();
-        assert!(
-            !Type::is_builtin_name(name),
-            "cannot register function {name}: it's a built-in type"
-        );
-        assert!(
-            !self.native_type_names.contains(name),
-            "cannot register function {name}: it's a native type"
-        );
-        assert!(
-            !self.variables.contains_key(name),
-            "cannot register function {name}: it's a variable"
-        );
-        self.functions.insert(name.to_string(), Arc::new(function));
+        let reason = if Type::is_builtin_name(name) {
+            ProtectedName::BuiltinType
+        } else if self.native_type_names.contains(name) {
+            ProtectedName::NativeType
+        } else if self.variables.contains_key(name) {
+            ProtectedName::Variable
+        } else {
+            self.functions.insert(name.to_string(), Arc::new(function));
+            return Ok(());
+        };
+        Err(cannot_register("function", name, reason))
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -918,13 +921,15 @@ mod tests {
         let calls = Arc::new(AtomicU64::new(0));
         let counter = Arc::clone(&calls);
         let mut runtime = SimpleRuntime::default();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new("tick", Type::number(), vec![]),
-            move |_args| {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(Value::Number(BigDecimal::from(1)))
-            },
-        ));
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new("tick", Type::number(), vec![]),
+                move |_args| {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    Ok(Value::Number(BigDecimal::from(1)))
+                },
+            ))
+            .unwrap();
         let result = runtime.eval_statement(&let_statement(
             "Number",
             Expr::function_call("tick", vec![]),
@@ -936,7 +941,7 @@ mod tests {
     #[test]
     fn test_set_variable_refuses_protected_names() {
         let mut runtime = runtime_with_identity();
-        runtime.register_native_type::<Meters>();
+        runtime.register_native_type::<Meters>().unwrap();
         let runtime: &mut dyn Runtime = &mut runtime;
         for (name, reason) in [
             ("Number", ProtectedName::BuiltinType),
@@ -1057,14 +1062,16 @@ mod tests {
     #[test]
     fn test_host_function_replaces_typeof() {
         let mut runtime = SimpleRuntime::default();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new(
-                "typeof",
-                Type::string(),
-                vec![Argument::new("v", Type::any())],
-            ),
-            |_args| Ok(Value::String("mine".to_string())),
-        ));
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "typeof",
+                    Type::string(),
+                    vec![Argument::new("v", Type::any())],
+                ),
+                |_args| Ok(Value::String("mine".to_string())),
+            ))
+            .unwrap();
         let value = runtime
             .eval_statement(&call("typeof", vec![Expr::literal_number(1)]))
             .unwrap();
@@ -1079,14 +1086,16 @@ mod tests {
     /// A fresh runtime with a native `identity` function of type `fn(Any) -> Any`.
     fn runtime_with_identity() -> SimpleRuntime {
         let mut runtime = SimpleRuntime::default();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new(
-                "identity",
-                Type::any(),
-                vec![Argument::new("v", Type::any())],
-            ),
-            |args| Ok(args[0].clone()),
-        ));
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "identity",
+                    Type::any(),
+                    vec![Argument::new("v", Type::any())],
+                ),
+                |args| Ok(args[0].clone()),
+            ))
+            .unwrap();
         runtime
     }
 
@@ -1153,27 +1162,83 @@ mod tests {
         assert!(matches!(value, Value::Function(_)));
     }
 
-    #[test]
-    #[should_panic(expected = "cannot register function Number: it's a built-in type")]
-    fn test_register_function_panics_on_builtin_type_name() {
-        let mut runtime = SimpleRuntime::default();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new("Number", Type::number(), vec![]),
+    /// Asserts that `result` is the error for registering a `kind` under `name`, which is
+    /// already in use.
+    fn assert_cannot_register(
+        result: Result<(), Error>,
+        kind: &str,
+        name: &str,
+        reason: ProtectedName,
+    ) {
+        match result {
+            Err(Error::RuntimeError(RuntimeError::CannotRegister {
+                kind: found_kind,
+                name: found_name,
+                reason: found_reason,
+            })) => {
+                assert_eq!(found_kind, kind);
+                assert_eq!(found_name, name);
+                assert_eq!(found_reason, reason);
+            }
+            other => panic!("expected CannotRegister for {kind} {name}, got {other:?}"),
+        }
+    }
+
+    /// A native function named `name`, of type `fn() -> Number`
+    fn zero_function(name: &str) -> NativeFunction {
+        NativeFunction::new(
+            FunctionDefinition::new(name, Type::number(), vec![]),
             |_args| Ok(Value::Number(BigDecimal::from(0))),
-        ));
+        )
     }
 
     #[test]
-    #[should_panic(expected = "cannot register function x: it's a variable")]
-    fn test_register_function_panics_on_variable_name() {
+    fn test_register_function_refuses_builtin_type_name() {
         let mut runtime = SimpleRuntime::default();
-        runtime
-            .eval_statement(&let_statement("x", Expr::literal_number(1)))
-            .unwrap();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new("x", Type::number(), vec![]),
-            |_args| Ok(Value::Number(BigDecimal::from(0))),
-        ));
+        assert_cannot_register(
+            runtime.register_function(zero_function("Number")),
+            "function",
+            "Number",
+            ProtectedName::BuiltinType,
+        );
+        assert!(runtime.get_function("Number").is_none());
+    }
+
+    #[test]
+    fn test_register_function_refuses_variable_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let x = 1").unwrap();
+        assert_cannot_register(
+            runtime.register_function(zero_function("x")),
+            "function",
+            "x",
+            ProtectedName::Variable,
+        );
+        assert_eq!(runtime.get_variable("x"), Some(number(1)));
+    }
+
+    #[test]
+    fn test_register_function_replaces_a_function() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.register_function(zero_function("zero")).unwrap();
+        assert!(runtime.register_function(zero_function("zero")).is_ok());
+    }
+
+    #[test]
+    fn test_cannot_register_error_message() {
+        let mut runtime = runtime_with_meters();
+        let error = runtime
+            .register_function(zero_function("Meters"))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot register function Meters: it's a native type"
+        );
+        let error = runtime.register_native_type::<Meters>().unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot register native type Meters: it's a native type"
+        );
     }
 
     #[test]
@@ -1226,35 +1291,41 @@ mod tests {
     /// 1, 2, 3, ... on successive calls.
     fn runtime_for_pipes() -> SimpleRuntime {
         let mut runtime = runtime_with_identity();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new(
-                "sub",
-                Type::number(),
-                vec![Argument::number("a"), Argument::number("b")],
-            ),
-            |args| SimpleRuntime::binary_number(&args[0], &args[1], |a, b| a - b),
-        ));
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new(
-                "args",
-                Type::array(),
-                vec![
-                    Argument::new("a", Type::any()),
-                    Argument::new("b", Type::any()),
-                    Argument::new("c", Type::any()),
-                ],
-            ),
-            |args| Ok(Value::Array(args.to_vec())),
-        ));
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "sub",
+                    Type::number(),
+                    vec![Argument::number("a"), Argument::number("b")],
+                ),
+                |args| SimpleRuntime::binary_number(&args[0], &args[1], |a, b| a - b),
+            ))
+            .unwrap();
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "args",
+                    Type::array(),
+                    vec![
+                        Argument::new("a", Type::any()),
+                        Argument::new("b", Type::any()),
+                        Argument::new("c", Type::any()),
+                    ],
+                ),
+                |args| Ok(Value::Array(args.to_vec())),
+            ))
+            .unwrap();
         let calls = Arc::new(AtomicU64::new(0));
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new("next", Type::number(), vec![]),
-            move |_args| {
-                Ok(Value::Number(BigDecimal::from(
-                    calls.fetch_add(1, Ordering::SeqCst) + 1,
-                )))
-            },
-        ));
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new("next", Type::number(), vec![]),
+                move |_args| {
+                    Ok(Value::Number(BigDecimal::from(
+                        calls.fetch_add(1, Ordering::SeqCst) + 1,
+                    )))
+                },
+            ))
+            .unwrap();
         runtime
     }
 
@@ -1430,8 +1501,8 @@ mod tests {
     /// `meters(n: Number) -> Meters`.
     fn runtime_with_meters() -> SimpleRuntime {
         let mut runtime = SimpleRuntime::default();
-        runtime.register_native_type::<Meters>();
-        runtime.register_function(meters_function());
+        runtime.register_native_type::<Meters>().unwrap();
+        runtime.register_function(meters_function()).unwrap();
         runtime
     }
 
@@ -1455,13 +1526,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot register function Meters: it's a native type")]
-    fn test_register_function_on_runtime_panics_on_native_type_name() {
+    fn test_register_function_refuses_native_type_name() {
         let mut runtime = runtime_with_meters();
-        runtime.register_function(NativeFunction::new(
-            FunctionDefinition::new("Meters", Type::number(), vec![]),
-            |_args| Ok(Value::Number(BigDecimal::from(0))),
-        ));
+        assert_cannot_register(
+            runtime.register_function(zero_function("Meters")),
+            "function",
+            "Meters",
+            ProtectedName::NativeType,
+        );
+        assert!(runtime.get_function("Meters").is_none());
     }
 
     #[test]
@@ -1564,7 +1637,7 @@ mod tests {
         );
     }
 
-    /// A native type named like a built-in type, for the registration panics.
+    /// A native type named like a built-in type, for the registration errors.
     #[derive(PartialEq)]
     struct FakeNumber;
 
@@ -1607,39 +1680,66 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot register native type Number: it's a built-in type")]
-    fn test_register_native_type_panics_on_builtin_type_name() {
-        SimpleRuntime::default().register_native_type::<FakeNumber>();
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot register native type typeof: it's a function")]
-    fn test_register_native_type_panics_on_function_name() {
-        SimpleRuntime::default().register_native_type::<FakeTypeof>();
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot register native type Meters: it's a variable")]
-    fn test_register_native_type_panics_on_variable_name() {
+    fn test_register_native_type_refuses_builtin_type_name() {
         let mut runtime = SimpleRuntime::default();
-        runtime
-            .eval_statement(&let_statement("Meters", Expr::literal_number(1)))
-            .unwrap();
-        runtime.register_native_type::<Meters>();
+        assert_cannot_register(
+            runtime.register_native_type::<FakeNumber>(),
+            "native type",
+            "Number",
+            ProtectedName::BuiltinType,
+        );
     }
 
     #[test]
-    #[should_panic(expected = "cannot register native type Meters: it's already a native type")]
-    fn test_register_native_type_panics_when_registered_twice() {
-        let mut runtime = runtime_with_meters();
-        runtime.register_native_type::<Meters>();
+    fn test_register_native_type_refuses_function_name() {
+        let mut runtime = SimpleRuntime::default();
+        assert_cannot_register(
+            runtime.register_native_type::<FakeTypeof>(),
+            "native type",
+            "typeof",
+            ProtectedName::Function,
+        );
+        assert_eq!(runtime.get_native_type("typeof"), None);
     }
 
     #[test]
-    #[should_panic(expected = "cannot register native type Meters: it's already a native type")]
-    fn test_register_native_type_panics_on_another_types_name() {
+    fn test_register_native_type_refuses_variable_name() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let Meters = 1").unwrap();
+        assert_cannot_register(
+            runtime.register_native_type::<Meters>(),
+            "native type",
+            "Meters",
+            ProtectedName::Variable,
+        );
+        assert_eq!(runtime.get_native_type("Meters"), None);
+    }
+
+    #[test]
+    fn test_register_native_type_refuses_one_registered_twice() {
         let mut runtime = runtime_with_meters();
-        runtime.register_native_type::<OtherMeters>();
+        assert_cannot_register(
+            runtime.register_native_type::<Meters>(),
+            "native type",
+            "Meters",
+            ProtectedName::NativeType,
+        );
+    }
+
+    #[test]
+    fn test_register_native_type_refuses_another_types_name() {
+        let mut runtime = runtime_with_meters();
+        assert_cannot_register(
+            runtime.register_native_type::<OtherMeters>(),
+            "native type",
+            "Meters",
+            ProtectedName::NativeType,
+        );
+        // The first type registered under the name keeps it
+        assert_eq!(
+            runtime.get_native_type("Meters"),
+            Some(NativeTypeInfo::of::<Meters>())
+        );
     }
 
     #[test]
@@ -1726,8 +1826,10 @@ mod tests {
     /// Registers the native type `Meters` and `meters` through the trait alone, as a host
     /// holding a `dyn Runtime` would.
     fn install_meters(runtime: &mut dyn Runtime) {
-        runtime.register_native_type_info(NativeTypeInfo::of::<Meters>());
-        runtime.register_function(meters_function());
+        runtime
+            .register_native_type_info(NativeTypeInfo::of::<Meters>())
+            .unwrap();
+        runtime.register_function(meters_function()).unwrap();
     }
 
     #[test]

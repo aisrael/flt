@@ -19,8 +19,8 @@ runtime.eval("x * 2")?;          // 6
 | --------------------------------- | ---------------------------------------------------------------------- |
 | `eval(source)`                    | parses and evaluates flt source, returning the last statement's value |
 | `eval_statement(statement)`       | evaluates one parsed statement                                         |
-| `register_function(function)`     | registers a [native function](./native-functions-and-values.md#native-functions), replacing one of the same name |
-| `register_native_type::<T>()`     | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T` |
+| `register_function(function)`     | registers a [native function](./native-functions-and-values.md#native-functions), replacing one of the same name, or fails |
+| `register_native_type::<T>()`     | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails |
 | `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                   |
 | `get_native_type(name)`           | a registered native type                                               |
 | `set_variable(name, value)`       | binds a global variable, or fails                                      |
@@ -48,14 +48,14 @@ runtime.eval("let c = 1; let = 2");             // Err: Parser Error: …, and c
 A host can hold a `&mut dyn Runtime` or a `Box<dyn Runtime>`. `register_native_type::<T>()` is generic, so it can't be called through `dyn Runtime`. Call `register_native_type_info` instead:
 
 ```rust
-runtime.register_native_type_info(NativeTypeInfo::of::<Date>());
+runtime.register_native_type_info(NativeTypeInfo::of::<Date>())?;
 ```
 
 ### Rules Belong to the Runtime
 
-The trait doesn't say which names a runtime refuses. `set_variable` and `check_bindable` return an error for a name the runtime won't bind, and the `register_*` methods may panic for a name it won't register.
+The trait doesn't say which names a runtime refuses. `set_variable` and `check_bindable` return an error for a name the runtime won't bind, and the `register_*` methods return an error for a name it won't register.
 
-`SimpleRuntime` refuses to bind a built-in type name, a function's name or a native type's name, with `Cannot bind <name>: …`, as `let` does. Its `register_function` and `register_native_type` panic on a name that's already in use ([Native Functions](./native-functions-and-values.md#native-functions), [Native Types](./native-functions-and-values.md#defining-and-registering-a-native-type)).
+`SimpleRuntime` refuses to bind a built-in type name, a function's name or a native type's name, with `Cannot bind <name>: …`, as `let` does. Its `register_function` and `register_native_type` refuse a name that's already in use, with `Cannot register <function|native type> <name>: …`. Registering a function under an existing function's name replaces it ([Native Functions](./native-functions-and-values.md#native-functions), [Native Types](./native-functions-and-values.md#defining-and-registering-a-native-type)).
 
 ## What Evaluates Today
 
@@ -94,6 +94,7 @@ The evaluator currently supports:
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 - `Cannot bind <name>: it's a native type` - binding the name of a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host
+- `Cannot register function <name>: it's …` and `Cannot register native type <name>: it's …` - a host registering a function or a native type under a name that's in use, e.g. `Cannot register function Date: it's a native type`
 - `Expected <type>, found <type>` - a native function given a value of the wrong type where it reads a native value or a number, e.g. `days_between(1, date(2026, 1, 1))` when `days_between` takes a `Date`
 - `Cannot convert <number> to <type>` - a native function reading a number argument as a Rust number type that can't hold it, e.g. `-1` as a `u32`, or `2.5` as any integer type
 - Host errors - a native function can fail with the host's own error, which is shown as the host displays it, without the `Runtime Error:` prefix
