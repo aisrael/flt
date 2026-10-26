@@ -56,6 +56,25 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
 
+A map arrives as `Value::Map(flt::runtime::Map)`. In `SimpleRuntime`, `Map` is an `IndexMap<String, Value>` that keeps its entries in insertion order, so a handler iterating a map literal, or the trailing map of a call's [keyword arguments](./functions-and-pipe.md#keyword-arguments), sees them in source order. Hosts build maps with `flt::runtime::Map` too, without depending on `indexmap` themselves.
+
+```rust
+use flt::runtime::Map;
+
+// keys({b: 1, a: 2}) returns ["b", "a"]
+runtime.register_function(NativeFunction::new(
+    FunctionDefinition::new("keys", Type::array(), vec![Argument::new("map", Type::map())]),
+    |args| match &args[0] {
+        Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::String).collect())),
+        _ => Ok(Value::Array(vec![])),
+    },
+))?;
+
+let mut point = Map::new();
+point.insert("x".to_string(), Value::from(1u64));
+runtime.set_variable("point", Value::Map(point))?;
+```
+
 ## Native Types and Values
 
 Native functions can also pass the host's own Rust values through flt, as native values ([ADR 007](./adrs/007-native-types-and-values.md)). A native value is a value of a native type, such as a date or a lazy query plan, that only the host understands.

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
 use bigdecimal::Zero;
+use indexmap::IndexMap;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
@@ -31,6 +32,9 @@ use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::Error;
 
+/// A map of string keys to values, in insertion order. Equality ignores order.
+pub type Map = IndexMap<String, Value>;
+
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -45,8 +49,8 @@ pub enum Value {
     Boolean(bool),
     /// A symbol value
     Symbol(String),
-    /// A map of string keys to values
-    Map(HashMap<String, Value>),
+    /// A map of string keys to values, in insertion order
+    Map(Map),
     /// An array of values
     Array(Vec<Value>),
     /// A type as a first-class value
@@ -66,10 +70,8 @@ impl fmt::Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Symbol(s) => write!(f, ":{}", s),
             Value::Map(m) => {
-                let mut entries: Vec<_> = m.iter().collect();
-                entries.sort_by_key(|(k, _)| *k);
                 write!(f, "{{")?;
-                for (i, (k, v)) in entries.into_iter().enumerate() {
+                for (i, (k, v)) in m.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -492,7 +494,7 @@ impl SimpleRuntime {
                 }
             }
             Expr::MapLiteral(entries) => {
-                let mut map = HashMap::new();
+                let mut map = Map::new();
                 for kv in entries {
                     let value = self.eval_expr(&kv.value)?;
                     map.insert(kv.key.clone(), value);
@@ -825,7 +827,66 @@ mod tests {
 
     #[test]
     fn test_type_of_map() {
-        assert_eq!(Value::Map(HashMap::new()).type_of().unwrap(), Type::map());
+        assert_eq!(Value::Map(Map::new()).type_of().unwrap(), Type::map());
+    }
+
+    fn map_keys(value: &Value) -> Vec<&str> {
+        match value {
+            Value::Map(map) => map.keys().map(String::as_str).collect(),
+            other => panic!("expected a map, got {other}"),
+        }
+    }
+
+    #[test]
+    fn test_map_literal_keeps_source_order() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval("{z: 1, y: 2, x: 3}").unwrap();
+        assert_eq!(map_keys(&value), vec!["z", "y", "x"]);
+    }
+
+    #[test]
+    fn test_map_literal_duplicate_key_keeps_first_position_and_last_value() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval("{n: 1, m: 2, n: 3}").unwrap();
+        assert_eq!(map_keys(&value), vec!["n", "m"]);
+        assert_eq!(value.to_string(), r#"{"n": 3, "m": 2}"#);
+    }
+
+    #[test]
+    fn test_map_displays_in_insertion_order() {
+        let map = Map::from([("b".to_string(), number(1)), ("a".to_string(), number(2))]);
+        assert_eq!(Value::Map(map).to_string(), r#"{"b": 1, "a": 2}"#);
+    }
+
+    #[test]
+    fn test_map_equality_ignores_order() {
+        let ab = Map::from([("a".to_string(), number(1)), ("b".to_string(), number(2))]);
+        let ba = Map::from([("b".to_string(), number(2)), ("a".to_string(), number(1))]);
+        assert_eq!(Value::Map(ab), Value::Map(ba));
+    }
+
+    #[test]
+    fn test_native_function_sees_keyword_arguments_in_source_order() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "keys",
+                    Type::array(),
+                    vec![Argument::new("map", Type::map())],
+                ),
+                |args| {
+                    Ok(Value::Array(
+                        map_keys(&args[0])
+                            .into_iter()
+                            .map(|key| Value::String(key.to_string()))
+                            .collect(),
+                    ))
+                },
+            ))
+            .unwrap();
+        let value = runtime.eval("keys(z: 1, y: 2, x: 3)").unwrap();
+        assert_eq!(value.to_string(), r#"["z", "y", "x"]"#);
     }
 
     #[test]
@@ -1394,7 +1455,7 @@ mod tests {
             Value::Array(vec![
                 number(1),
                 number(2),
-                Value::Map(HashMap::from([("k".to_string(), number(3))])),
+                Value::Map(Map::from([("k".to_string(), number(3))])),
             ])
         );
     }
