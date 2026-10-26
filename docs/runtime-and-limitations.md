@@ -65,7 +65,7 @@ The evaluator currently supports:
 - Boolean literals and logic: `&&`, `||`, `^^`, unary `!`
 - String literals and concatenation with `<>`
 - Symbol and `None` literals
-- Map literals (`{ key: value }`), evaluating to a `Map` value. In `SimpleRuntime`, a map keeps its entries in the order they were inserted and prints them in that order. A duplicate key keeps its first position and its last value. Equality ignores order.
+- Map literals (`{ key: value }`), evaluating to a `Map` value with [symbol keys](./literals.md#maps). In `SimpleRuntime`, a map keeps its entries in the order they were inserted and prints them in that order. A duplicate key keeps its first position and its last value. Equality ignores order.
 - Array literals (`[ expr, ... ]`), evaluating each element in order to an `Array` value
 - [Field access](./field-access.md) (`.field`) on maps
 - Comparisons: `==`, `!=`, `<`, `>`, `<=`, `>=`

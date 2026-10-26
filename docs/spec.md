@@ -43,7 +43,7 @@ key        = ident | string ;
 | None      | `None`                                     | No value; also its own type                        |
 | Symbol    | `:id` `:foo-bar` `:"hello world"`          | Bare or quoted                                     |
 | Array     | `[]` `[1, 2, 3,]`                          | Trailing comma allowed                             |
-| Map       | `{ foo: 1, "spaced out": 2 }`              | Keys are bare identifiers or strings; unique       |
+| Map       | `{ foo: 1, "spaced out": 2 }`              | Keys are symbols, bare or quoted; unique           |
 
 ## 4. Types
 
@@ -90,7 +90,7 @@ foo(1, bar: true)    # trailing keyword arguments
 ```
 
 Positional arguments come first; after the first keyword argument, no positional argument may
-follow. Keyword keys follow map-key rules. The parser collects keyword arguments into a single `Map`
+follow. Keyword keys follow map-key rules, so each is a symbol. The parser collects keyword arguments into a single `Map`
 passed as the final argument, so `foo(1, bar: true)` receives `1, { bar: true }`.
 
 ### Pipe

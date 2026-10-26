@@ -30,10 +30,50 @@ use crate::runtime::native::NativeTypeInfo;
 use crate::runtime::native::NativeValue;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
+use crate::utils::is_bare_name;
 use crate::Error;
 
-/// A map of string keys to values, in insertion order. Equality ignores order.
-pub type Map = IndexMap<String, Value>;
+/// A map key. Keys written in flt source are symbols; only a host can create string keys. A
+/// symbol and a string with the same text are different keys.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MapKey {
+    Symbol(String),
+    String(String),
+}
+
+impl MapKey {
+    /// A symbol key, e.g. `:b` in `{b: 1}`
+    pub fn symbol<S: Into<String>>(name: S) -> Self {
+        MapKey::Symbol(name.into())
+    }
+
+    /// A string key, which flt source can't write yet
+    pub fn string<S: Into<String>>(s: S) -> Self {
+        MapKey::String(s.into())
+    }
+}
+
+/// A key as the flt value it stands for: a `Symbol` or a `String`
+impl From<MapKey> for Value {
+    fn from(key: MapKey) -> Self {
+        match key {
+            MapKey::Symbol(name) => Value::Symbol(name),
+            MapKey::String(s) => Value::String(s),
+        }
+    }
+}
+
+/// A map of keys to values, in insertion order. Equality ignores order.
+pub type Map = IndexMap<MapKey, Value>;
+
+/// Writes `name` bare if it's a valid bare name, and quoted otherwise.
+fn write_name(f: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
+    if is_bare_name(name) {
+        write!(f, "{name}")
+    } else {
+        write!(f, "\"{}\"", escape_string(name))
+    }
+}
 
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]
@@ -49,7 +89,7 @@ pub enum Value {
     Boolean(bool),
     /// A symbol value
     Symbol(String),
-    /// A map of string keys to values, in insertion order
+    /// A map of keys to values, in insertion order
     Map(Map),
     /// An array of values
     Array(Vec<Value>),
@@ -68,14 +108,25 @@ impl fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Symbol(s) => write!(f, ":{}", s),
+            Value::Symbol(s) => {
+                write!(f, ":")?;
+                write_name(f, s)
+            }
+            // Symbol keys print as written in a literal, e.g. `{b: 1, "c d": 2}`. String keys
+            // print as `"b" => 1`, which flt can't parse yet.
             Value::Map(m) => {
                 write!(f, "{{")?;
                 for (i, (k, v)) in m.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "\"{}\": {}", escape_string(k), v)?;
+                    match k {
+                        MapKey::Symbol(name) => {
+                            write_name(f, name)?;
+                            write!(f, ": {v}")?;
+                        }
+                        MapKey::String(s) => write!(f, "\"{}\" => {v}", escape_string(s))?,
+                    }
                 }
                 write!(f, "}}")
             }
@@ -487,7 +538,7 @@ impl SimpleRuntime {
             Expr::FieldAccess(inner, field) => {
                 let value = self.eval_expr(inner)?;
                 match value {
-                    Value::Map(m) => m.get(field).cloned().ok_or_else(|| {
+                    Value::Map(m) => m.get(&MapKey::symbol(field)).cloned().ok_or_else(|| {
                         Error::RuntimeError(RuntimeError::NoSuchField(field.clone()))
                     }),
                     _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
@@ -497,7 +548,7 @@ impl SimpleRuntime {
                 let mut map = Map::new();
                 for kv in entries {
                     let value = self.eval_expr(&kv.value)?;
-                    map.insert(kv.key.clone(), value);
+                    map.insert(MapKey::symbol(kv.key.as_str()), value);
                 }
                 Ok(Value::Map(map))
             }
@@ -830,38 +881,121 @@ mod tests {
         assert_eq!(Value::Map(Map::new()).type_of().unwrap(), Type::map());
     }
 
-    fn map_keys(value: &Value) -> Vec<&str> {
+    fn map_keys(value: &Value) -> Vec<MapKey> {
         match value {
-            Value::Map(map) => map.keys().map(String::as_str).collect(),
+            Value::Map(map) => map.keys().cloned().collect(),
             other => panic!("expected a map, got {other}"),
         }
+    }
+
+    fn symbols(names: &[&str]) -> Vec<MapKey> {
+        names.iter().map(|name| MapKey::symbol(*name)).collect()
     }
 
     #[test]
     fn test_map_literal_keeps_source_order() {
         let mut runtime = SimpleRuntime::default();
         let value = runtime.eval("{z: 1, y: 2, x: 3}").unwrap();
-        assert_eq!(map_keys(&value), vec!["z", "y", "x"]);
+        assert_eq!(map_keys(&value), symbols(&["z", "y", "x"]));
     }
 
     #[test]
     fn test_map_literal_duplicate_key_keeps_first_position_and_last_value() {
         let mut runtime = SimpleRuntime::default();
         let value = runtime.eval("{n: 1, m: 2, n: 3}").unwrap();
-        assert_eq!(map_keys(&value), vec!["n", "m"]);
-        assert_eq!(value.to_string(), r#"{"n": 3, "m": 2}"#);
+        assert_eq!(map_keys(&value), symbols(&["n", "m"]));
+        assert_eq!(value.to_string(), "{n: 3, m: 2}");
+    }
+
+    #[test]
+    fn test_map_literal_keys_are_symbols() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval(r#"{b: 1, "c d": 2}"#).unwrap();
+        assert_eq!(map_keys(&value), symbols(&["b", "c d"]));
+        assert_eq!(value, runtime.eval(r#"{"b": 1, "c d": 2}"#).unwrap());
+    }
+
+    #[test]
+    fn test_bare_and_quoted_keys_are_the_same_key() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval(r#"{b: 1, "b": 2}"#).unwrap();
+        assert_eq!(map_keys(&value), symbols(&["b"]));
+        assert_eq!(value.to_string(), "{b: 2}");
+    }
+
+    #[test]
+    fn test_symbol_and_string_keys_differ() {
+        let map = Map::from([
+            (MapKey::symbol("b"), number(1)),
+            (MapKey::string("b"), number(2)),
+        ]);
+        assert_eq!(map.len(), 2);
+        assert_eq!(Value::Map(map).to_string(), r#"{b: 1, "b" => 2}"#);
+    }
+
+    #[test]
+    fn test_map_prints_keys_as_written() {
+        let mut runtime = SimpleRuntime::default();
+        let source = r#"{b: 1, "c d": 2, "_x": 3, "1x": 4}"#;
+        assert_eq!(runtime.eval(source).unwrap().to_string(), source);
+    }
+
+    #[test]
+    fn test_symbol_prints_quoted_when_not_a_bare_name() {
+        let symbol = |name: &str| Value::Symbol(name.to_string()).to_string();
+        assert_eq!(symbol("b"), ":b");
+        assert_eq!(symbol("hello world"), r#":"hello world""#);
+        assert_eq!(symbol("_x"), r#":"_x""#);
+        assert_eq!(symbol(r#"say "hi""#), r#":"say \"hi\"""#);
+    }
+
+    #[test]
+    fn test_map_key_to_value() {
+        assert_eq!(
+            Value::from(MapKey::symbol("b")),
+            Value::Symbol("b".to_string())
+        );
+        assert_eq!(
+            Value::from(MapKey::string("b")),
+            Value::String("b".to_string())
+        );
+    }
+
+    #[test]
+    fn test_field_access_reads_symbol_key() {
+        let mut runtime = SimpleRuntime::default();
+        assert_eq!(runtime.eval(r#"{"b": 1}.b"#).unwrap(), number(1));
+        runtime
+            .set_variable(
+                "m",
+                Value::Map(Map::from([(MapKey::string("b"), number(1))])),
+            )
+            .unwrap();
+        assert!(matches!(
+            runtime.eval("m.b"),
+            Err(Error::RuntimeError(RuntimeError::NoSuchField(field))) if field == "b"
+        ));
     }
 
     #[test]
     fn test_map_displays_in_insertion_order() {
-        let map = Map::from([("b".to_string(), number(1)), ("a".to_string(), number(2))]);
-        assert_eq!(Value::Map(map).to_string(), r#"{"b": 1, "a": 2}"#);
+        let map = Map::from([
+            (MapKey::symbol("b"), number(1)),
+            (MapKey::symbol("a"), number(2)),
+        ]);
+        assert_eq!(Value::Map(map).to_string(), "{b: 1, a: 2}");
     }
 
     #[test]
     fn test_map_equality_ignores_order() {
-        let ab = Map::from([("a".to_string(), number(1)), ("b".to_string(), number(2))]);
-        let ba = Map::from([("b".to_string(), number(2)), ("a".to_string(), number(1))]);
+        let ab = Map::from([
+            (MapKey::symbol("a"), number(1)),
+            (MapKey::symbol("b"), number(2)),
+        ]);
+        let ba = Map::from([
+            (MapKey::symbol("b"), number(2)),
+            (MapKey::symbol("a"), number(1)),
+        ]);
         assert_eq!(Value::Map(ab), Value::Map(ba));
     }
 
@@ -877,16 +1011,13 @@ mod tests {
                 ),
                 |args| {
                     Ok(Value::Array(
-                        map_keys(&args[0])
-                            .into_iter()
-                            .map(|key| Value::String(key.to_string()))
-                            .collect(),
+                        map_keys(&args[0]).into_iter().map(Value::from).collect(),
                     ))
                 },
             ))
             .unwrap();
         let value = runtime.eval("keys(z: 1, y: 2, x: 3)").unwrap();
-        assert_eq!(value.to_string(), r#"["z", "y", "x"]"#);
+        assert_eq!(value.to_string(), "[:z, :y, :x]");
     }
 
     #[test]
@@ -1455,7 +1586,7 @@ mod tests {
             Value::Array(vec![
                 number(1),
                 number(2),
-                Value::Map(Map::from([("k".to_string(), number(3))])),
+                Value::Map(Map::from([(MapKey::symbol("k"), number(3))])),
             ])
         );
     }

@@ -22,7 +22,7 @@ baz(a: 1, b: 2)
 qux(1, 2, option: "value")
 ```
 
-Keys follow the same rules as map keys (bare identifier or quoted string). The parser collects keyword arguments into a single map and passes them as the final argument to the call.
+Keys follow the same rules as [map keys](./literals.md#maps): each is a symbol, written bare or quoted, so `bar: true` passes the key `:bar`. The parser collects keyword arguments into a single map and passes them as the final argument to the call.
 
 ### Whitespace form
 
