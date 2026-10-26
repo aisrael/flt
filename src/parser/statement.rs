@@ -9,6 +9,7 @@ use nom::Parser;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::Statement;
+use crate::Error;
 
 use super::comment::multispace0_or_comment;
 use super::expr::parse_expr;
@@ -64,6 +65,36 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
+}
+
+/// Parses all of `source` into its statements, which are separated by newlines or by `;`.
+///
+/// Unlike [`parse_statement`], it doesn't return leftover input: anything that isn't a
+/// statement, whitespace or a comment is an [`Error::ParserError`], as are two statements on
+/// one line with no `;` between them. Empty source, or source with only comments, has no
+/// statements.
+pub fn parse_statements(source: &str) -> Result<Vec<Statement>, Error> {
+    let parse_error = |e: nom::Err<nom::error::Error<&str>>| Error::ParserError(e.to_string());
+    let mut statements = Vec::new();
+    let (mut rest, _) = multispace0_or_comment(source).map_err(parse_error)?;
+    while !rest.is_empty() {
+        let (remainder, statement) = parse_statement(rest).map_err(parse_error)?;
+        // What follows the statement, up to the next one: whitespace, comments and any `;`
+        let consumed = &rest[..rest.len() - remainder.len()];
+        let statement_end = consumed
+            .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
+            .len();
+        let separator = &consumed[statement_end..];
+        if !remainder.is_empty() && !separator.contains([';', '\n']) {
+            let next = remainder.lines().next().unwrap_or_default();
+            return Err(Error::ParserError(format!(
+                "expected `;` or a newline before {next:?}"
+            )));
+        }
+        statements.push(statement);
+        (rest, _) = multispace0_or_comment(remainder).map_err(parse_error)?;
+    }
+    Ok(statements)
 }
 
 #[cfg(test)]
@@ -195,6 +226,50 @@ mod tests {
             assert!(
                 !parses_as_binding(&format!("{keyword} = 1")),
                 "{keyword} = 1 should not parse as a binding"
+            );
+        }
+    }
+
+    fn let_x(n: i64) -> Statement {
+        Statement::Let(Identifier("x".to_string()), Expr::literal_number(n))
+    }
+
+    #[test]
+    fn test_parse_statements_separated_by_semicolons_or_newlines() {
+        let expected = vec![let_x(1), let_x(2), Statement::Expr(Expr::ident("x"))];
+        for source in [
+            "let x = 1; let x = 2; x",
+            "let x = 1\nlet x = 2\nx",
+            "let x = 1;\n\nlet x = 2 # two\nx;",
+            "  # leading comment\nlet x = 1; # one\n let x = 2\n  x\n",
+        ] {
+            assert_eq!(parse_statements(source).unwrap(), expected, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_statements_of_empty_source() {
+        for source in ["", "  \n ", "# only a comment", "# one\n# two\n"] {
+            assert_eq!(parse_statements(source).unwrap(), vec![], "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_statements_needs_a_separator_on_one_line() {
+        let error = parse_statements("let x = 1 let y = 2").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Parser Error: expected `;` or a newline before \"let y = 2\""
+        );
+    }
+
+    #[test]
+    fn test_parse_statements_fails_on_a_syntax_error() {
+        for source in ["let x = 1; let = 2", "let x = 1\n)", "1 +"] {
+            let result = parse_statements(source);
+            assert!(
+                matches!(result, Err(Error::ParserError(_))),
+                "{source:?}: {result:?}"
             );
         }
     }

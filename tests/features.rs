@@ -166,13 +166,14 @@ fn native_function(name: &str) -> Option<NativeFunction> {
 
 /// Registers the fixture native types that the named fixture functions use. `Time` is
 /// never registered, so it also stands for a type a host forgot to register.
-fn register_native_types(runtime: &mut SimpleRuntime, natives: &[String]) {
+fn register_native_types(runtime: &mut impl Runtime, natives: &[String]) -> Result<(), Error> {
     if natives
         .iter()
         .any(|name| name == "date" || name == "days_between")
     {
-        runtime.register_native_type::<Date>();
+        runtime.register_native_type::<Date>()?;
     }
+    Ok(())
 }
 
 /// chrono's `NaiveDate` as the native type `Date`. `NaiveDate` is from another crate, so
@@ -212,33 +213,26 @@ fn when_i_evaluate_the_input(world: &mut AstWorld) {
     world.result = Some(evaluate(&input, &world.natives));
 }
 
-/// Parses and evaluates each statement in `input` in a fresh runtime with the named
-/// fixture native functions, and the native types they use, registered, returning the
-/// displayed value of the last one.
-fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
-    let mut runtime = SimpleRuntime::default();
-    register_native_types(&mut runtime, natives);
+/// Registers the named fixture native functions, and the native types they use, through
+/// the `Runtime` trait alone, as a host does.
+fn install(runtime: &mut impl Runtime, natives: &[String]) -> Result<(), Error> {
+    register_native_types(runtime, natives)?;
     for name in natives {
         let function = native_function(name).expect("fixture native function should exist");
-        runtime.register_function(function);
+        runtime.register_function(function)?;
     }
-    let mut rest = input;
-    let mut last = None;
-    loop {
-        rest = rest.trim_start_matches(|c: char| c.is_whitespace() || c == ';');
-        if rest.is_empty() {
-            break;
-        }
-        let (remainder, statement) =
-            parse_statement(rest).map_err(|e| format!("parse error: {e}"))?;
-        if remainder.len() == rest.len() {
-            return Err(format!("parse error: no progress at {rest:?}"));
-        }
-        last = Some(runtime.eval(&statement).map_err(|e| e.to_string())?);
-        rest = remainder;
-    }
-    last.map(|value| value.to_string())
-        .ok_or_else(|| "no statements to evaluate".to_string())
+    Ok(())
+}
+
+/// Evaluates `input` in a fresh runtime with the named fixture native functions installed,
+/// returning the displayed value of its last statement.
+fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
+    let mut runtime = SimpleRuntime::default();
+    install(&mut runtime, natives).expect("fixtures should register");
+    runtime
+        .eval(input)
+        .map(|value| value.to_string())
+        .map_err(|e| e.to_string())
 }
 
 #[then(expr = r#"the result should be {string}"#)]

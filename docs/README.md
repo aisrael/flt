@@ -25,6 +25,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 005: `typeof` as a Native Function](adrs/005-typeof-native-function.md)
 - [ADR 006: Bindings Can't Shadow Types, Functions or Keywords](adrs/006-no-shadowing.md)
 - [ADR 007: Native Types and Values](adrs/007-native-types-and-values.md)
+- [ADR 008: The `Runtime` Trait](adrs/008-the-runtime-trait.md)
 
 ## Scope
 
