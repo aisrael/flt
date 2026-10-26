@@ -64,21 +64,24 @@ fn parse_arg_disallow_unary_plus<'a>(
 }
 
 /// Splits parsed args into positionals (all leading Positional) and keyword_args (the rest).
+/// A key holds its unquoted text, so `n:` and `"n":` are the same keyword and can't both
+/// appear.
 fn collect_args(items: Vec<ParsedArg>) -> Result<(Vec<Expr>, Vec<KeyValue>), &'static str> {
     let mut positional_args = Vec::new();
-    let mut keyword_args = Vec::new();
-    let mut seen_kv = false;
+    let mut keyword_args: Vec<KeyValue> = Vec::new();
 
     for item in items {
         match item {
             ParsedArg::Positional(expr) => {
-                if seen_kv {
+                if !keyword_args.is_empty() {
                     return Err("positional argument after key-value pair");
                 }
                 positional_args.push(expr);
             }
             ParsedArg::KeyValue(kv) => {
-                seen_kv = true;
+                if keyword_args.iter().any(|seen| seen.key == kv.key) {
+                    return Err("duplicate keyword argument");
+                }
                 keyword_args.push(kv);
             }
         }
@@ -381,6 +384,42 @@ mod tests {
     #[test]
     fn test_parse_positional_after_kv_fails() {
         assert!(parse_function_call(parse_expr)("foo(a: 1, 2)").is_err());
+    }
+
+    #[test]
+    fn test_parse_duplicate_keyword_fails() {
+        for input in [
+            "foo(a: 1, a: 2)",
+            r#"foo(a: 1, "a": 2)"#,
+            "foo(1, a: 1, b: 2, a: 3)",
+            "foo a: 1, a: 2",
+        ] {
+            assert!(
+                parse_function_call(parse_expr)(input).is_err(),
+                "{input} should fail to parse"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_keywords_differ_from_a_map_argument() {
+        let (_, keywords) = parse_function_call(parse_expr)("foo(k: 1)").unwrap();
+        let (_, map) = parse_function_call(parse_expr)("foo({k: 1})").unwrap();
+        assert_eq!(keywords.positional_args, vec![]);
+        assert_eq!(keywords.keyword_args.len(), 1);
+        assert_eq!(
+            map.positional_args,
+            vec![Expr::map_literal(vec![("k", Expr::literal_number(1))])]
+        );
+        assert_eq!(map.keyword_args, vec![]);
+    }
+
+    #[test]
+    fn test_display_round_trips() {
+        for input in ["foo(1, k: 2)", r#"foo(1, "c d": 2)"#, "foo(k: 2)", "foo()"] {
+            let (_, call) = parse_function_call(parse_expr)(input).unwrap();
+            assert_eq!(call.to_string(), input);
+        }
     }
 
     #[test]

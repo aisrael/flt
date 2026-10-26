@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use bigdecimal::BigDecimal;
 
+use super::function::FunctionCall;
 use super::identifier::Identifier;
 use super::keywords::Keyword;
 use super::literal::Literal;
@@ -21,8 +22,8 @@ pub enum Expr {
     UnaryExpr(UnaryOp, Box<Expr>),
     /// A binary expression with left, operator, and right operands.
     BinaryExpr(Box<Expr>, BinaryOp, Box<Expr>),
-    /// A function call: name and arguments.
-    FunctionCall(Identifier, Vec<Expr>),
+    /// A function call: name, positional arguments and keyword arguments.
+    FunctionCall(FunctionCall),
     /// A parenthesized expression.
     Parenthesized(Box<Expr>),
     /// Field access on an expression: `expr.field` (e.g. `u.foo`, `{a:1}.a`, `f().x`).
@@ -51,17 +52,7 @@ impl Display for Expr {
             Expr::Ident(ident) => ident.fmt(f),
             Expr::UnaryExpr(op, expr) => write!(f, "{op}{expr}"),
             Expr::BinaryExpr(left, op, right) => write!(f, "{left} {op} {right}"),
-            Expr::FunctionCall(name, args) => {
-                name.fmt(f)?;
-                write!(f, "(")?;
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    arg.fmt(f)?;
-                }
-                write!(f, ")")
-            }
+            Expr::FunctionCall(call) => call.fmt(f),
             Expr::Parenthesized(expr) => {
                 write!(f, "(")?;
                 expr.fmt(f)?;
@@ -145,12 +136,31 @@ impl Expr {
         Expr::BinaryExpr(Box::new(left), op, Box::new(right))
     }
 
-    /// Constructs a function call expression.
+    /// Constructs a function call expression with positional arguments only.
     pub fn function_call(
         name: impl TryInto<Identifier, Error = crate::Error>,
         args: Vec<Expr>,
     ) -> Self {
-        Expr::FunctionCall(name.try_into().expect("failed to convert identifier"), args)
+        Expr::function_call_with_keywords(name, args, Vec::<(String, Expr)>::new())
+    }
+
+    /// Constructs a function call expression with positional and keyword arguments.
+    pub fn function_call_with_keywords(
+        name: impl TryInto<Identifier, Error = crate::Error>,
+        args: Vec<Expr>,
+        keyword_args: Vec<(impl Into<String>, Expr)>,
+    ) -> Self {
+        Expr::FunctionCall(FunctionCall {
+            name: name.try_into().expect("failed to convert identifier"),
+            positional_args: args,
+            keyword_args: keyword_args
+                .into_iter()
+                .map(|(k, v)| KeyValue {
+                    key: k.into(),
+                    value: v,
+                })
+                .collect(),
+        })
     }
 
     /// Constructs a parenthesized expression.

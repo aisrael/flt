@@ -23,7 +23,6 @@ use super::operands::parse_unary_op;
 use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
-use crate::ast::FunctionCall;
 use crate::ast::Keyword;
 
 /// Parses a `{ expr }` block used by control-flow expressions.
@@ -43,7 +42,7 @@ fn parse_if_branch(input: &str) -> IResult<&str, Expr> {
 fn parse_if_then_branch(input: &str) -> IResult<&str, Expr> {
     verify(parse_if_branch, |e: &Expr| match e {
         Expr::Keyword(Keyword::Else) => false,
-        Expr::FunctionCall(name, _) if *name == "else" => false,
+        Expr::FunctionCall(call) if call.name == "else" => false,
         _ => true,
     })
     .parse(input)
@@ -88,10 +87,7 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
         parse_interpolated_string(parse_or),
         map(parse_literal, Expr::Literal),
         parse_if_expr,
-        map(parse_function_call(parse_or), |fc: FunctionCall| {
-            let args = fc.args_as_exprs();
-            Expr::FunctionCall(fc.name, args)
-        }),
+        map(parse_function_call(parse_or), Expr::FunctionCall),
         map(parse_keyword, Expr::keyword),
         map(parse_identifier, Expr::ident),
         parse_array_literal(parse_or),
@@ -132,10 +128,7 @@ fn parse_if_condition_primary(input: &str) -> IResult<&str, Expr> {
         map(parse_literal, Expr::Literal),
         map(
             parse_function_call_parens_only(parse_if_condition_or),
-            |fc: FunctionCall| {
-                let args = fc.args_as_exprs();
-                Expr::FunctionCall(fc.name, args)
-            },
+            Expr::FunctionCall,
         ),
         parse_if_expr,
         map(parse_keyword, Expr::keyword),
@@ -593,36 +586,25 @@ mod tests {
         );
     }
 
-    use crate::ast::Identifier;
-
     #[test]
     fn test_parse_function_call() {
         assert_eq!(
             parse_expr("foo()"),
-            Ok((
-                "",
-                Expr::FunctionCall(
-                    Identifier::try_from("foo").expect("invalid identifier"),
-                    vec![]
-                )
-            ))
+            Ok(("", Expr::function_call("foo", vec![])))
         );
         assert_eq!(
             parse_expr("bar(1)"),
             Ok((
                 "",
-                Expr::FunctionCall(
-                    Identifier::try_from("bar").expect("invalid identifier"),
-                    vec![Expr::literal_number(1)]
-                )
+                Expr::function_call("bar", vec![Expr::literal_number(1)])
             ))
         );
         assert_eq!(
             parse_expr("add(1, 2)"),
             Ok((
                 "",
-                Expr::FunctionCall(
-                    Identifier::try_from("add").expect("invalid identifier"),
+                Expr::function_call(
+                    "add",
                     vec![Expr::literal_number(1), Expr::literal_number(2)]
                 )
             ))
@@ -631,8 +613,8 @@ mod tests {
             parse_expr("add 1, 2"),
             Ok((
                 "",
-                Expr::FunctionCall(
-                    Identifier::try_from("add").expect("invalid identifier"),
+                Expr::function_call(
+                    "add",
                     vec![Expr::literal_number(1), Expr::literal_number(2)]
                 )
             ))
@@ -908,12 +890,10 @@ mod tests {
             parse_expr("foo(1, optional: true)"),
             Ok((
                 "",
-                Expr::FunctionCall(
-                    Identifier::try_from("foo").expect("invalid identifier"),
-                    vec![
-                        Expr::literal_number(1),
-                        Expr::map_literal(vec![("optional", Expr::literal_boolean(true))]),
-                    ]
+                Expr::function_call_with_keywords(
+                    "foo",
+                    vec![Expr::literal_number(1)],
+                    vec![("optional", Expr::literal_boolean(true))],
                 )
             ))
         );
@@ -925,12 +905,13 @@ mod tests {
             parse_expr(r#"config(format: "csv", header: true)"#),
             Ok((
                 "",
-                Expr::FunctionCall(
-                    Identifier::try_from("config").expect("invalid identifier"),
-                    vec![Expr::map_literal(vec![
+                Expr::function_call_with_keywords(
+                    "config",
+                    vec![],
+                    vec![
                         ("format", Expr::literal_string("csv")),
                         ("header", Expr::literal_boolean(true)),
-                    ])]
+                    ],
                 )
             ))
         );
@@ -945,12 +926,10 @@ mod tests {
                 Expr::binary_expr(
                     Expr::function_call("READ", vec![Expr::literal_string("input")]),
                     BinaryOp::Pipe,
-                    Expr::FunctionCall(
-                        Identifier::try_from("WRITE").expect("invalid identifier"),
-                        vec![
-                            Expr::literal_string("output"),
-                            Expr::map_literal(vec![("format", Expr::literal_string("csv"))]),
-                        ]
+                    Expr::function_call_with_keywords(
+                        "WRITE",
+                        vec![Expr::literal_string("output")],
+                        vec![("format", Expr::literal_string("csv"))],
                     )
                 )
             ))
