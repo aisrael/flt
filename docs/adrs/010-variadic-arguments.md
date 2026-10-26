@@ -62,9 +62,9 @@ elsewhere, it isn't checked ([ADR 003](003-functions-as-values.md), decision 4).
 ### 4. Keyword arguments are left to a later decision
 
 This ADR doesn't change keyword arguments. The parser still passes them as one trailing map
-([ADR 004](004-pipe-operator.md)), which a variadic
-argument would take as its last value. That isn't part of this decision and isn't documented or
-tested. A separate decision is expected to give signatures their own keyword arguments, after
+([ADR 004](004-pipe-operator.md)) with symbol keys
+([ADR 009](009-symbol-keys-and-ordered-maps.md)), which a variadic argument would take as its last
+value. That isn't part of this decision and isn't documented or tested. A separate decision is expected to give signatures their own keyword arguments, after
 which a variadic argument would take only positional values.
 
 ### 5. The concept is the language's; the Rust API is the runtime's
