@@ -483,9 +483,9 @@ impl SimpleRuntime {
             args.push(self.eval_expr(arg)?);
         }
         let mut keywords = Map::new();
-        for kv in &call.keyword_args {
-            let value = self.eval_expr(&kv.value)?;
-            keywords.insert(MapKey::symbol(kv.key.as_str()), value);
+        for (key, value) in &call.keyword_args {
+            let value = self.eval_expr(value)?;
+            keywords.insert(MapKey::symbol(key.as_str()), value);
         }
         self.call_function(call.name.0.as_str(), &args, keywords)
     }

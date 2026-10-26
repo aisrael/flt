@@ -155,10 +155,7 @@ impl Expr {
             positional_args: args,
             keyword_args: keyword_args
                 .into_iter()
-                .map(|(k, v)| KeyValue {
-                    key: k.into(),
-                    value: v,
-                })
+                .map(|(k, v)| (k.into(), v))
                 .collect(),
         })
     }

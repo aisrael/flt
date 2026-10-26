@@ -15,7 +15,7 @@ use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
-use crate::ast::KeyValue;
+use indexmap::IndexMap;
 
 use super::comment::{multispace0_or_comment, multispace1_or_comment};
 use super::map::parse_kv_pair;
@@ -24,7 +24,7 @@ use super::parse_identifier;
 /// Internal enum used only during parsing to represent one arg (positional or key-value).
 enum ParsedArg {
     Positional(Expr),
-    KeyValue(KeyValue),
+    KeyValue(String, Expr),
 }
 
 fn parse_arg<'a>(
@@ -33,10 +33,7 @@ fn parse_arg<'a>(
     move |input: &'a str| {
         alt((
             map(parse_kv_pair(expr_parser), |(k, v)| {
-                ParsedArg::KeyValue(KeyValue {
-                    key: k.into_owned(),
-                    value: v,
-                })
+                ParsedArg::KeyValue(k.into_owned(), v)
             }),
             map(expr_parser, ParsedArg::Positional),
         ))
@@ -66,9 +63,11 @@ fn parse_arg_disallow_unary_plus<'a>(
 /// Splits parsed args into positionals (all leading Positional) and keyword_args (the rest).
 /// A key holds its unquoted text, so `n:` and `"n":` are the same keyword and can't both
 /// appear.
-fn collect_args(items: Vec<ParsedArg>) -> Result<(Vec<Expr>, Vec<KeyValue>), &'static str> {
+fn collect_args(
+    items: Vec<ParsedArg>,
+) -> Result<(Vec<Expr>, IndexMap<String, Expr>), &'static str> {
     let mut positional_args = Vec::new();
-    let mut keyword_args: Vec<KeyValue> = Vec::new();
+    let mut keyword_args = IndexMap::new();
 
     for item in items {
         match item {
@@ -78,11 +77,10 @@ fn collect_args(items: Vec<ParsedArg>) -> Result<(Vec<Expr>, Vec<KeyValue>), &'s
                 }
                 positional_args.push(expr);
             }
-            ParsedArg::KeyValue(kv) => {
-                if keyword_args.iter().any(|seen| seen.key == kv.key) {
+            ParsedArg::KeyValue(key, value) => {
+                if keyword_args.insert(key, value).is_some() {
                     return Err("duplicate keyword argument");
                 }
-                keyword_args.push(kv);
             }
         }
     }
@@ -128,10 +126,10 @@ pub fn parse_function_call(
                         ),
                         collect_args,
                     ),
-                    |(positional_args, keyword_args): &(Vec<Expr>, Vec<KeyValue>)| {
+                    |(positional_args, keyword_args): &(Vec<Expr>, IndexMap<String, Expr>)| {
                         !positional_args
                             .iter()
-                            .chain(keyword_args.iter().map(|kv| &kv.value))
+                            .chain(keyword_args.values())
                             .any(has_unparenthesized_pipe)
                     },
                 ),
@@ -217,8 +215,9 @@ mod tests {
     use super::parse_function_call;
     use crate::ast::Expr;
     use crate::ast::FunctionCall;
+    use indexmap::IndexMap;
+
     use crate::ast::Identifier;
-    use crate::ast::KeyValue;
     use crate::ast::Numeric;
     use crate::parser::expr::parse_expr;
 
@@ -231,7 +230,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("trim").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_string("string")],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -248,7 +247,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -265,7 +264,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -285,7 +284,7 @@ mod tests {
                         ),
                         Expr::literal_number(2),
                     ],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -300,7 +299,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -315,7 +314,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1), Expr::literal_number(2),],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -330,10 +329,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "optional".into(),
-                        value: Expr::literal_boolean(true),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "optional".to_string(),
+                        Expr::literal_boolean(true)
+                    )]),
                 }
             ))
         );
@@ -348,16 +347,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![],
-                    keyword_args: vec![
-                        KeyValue {
-                            key: "name".into(),
-                            value: Expr::literal_string("Alice"),
-                        },
-                        KeyValue {
-                            key: "age".into(),
-                            value: Expr::literal_number(30),
-                        },
-                    ],
+                    keyword_args: IndexMap::from([
+                        ("name".to_string(), Expr::literal_string("Alice")),
+                        ("age".to_string(), Expr::literal_number(30)),
+                    ]),
                 }
             ))
         );
@@ -372,10 +365,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "optional".into(),
-                        value: Expr::literal_boolean(true),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "optional".to_string(),
+                        Expr::literal_boolean(true)
+                    )]),
                 }
             ))
         );
@@ -411,7 +404,7 @@ mod tests {
             map.positional_args,
             vec![Expr::map_literal(vec![("k", Expr::literal_number(1))])]
         );
-        assert_eq!(map.keyword_args, vec![]);
+        assert!(map.keyword_args.is_empty());
     }
 
     #[test]
@@ -431,10 +424,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "output file".into(),
-                        value: Expr::literal_string("out.csv"),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "output file".to_string(),
+                        Expr::literal_string("out.csv")
+                    )]),
                 }
             ))
         );

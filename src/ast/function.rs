@@ -2,9 +2,12 @@
 
 use std::fmt::Display;
 
+use indexmap::IndexMap;
+
 use super::expr::Expr;
-use super::expr::KeyValue;
 use super::identifier::Identifier;
+use crate::utils::escape_string;
+use crate::utils::is_bare_name;
 
 /// A function call: name, positional arguments, then optional keyword arguments.
 #[derive(Clone, Debug, PartialEq)]
@@ -12,9 +15,9 @@ pub struct FunctionCall {
     pub name: Identifier,
     /// Positional arguments (must come first).
     pub positional_args: Vec<Expr>,
-    /// Trailing keyword arguments (e.g. `foo(1, bar: true)`), in source order. A key holds its
-    /// unquoted text, and no key appears twice.
-    pub keyword_args: Vec<KeyValue>,
+    /// Trailing keyword arguments (e.g. `foo(1, bar: true)`), keyed by their unquoted text, in
+    /// source order.
+    pub keyword_args: IndexMap<String, Expr>,
 }
 
 /// Displays the call as `name(p1, p2, k: v)`.
@@ -22,13 +25,21 @@ impl Display for FunctionCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.name.fmt(f)?;
         write!(f, "(")?;
-        let positional = self.positional_args.iter().map(|arg| arg as &dyn Display);
-        let keywords = self.keyword_args.iter().map(|kv| kv as &dyn Display);
-        for (i, arg) in positional.chain(keywords).enumerate() {
+        for (i, arg) in self.positional_args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
             arg.fmt(f)?;
+        }
+        for (i, (key, value)) in self.keyword_args.iter().enumerate() {
+            if i > 0 || !self.positional_args.is_empty() {
+                write!(f, ", ")?;
+            }
+            if is_bare_name(key) {
+                write!(f, "{key}: {value}")?;
+            } else {
+                write!(f, "\"{}\": {value}", escape_string(key))?;
+            }
         }
         write!(f, ")")
     }
