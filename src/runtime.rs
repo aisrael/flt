@@ -477,7 +477,11 @@ impl SimpleRuntime {
 
     /// Evaluates a call's positional arguments, then its keyword values, each left to right,
     /// and calls the function. A piped value goes before the positional arguments.
-    fn eval_call(&mut self, call: &FunctionCall, piped: Option<Value>) -> Result<Value, Error> {
+    fn eval_function_call(
+        &mut self,
+        call: &FunctionCall,
+        piped: Option<Value>,
+    ) -> Result<Value, Error> {
         let mut args: Vec<Value> = piped.into_iter().collect();
         for arg in &call.positional_args {
             args.push(self.eval_expr(arg)?);
@@ -525,7 +529,7 @@ impl SimpleRuntime {
             Expr::BinaryExpr(left, BinaryOp::Pipe, right) => {
                 let value = self.eval_expr(left)?;
                 match right.as_ref() {
-                    Expr::FunctionCall(call) => self.eval_call(call, Some(value)),
+                    Expr::FunctionCall(call) => self.eval_function_call(call, Some(value)),
                     Expr::Ident(name) => self.call_function(name.as_str(), &[value], Map::new()),
                     other => Err(Error::RuntimeError(RuntimeError::InvalidPipeTarget(
                         other.to_string(),
@@ -537,7 +541,7 @@ impl SimpleRuntime {
                 let r = self.eval_expr(right)?;
                 Self::eval_binary(&l, *op, &r)
             }
-            Expr::FunctionCall(call) => self.eval_call(call, None),
+            Expr::FunctionCall(call) => self.eval_function_call(call, None),
             Expr::Parenthesized(inner) => self.eval_expr(inner),
             Expr::FieldAccess(inner, field) => {
                 let value = self.eval_expr(inner)?;
