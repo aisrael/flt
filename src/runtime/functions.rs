@@ -103,15 +103,26 @@ pub struct FunctionDefinition {
 
 impl FunctionDefinition {
     /// Create a new function definition with a name, return type, and arguments
+    ///
+    /// # Panics
+    ///
+    /// If an argument other than the last is variadic.
     pub fn new<S: Into<String>>(name: S, return_type: Type, arguments: Vec<Argument>) -> Self {
+        let name = name.into();
+        assert_variadic_last(&name, &arguments);
         Self {
-            name: name.into(),
+            name,
             overloads: vec![FunctionSignature::new(arguments, return_type)],
         }
     }
 
     /// Add a new overload to the function definition
+    ///
+    /// # Panics
+    ///
+    /// If an argument other than the last is variadic.
     pub fn add_overload(mut self, return_type: Type, arguments: Vec<Argument>) -> Self {
+        assert_variadic_last(&self.name, &arguments);
         self.overloads
             .push(FunctionSignature::new(arguments, return_type));
         self
@@ -191,19 +202,26 @@ impl FunctionDefinition {
             .unwrap_or_else(|| Type::Union(Vec::new()))
     }
 
-    /// The first overload that takes `found` positional arguments.
+    /// The first overload that takes `found` positional arguments. If none does, the error
+    /// is about the first overload: how many arguments it needs at least, if it's variadic,
+    /// or else exactly.
     pub fn resolve(&self, found: usize) -> Result<&FunctionSignature, Error> {
         self.overloads
             .iter()
-            .find(|overload| overload.arguments.len() == found)
+            .find(|overload| overload.accepts_count(found))
             .ok_or_else(|| {
-                Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
-                    name: self.name.clone(),
-                    expected: self
-                        .overloads
-                        .first()
-                        .map_or(0, |overload| overload.arguments.len()),
-                    found,
+                let name = self.name.clone();
+                Error::RuntimeError(match self.overloads.first() {
+                    Some(first) if first.is_variadic() => RuntimeError::TooFewArguments {
+                        name,
+                        minimum: first.minimum_arguments(),
+                        found,
+                    },
+                    first => RuntimeError::ArgumentCountMismatch {
+                        name,
+                        expected: first.map_or(0, |overload| overload.arguments.len()),
+                        found,
+                    },
                 })
             })
     }
@@ -235,6 +253,28 @@ impl FunctionSignature {
         }
     }
 
+    /// Whether the last argument is variadic
+    fn is_variadic(&self) -> bool {
+        self.arguments
+            .last()
+            .is_some_and(|argument| argument.variadic)
+    }
+
+    /// How many positional arguments a call needs at least: all of them, except a variadic
+    /// last one
+    fn minimum_arguments(&self) -> usize {
+        self.arguments.len() - usize::from(self.is_variadic())
+    }
+
+    /// Whether a call with `found` positional arguments fits this signature
+    fn accepts_count(&self, found: usize) -> bool {
+        if self.is_variadic() {
+            found >= self.minimum_arguments()
+        } else {
+            found == self.arguments.len()
+        }
+    }
+
     /// Builds the keyword arguments a handler receives from a call's: every declared keyword,
     /// in declaration order, with the call's value or else its default, then any rest
     /// keywords in call order. A keyword the signature doesn't accept raises
@@ -262,6 +302,21 @@ impl FunctionSignature {
     }
 }
 
+/// Panics if an argument other than the last is variadic, which is a mistake in host code.
+fn assert_variadic_last(function_name: &str, arguments: &[Argument]) {
+    let misplaced = arguments
+        .iter()
+        .rev()
+        .skip(1)
+        .find(|argument| argument.variadic);
+    if let Some(argument) = misplaced {
+        panic!(
+            "Function {function_name} has a variadic argument {} that isn't its last argument",
+            argument.name
+        );
+    }
+}
+
 /// An optional keyword argument, with a default value
 #[derive(Debug, PartialEq)]
 pub struct KeywordArgument {
@@ -275,6 +330,9 @@ pub struct KeywordArgument {
 pub struct Argument {
     pub name: String,
     pub r#type: Type,
+    /// Whether the argument takes zero or more trailing values. Only the last argument of a
+    /// signature can be variadic.
+    pub variadic: bool,
 }
 
 impl Argument {
@@ -282,6 +340,16 @@ impl Argument {
         Self {
             name: name.into(),
             r#type,
+            variadic: false,
+        }
+    }
+
+    /// An argument that takes zero or more trailing values, each of the given type. Only the
+    /// last argument of a signature can be variadic.
+    pub fn variadic<S: Into<String>>(name: S, r#type: Type) -> Self {
+        Self {
+            variadic: true,
+            ..Self::new(name, r#type)
         }
     }
 
@@ -542,6 +610,157 @@ mod tests {
                 ..
             }))
         ));
+    }
+
+    /// A definition with `fixed` arguments before a variadic one
+    fn variadic_definition(fixed: usize) -> FunctionDefinition {
+        let mut arguments: Vec<Argument> = (0..fixed)
+            .map(|i| Argument::new(format!("a{i}"), Type::any()))
+            .collect();
+        arguments.push(Argument::variadic("rest", Type::any()));
+        FunctionDefinition::new("f", Type::any(), arguments)
+    }
+
+    #[test]
+    fn test_variadic_accepts_at_least_its_fixed_arguments() {
+        for fixed in 0..=2 {
+            let definition = variadic_definition(fixed);
+            for found in fixed..fixed + 3 {
+                assert!(
+                    definition.check_arity(found).is_ok(),
+                    "{fixed} fixed argument(s), {found} found"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_variadic_with_too_few_arguments() {
+        for fixed in 1..=2 {
+            for found in 0..fixed {
+                let result = variadic_definition(fixed).check_arity(found);
+                assert!(
+                    matches!(
+                        &result,
+                        Err(Error::RuntimeError(RuntimeError::TooFewArguments { name, minimum, found: f }))
+                            if name == "f" && *minimum == fixed && *f == found
+                    ),
+                    "{fixed} fixed argument(s), {found} found: {result:?}"
+                );
+            }
+        }
+        assert_eq!(
+            variadic_definition(1)
+                .check_arity(0)
+                .unwrap_err()
+                .to_string(),
+            "Runtime Error: Function f expected at least 1 argument(s), found 0"
+        );
+    }
+
+    #[test]
+    fn test_variadic_handler_gets_every_value() {
+        let function = NativeFunction::new(variadic_definition(1), |args| {
+            Ok(Value::Array(args.to_vec()))
+        });
+        let args = [number(1), number(2), number(3)];
+        assert_eq!(function.call(&args).unwrap(), Value::Array(args.to_vec()));
+        assert_eq!(
+            function.call(&args[..1]).unwrap(),
+            Value::Array(vec![number(1)])
+        );
+    }
+
+    #[test]
+    fn test_variadic_rejects_undeclared_keywords() {
+        let function = NativeFunction::new(variadic_definition(0), |_args| Ok(Value::None));
+        let result = function.call_with_keywords(&[number(1)], keywords(&[("k", number(2))]));
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(RuntimeError::UnexpectedKeywordArgument { name, key }))
+                if name == "f" && key == "k"
+        ));
+    }
+
+    #[test]
+    fn test_variadic_takes_declared_keywords() {
+        let function = NativeFunction::with_keywords(
+            variadic_definition(0).keyword("k", Type::any(), 0u64),
+            |args, keywords| {
+                Ok(Value::Array(
+                    args.iter().chain(keywords.values()).cloned().collect(),
+                ))
+            },
+        );
+        assert_eq!(
+            function
+                .call_with_keywords(&[], keywords(&[("k", number(2))]))
+                .unwrap(),
+            Value::Array(vec![number(2)])
+        );
+    }
+
+    /// Overloads are tried in order, so a variadic overload takes any count that an earlier
+    /// overload doesn't
+    #[test]
+    fn test_fixed_and_variadic_overloads() {
+        let definition = FunctionDefinition::new("f", Type::number(), vec![Argument::number("n")])
+            .add_overload(
+                Type::string(),
+                vec![
+                    Argument::number("n"),
+                    Argument::number("m"),
+                    Argument::variadic("rest", Type::any()),
+                ],
+            );
+        assert_eq!(definition.resolve(1).unwrap().return_type, Type::number());
+        assert_eq!(definition.resolve(2).unwrap().return_type, Type::string());
+        assert_eq!(definition.resolve(5).unwrap().return_type, Type::string());
+        assert!(matches!(
+            definition.resolve(0),
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
+                expected: 1,
+                found: 0,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Function f has a variadic argument rest that isn't its last argument"
+    )]
+    fn test_new_panics_on_a_variadic_argument_that_isnt_last() {
+        FunctionDefinition::new(
+            "f",
+            Type::any(),
+            vec![
+                Argument::variadic("rest", Type::any()),
+                Argument::number("n"),
+            ],
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Function f has a variadic argument rest that isn't its last argument"
+    )]
+    fn test_add_overload_panics_on_a_variadic_argument_that_isnt_last() {
+        FunctionDefinition::new("f", Type::any(), vec![]).add_overload(
+            Type::any(),
+            vec![
+                Argument::variadic("rest", Type::any()),
+                Argument::number("n"),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_type_shows_variadic() {
+        assert_eq!(
+            variadic_definition(1).r#type().to_string(),
+            "fn(Any, ...Any) -> Any"
+        );
     }
 
     #[test]

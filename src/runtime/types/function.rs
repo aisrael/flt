@@ -1,4 +1,4 @@
-//! Function types: `fn(P1, P2, k: K) -> R`
+//! Function types: `fn(P1, P2, ...V, k: K) -> R`
 
 use std::fmt;
 
@@ -7,11 +7,14 @@ use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::utils::is_bare_name;
 
-/// The type of a function with a single signature: its parameter types, its keyword
-/// arguments' names and types, and its return type.
+/// The type of a function with a single signature: its parameter types, the type of a
+/// variadic last parameter, its keyword arguments' names and types, and its return type.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionType {
     pub parameters: Vec<Type>,
+    /// The type of each value a variadic last parameter takes, if the function has one. It
+    /// isn't in `parameters`.
+    pub variadic: Option<Box<Type>>,
     /// The keyword arguments' names and types, in declaration order
     pub keywords: Vec<(String, Type)>,
     /// The type of any other keyword arguments the function accepts, if it accepts them
@@ -25,21 +28,37 @@ impl FunctionType {
     pub fn new(parameters: Vec<Type>, return_type: Type) -> Self {
         Self {
             parameters,
+            variadic: None,
             keywords: Vec::new(),
             rest_keywords: None,
             return_type: Box::new(return_type),
+        }
+    }
+
+    /// Create a new function type whose parameters end with a variadic one, which takes
+    /// zero or more values of type `variadic`, e.g. `fn(String, ...Any) -> String`
+    pub fn with_variadic(parameters: Vec<Type>, variadic: Type, return_type: Type) -> Self {
+        Self {
+            variadic: Some(Box::new(variadic)),
+            ..Self::new(parameters, return_type)
         }
     }
 }
 
 impl From<&FunctionSignature> for FunctionType {
     fn from(signature: &FunctionSignature) -> Self {
+        let (variadic, parameters): (Vec<_>, Vec<_>) = signature
+            .arguments
+            .iter()
+            .partition(|argument| argument.variadic);
         Self {
-            parameters: signature
-                .arguments
-                .iter()
+            parameters: parameters
+                .into_iter()
                 .map(|argument| argument.r#type.clone())
                 .collect(),
+            variadic: variadic
+                .first()
+                .map(|argument| Box::new(argument.r#type.clone())),
             keywords: signature
                 .keywords
                 .iter()
@@ -51,7 +70,7 @@ impl From<&FunctionSignature> for FunctionType {
     }
 }
 
-/// Writes `fn(P1, P2, k: K, **T) -> R`. `->` groups before `|`, so a union return type is
+/// Writes `fn(P1, P2, ...V, k: K, **T) -> R`. `->` groups before `|`, so a union return type is
 /// bracketed, e.g. `fn(Number) -> (Number | None)`.
 impl fmt::Display for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -67,8 +86,14 @@ impl fmt::Display for FunctionType {
                 format!("\"{}\": {type}", escape_string(name))
             }
         });
+        let variadic = self.variadic.iter().map(|r#type| format!("...{type}"));
         let rest_keywords = self.rest_keywords.iter().map(|r#type| format!("**{type}"));
-        for (i, parameter) in parameters.chain(keywords).chain(rest_keywords).enumerate() {
+        for (i, parameter) in parameters
+            .chain(variadic)
+            .chain(keywords)
+            .chain(rest_keywords)
+            .enumerate()
+        {
             if i > 0 {
                 write!(f, ", ")?;
             }
@@ -120,6 +145,47 @@ mod tests {
         assert_eq!(
             FunctionType::from(&signature),
             FunctionType::new(vec![Type::string(), Type::number()], Type::string())
+        );
+    }
+
+    #[test]
+    fn test_display_with_variadic() {
+        let function_type =
+            FunctionType::with_variadic(vec![Type::string()], Type::any(), Type::string());
+        assert_eq!(function_type.to_string(), "fn(String, ...Any) -> String");
+        let function_type = FunctionType::with_variadic(vec![], Type::any(), Type::number());
+        assert_eq!(function_type.to_string(), "fn(...Any) -> Number");
+        let function_type = with_keywords(
+            FunctionType::with_variadic(vec![Type::any()], Type::any(), Type::any()),
+            &[("k", Type::number())],
+            Some(Type::any()),
+        );
+        assert_eq!(
+            function_type.to_string(),
+            "fn(Any, ...Any, k: Number, **Any) -> Any"
+        );
+    }
+
+    #[test]
+    fn test_from_function_signature_with_variadic() {
+        let signature = FunctionSignature::new(
+            vec![
+                Argument::string("format"),
+                Argument::variadic("args", Type::any()),
+            ],
+            Type::string(),
+        );
+        assert_eq!(
+            FunctionType::from(&signature),
+            FunctionType::with_variadic(vec![Type::string()], Type::any(), Type::string())
+        );
+    }
+
+    #[test]
+    fn test_equality_includes_variadic() {
+        assert_ne!(
+            FunctionType::new(vec![Type::any()], Type::any()),
+            FunctionType::with_variadic(vec![], Type::any(), Type::any())
         );
     }
 
