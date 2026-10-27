@@ -1,5 +1,5 @@
 [![Crates.io](https://img.shields.io/crates/v/flt.svg)](https://crates.io/crates/flt)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/aisrael/flt/blob/main/LICENSE)
 
 # flt
 
@@ -35,7 +35,7 @@ fn main() {
 }
 ```
 
-A host works with a runtime only through the `Runtime` trait, and names `SimpleRuntime`, the reference implementation, only to create one. See [The `Runtime` Trait](docs/runtime-and-limitations.md#the-runtime-trait), and [Native Functions, Types and Values](docs/native-functions-and-values.md) for extending flt from Rust.
+A host works with a runtime only through the `Runtime` trait, and names `SimpleRuntime`, the reference implementation, only to create one. See [The `Runtime` Trait](https://github.com/aisrael/flt/blob/main/docs/runtime-and-limitations.md#the-runtime-trait), and [Native Functions, Types and Values](https://github.com/aisrael/flt/blob/main/docs/native-functions-and-values.md) for extending flt from Rust.
 
 ## Language syntax
 
@@ -135,7 +135,7 @@ Print version:
 cargo run -- version
 ```
 
-The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [`docs/runtime-and-limitations.md`](docs/runtime-and-limitations.md).
+The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [`docs/runtime-and-limitations.md`](https://github.com/aisrael/flt/blob/main/docs/runtime-and-limitations.md).
 
 ## Public API
 
