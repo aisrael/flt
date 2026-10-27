@@ -1,4 +1,3 @@
-use indexmap::IndexMap;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
@@ -14,6 +13,7 @@ use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
+use crate::ast::KeywordArgs;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 
@@ -22,7 +22,7 @@ use super::map::parse_kv_pair;
 use super::parse_identifier;
 
 /// A call's positional arguments and keyword arguments
-type CallArgs = (Vec<Expr>, IndexMap<String, Expr>);
+type CallArgs = (Vec<Expr>, KeywordArgs);
 
 /// Internal enum used only during parsing to represent one arg (positional or key-value).
 enum ParsedArg {
@@ -88,7 +88,7 @@ fn collect_args<'a>(
     items: Vec<ParsedArg>,
 ) -> Result<CallArgs, nom::Err<ParseError<&'a str>>> {
     let mut positional_args = Vec::new();
-    let mut keyword_args = IndexMap::new();
+    let mut keyword_args = KeywordArgs::new();
 
     for item in items {
         match item {
@@ -239,9 +239,8 @@ mod tests {
     use super::parse_function_call;
     use crate::ast::Expr;
     use crate::ast::FunctionCall;
-    use indexmap::IndexMap;
-
     use crate::ast::Identifier;
+    use crate::ast::KeywordArgs;
     use crate::ast::Numeric;
     use crate::parser::expr::parse_expr;
 
@@ -254,7 +253,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("trim").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_string("string")],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -271,7 +270,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -288,7 +287,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -308,7 +307,7 @@ mod tests {
                         ),
                         Expr::literal_number(2),
                     ],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -323,7 +322,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -338,7 +337,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1), Expr::literal_number(2),],
-                    keyword_args: IndexMap::new(),
+                    keyword_args: KeywordArgs::new(),
                 }
             ))
         );
@@ -353,7 +352,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: IndexMap::from([(
+                    keyword_args: KeywordArgs::from([(
                         "optional".to_string(),
                         Expr::literal_boolean(true)
                     )]),
@@ -371,7 +370,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![],
-                    keyword_args: IndexMap::from([
+                    keyword_args: KeywordArgs::from([
                         ("name".to_string(), Expr::literal_string("Alice")),
                         ("age".to_string(), Expr::literal_number(30)),
                     ]),
@@ -389,7 +388,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: IndexMap::from([(
+                    keyword_args: KeywordArgs::from([(
                         "optional".to_string(),
                         Expr::literal_boolean(true)
                     )]),
@@ -448,7 +447,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: IndexMap::from([(
+                    keyword_args: KeywordArgs::from([(
                         "output file".to_string(),
                         Expr::literal_string("out.csv")
                     )]),

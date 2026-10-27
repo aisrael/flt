@@ -12,6 +12,7 @@ mod statement;
 pub use expr::Expr;
 pub use expr::KeyValue;
 pub use function::FunctionCall;
+pub use function::KeywordArgs;
 pub use identifier::Identifier;
 pub use keywords::Keyword;
 pub use literal::parse_none;

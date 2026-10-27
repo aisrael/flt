@@ -9,15 +9,17 @@ use super::identifier::Identifier;
 use crate::utils::escape_string;
 use crate::utils::is_bare_name;
 
+/// A call's keyword arguments, keyed by their unquoted text, in source order.
+pub type KeywordArgs = IndexMap<String, Expr>;
+
 /// A function call: name, positional arguments, then optional keyword arguments.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionCall {
     pub name: Identifier,
     /// Positional arguments (must come first).
     pub positional_args: Vec<Expr>,
-    /// Trailing keyword arguments (e.g. `foo(1, bar: true)`), keyed by their unquoted text, in
-    /// source order.
-    pub keyword_args: IndexMap<String, Expr>,
+    /// Trailing keyword arguments (e.g. `foo(1, bar: true)`).
+    pub keyword_args: KeywordArgs,
 }
 
 /// Displays the call as `name(p1, p2, k: v)`.

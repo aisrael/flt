@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **`flt::ast::KeywordArgs`**: The type of `FunctionCall.keyword_args` has a name, so a host can write it in its own signatures, e.g. `fn select_items(keywords: &KeywordArgs)`, without depending on `indexmap` itself. It's an alias for `IndexMap<String, Expr>`, so code that already writes that type keeps compiling.
+
 ## v0.2.0
 
 ### Breaking Changes
