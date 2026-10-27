@@ -42,6 +42,10 @@
 
 - A one-page language spec (`docs/spec.md`), a guide to native functions, types and values (`docs/native-functions-and-values.md`), a guide to the `Runtime` trait (`docs/runtime-and-limitations.md`), and ADRs 001 to 011.
 
+### Fixes
+
+- **Printed symbols keep their `:`**: An expression with a symbol prints as flt source again, so `select(:id, :"full name")` prints as written instead of `select(id, full name)`.
+
 ## v0.1.2
 
 - **REPL commands**: `/parse`, `/unset`, `/inspect` (alias `/i`), `/quit`, and `/help`.

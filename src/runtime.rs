@@ -31,7 +31,7 @@ use crate::runtime::native::NativeTypeInfo;
 use crate::runtime::native::NativeValue;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
-use crate::utils::is_bare_name;
+use crate::utils::write_name;
 use crate::Error;
 
 /// A map key. Keys written in flt source are symbols; only a host can create string keys. A
@@ -66,15 +66,6 @@ impl From<MapKey> for Value {
 
 /// A map of keys to values, in insertion order. Equality ignores order.
 pub type Map = IndexMap<MapKey, Value>;
-
-/// Writes `name` bare if it's a valid bare name, and quoted otherwise.
-fn write_name(f: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
-    if is_bare_name(name) {
-        write!(f, "{name}")
-    } else {
-        write!(f, "\"{}\"", escape_string(name))
-    }
-}
 
 /// A value in the runtime
 #[derive(Clone, Debug, PartialEq)]

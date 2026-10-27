@@ -335,6 +335,26 @@ fn then_output_should_be_string(world: &mut AstWorld, expected: String) {
     );
 }
 
+#[then(expr = r#"the output should print as {string}"#)]
+fn then_output_should_print_as(world: &mut AstWorld, expected: String) {
+    let output = world.output.as_ref().expect("output should be set");
+    let expr = output.as_ref().expect("parse should succeed");
+    assert_eq!(expr.to_string(), expected);
+}
+
+#[then(expr = "the printed output should parse back to the same expression")]
+fn then_printed_output_should_parse_back(world: &mut AstWorld) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    let printed = expr.to_string();
+    let (remainder, reparsed) = parse_expr(&printed).expect("printed output should parse");
+    assert!(remainder.is_empty(), "unconsumed input: {remainder:?}");
+    assert_eq!(
+        reparsed, expr,
+        "{printed} should parse back to the same expression"
+    );
+}
+
 #[then(expr = r"the output should be a `Literal::Boolean\({word}\)`")]
 fn then_output_should_be_boolean(world: &mut AstWorld, expected: String) {
     let expected: bool = expected.parse().expect("expected 'true' or 'false'");

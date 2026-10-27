@@ -254,7 +254,12 @@ mod tests {
 
     #[test]
     fn test_display_literal_symbol() {
-        assert_eq!(Expr::literal_symbol("foo").to_string(), "foo");
+        let symbol = |name: &str| Expr::literal_symbol(name).to_string();
+        assert_eq!(symbol("foo"), ":foo");
+        assert_eq!(symbol("foo_bar1"), ":foo_bar1");
+        assert_eq!(symbol("hello world"), r#":"hello world""#);
+        assert_eq!(symbol("_tmp"), r#":"_tmp""#);
+        assert_eq!(symbol(r#"say "hi""#), r#":"say \"hi\"""#);
     }
 
     #[test]
