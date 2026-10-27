@@ -38,17 +38,33 @@ Only the last argument can be variadic. A variadic argument anywhere else is a h
 
 ### 2. Arity with a variadic argument
 
-A signature with `k` arguments before its variadic one accepts any call with at least `k`
-arguments. As before, a call passes if any overload accepts it. Otherwise, if the first overload
-is variadic, the error says how many arguments it needs at least:
+A variadic argument takes zero or more values, so only the arguments before it are required. A
+signature with `k` arguments before its variadic one accepts any call with at least `k`
+arguments:
 
-```flt
-count_args()     # Function count_args expected at least 1 argument(s), found 0
+```rust
+// k = 0: concat takes only a variadic argument
+FunctionDefinition::new("concat", Type::string(), vec![Argument::variadic("parts", Type::any())])
+// k = 1: count_args takes one argument before its variadic one
+FunctionDefinition::new(
+    "count_args",
+    Type::number(),
+    vec![Argument::new("first", Type::any()), Argument::variadic("rest", Type::any())],
+)
 ```
 
-A function without a variadic overload raises `Function <name> expected <expected> argument(s),
-found <found>`, as before. A piped value counts as an argument, as in
-[ADR 004](004-pipe-operator.md), so `1 |> count_args` passes.
+```flt
+concat()             # passes: parts is empty
+concat("a", "b")     # passes
+count_args(1)        # passes: rest is empty
+count_args(1, 2, 3)  # passes
+count_args()         # Function count_args expected at least 1 argument(s), found 0
+```
+
+As before, a call passes if any overload accepts it. Otherwise, if the first overload is variadic,
+the error says how many arguments it needs at least. A function without a variadic overload raises
+`Function <name> expected <expected> argument(s), found <found>`, as before. A piped value counts
+as an argument, as in [ADR 004](004-pipe-operator.md), so `1 |> count_args` passes.
 
 ### 3. Variadic parameters show as `...T` in function types
 
