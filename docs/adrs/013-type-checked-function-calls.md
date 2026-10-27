@@ -67,11 +67,27 @@ greet("Ann", greeting: 1)    # Keyword argument greeting of greet expects String
 - A function type: a function whose type equals it, or one of whose overloads' types does. There's
   no subtyping, so a `fn(Any) -> Any` parameter doesn't accept a `fn(Number) -> Number`.
 
-### 3. Overloads are tried in declaration order, and the first match wins
+### 3. Overloads are tried by arity, longest first
 
 An overload matches a call if it takes that many positional arguments and accepts each of them.
-The overloads are tried in the order they were declared, like Elixir's function clauses, and the
-first that matches is the one called:
+An overload's arity is the number of its positional arguments before any variadic one. The
+overloads are tried in order of arity, longest first, and the first that matches is the one
+called. So a call picks the overload that matches the most of its arguments one for one, whatever
+order the overloads were declared in:
+
+```
+foo(*args: Any) -> String            # arity 0, declared first
+foo(a: Number, *args: Any) -> String # arity 1
+```
+
+```flt
+foo(1, :b)       # the second: arity 1 is tried before arity 0
+foo(:b)          # the first: the second doesn't accept :b as a Number
+foo()            # the first
+```
+
+This settles how fixed and variadic overloads combine (ADR 011). Overloads with different types
+and the same arity pick by type:
 
 ```
 count(plan: DatuPlan) -> Number
@@ -79,23 +95,39 @@ count(column: Symbol | String) -> DatuSelectItem
 ```
 
 ```flt
-read("x.csv") |> count()     # the first overload
-count(:id)                   # the second
+read("x.csv") |> count()     # count(plan)
+count(:id)                   # count(column)
 count(42)                    # No overload of count accepts (Number)
 ```
 
-This settles how fixed and variadic overloads combine (ADR 011): the more specific one is
-declared first. A piped value counts as the first argument, as before
-([ADR 004](004-pipe-operator.md)), so `1 |> describe` picks by the type of `1`.
+A piped value counts as the first argument, as before ([ADR 004](004-pipe-operator.md)), so
+`1 |> describe` picks by the type of `1`.
 
-### 4. Keywords don't pick the overload
+### 4. Ties between overloads of the same arity aren't specified
+
+If several overloads of the same arity all accept a call's arguments, the spec doesn't say which
+one is called, and flt source shouldn't depend on it:
+
+```
+show(x: Number) -> String
+show(x: Any) -> String
+```
+
+```flt
+show(1)          # both accept 1, so either may be called
+```
+
+`SimpleRuntime` calls the one declared first, for now (decision 9). Nothing else about which
+overload is called depends on the order overloads were declared in.
+
+### 5. Keywords don't pick the overload
 
 The overload is picked by its positional arguments, then the call's keywords are checked against
 that overload's keywords, as in ADR 010. A keyword value of the wrong type is an error, not a
 reason to try the next overload. Rest keywords are checked against their type, so
 `**kwargs: Number` accepts only numbers ([ADR 012](012-variadic-notation.md)).
 
-### 5. The return value is checked
+### 6. The return value is checked
 
 The function's result must match the return type of the overload that was called:
 
@@ -107,7 +139,7 @@ liar()     # where liar() -> Number returns a string:
 A function's type is what `typeof` shows, so the return type has to be true. A mismatch is a bug in
 the function, not in the call, but it's reported where it happens rather than passed on.
 
-### 6. Errors
+### 7. Errors
 
 - No overload takes that many positional arguments: unchanged,
   `Function <name> expected <expected> argument(s), found <found>`, or
@@ -122,7 +154,7 @@ the function, not in the call, but it's reported where it happens rather than pa
 - A keyword value doesn't match: `Keyword argument <key> of <name> expects <type>, found <type>`.
 - The return value doesn't match: `Function <name> returned <type>, expected <type>`.
 
-### 7. A function's type doesn't change
+### 8. A function's type doesn't change
 
 It's still the union of its overloads' function types (ADR 003, decision 2):
 
@@ -130,10 +162,13 @@ It's still the union of its overloads' function types (ADR 003, decision 2):
 typeof(count)    # fn(DatuPlan) -> Number | fn(Symbol | String) -> DatuSelectItem
 ```
 
-### 8. The rules are the language's; the Rust API is the runtime's
+### 9. The rules are the language's; the Rust API is the runtime's
 
-The spec says calls are checked and overloads picked as in decisions 1 to 6. In `SimpleRuntime`:
+The spec says calls are checked and overloads picked as in decisions 1 to 7. In `SimpleRuntime`:
 
+- among overloads of the same arity that all accept a call (decision 4), the one declared first is
+  called. This is a tie-breaker for now, and the only part of picking an overload that depends on
+  declaration order;
 - overloads keep sharing one handler, which gets the arguments of whichever overload matched;
 - `FunctionDefinition::resolve` takes the call's positional values instead of their count, and
   returns the matching signature. `check_arity` still checks the count alone;
@@ -148,9 +183,12 @@ follow.
 
 - **Checking types against the overload picked by count.** Rejected: it breaks functions whose
   overloads share a count, like `count`.
-- **Picking the most specific overload.** Rejected for now: "most specific" needs rules for unions,
-  `Any` and variadic arguments, and declaration order is simpler to predict. A warning for an
-  overload that an earlier one hides could come later.
+- **Trying overloads in declaration order**, like Elixir's function clauses. Rejected: which
+  overload a call reaches would depend on how the host happened to order its definitions, and a
+  more general overload declared first would hide a more specific one.
+- **Picking the most specific overload by type.** Rejected for now: "most specific" needs rules for
+  unions and `Any`. Arity is a simpler measure that covers fixed and variadic overloads. Ties of
+  the same arity may get such a rule later, replacing `SimpleRuntime`'s tie-breaker.
 - **Checking types only when a function has one overload.** Rejected: it leaves overloaded
   functions unchecked, which are the ones where checks help most.
 - **Letting keywords pick the overload.** Rejected: an overload would be chosen by arguments that
@@ -163,7 +201,7 @@ follow.
 - Calls whose argument types don't match their declared types now fail before the function runs,
   and so do functions whose results don't match their return types. Hosts need declared types
   that match what their handlers accept and return; `Any` keeps the old behaviour.
-- New errors, as in decision 6, and new `RuntimeError` variants for them.
+- New errors, as in decision 7, and new `RuntimeError` variants for them.
 - Breaking Rust API changes: `FunctionDefinition::resolve` takes `&[Value]`, and
   `FunctionDefinition::keyword` panics on a default of the wrong type.
 - Handlers can stop checking their own argument types, though checks they keep aren't wrong.
