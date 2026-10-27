@@ -19,6 +19,7 @@ use flt::parser::parse_expr;
 use flt::parser::parse_statement;
 use flt::runtime::functions::Argument;
 use flt::runtime::functions::FunctionDefinition;
+use flt::runtime::functions::FunctionSignature;
 use flt::runtime::functions::NativeFunction;
 use flt::runtime::native::NativeType;
 use flt::runtime::types::Type;
@@ -41,6 +42,8 @@ pub struct AstWorld {
     pub result: Option<Result<String, String>>,
     /// Fixture native functions registered by "the native function" before evaluating.
     pub natives: Vec<String>,
+    /// The signatures those steps listed, which must cover every overload of each fixture.
+    pub native_signatures: Vec<String>,
 }
 
 #[given(expr = r"the input {string}")]
@@ -83,13 +86,73 @@ fn when_i_parse_the_input(world: &mut AstWorld) {
     });
 }
 
+/// Registers the fixture native function with this signature, e.g.
+/// `identity(v: Any) -> Any`. The signature must be one of the fixture's overloads, written
+/// as `signature_text` writes it. An overloaded fixture takes one step per overload.
 #[given(expr = r"the native function {string}")]
-fn given_the_native_function(world: &mut AstWorld, name: String) {
+fn given_the_native_function(world: &mut AstWorld, signature: String) {
+    let (name, _) = signature.split_once('(').unwrap_or_else(|| {
+        panic!("expected a signature such as \"identity(v: Any) -> Any\", found {signature:?}")
+    });
+    let function = native_function(name)
+        .unwrap_or_else(|| panic!("no fixture native function named {name:?}"));
+    let overloads = signature_texts(&function);
     assert!(
-        native_function(&name).is_some(),
-        "no fixture native function named {name:?}"
+        overloads.contains(&signature),
+        "{name} has no overload {signature:?}; its overloads are {overloads:?}"
     );
-    world.natives.push(name);
+    if !world.natives.iter().any(|native| native == name) {
+        world.natives.push(name.to_string());
+    }
+    world.native_signatures.push(signature);
+}
+
+/// Each overload of `function` as a signature, e.g.
+/// `greet(name: String, greeting: String = "Hello") -> String`.
+fn signature_texts(function: &NativeFunction) -> Vec<String> {
+    let name = function.name();
+    function
+        .definition
+        .overloads
+        .iter()
+        .map(|overload| signature_text(name, overload))
+        .collect()
+}
+
+/// One overload as a signature: positional arguments, `*` before a variadic one, keywords
+/// with their defaults, `**kwargs: T` for rest keywords, then the return type.
+fn signature_text(name: &str, overload: &FunctionSignature) -> String {
+    let positional = overload.arguments.iter().map(|argument| {
+        let star = if argument.variadic { "*" } else { "" };
+        format!("{star}{}: {}", argument.name, argument.r#type)
+    });
+    let keywords = overload
+        .keywords
+        .iter()
+        .map(|keyword| format!("{}: {} = {}", keyword.name, keyword.r#type, keyword.default));
+    let rest = overload
+        .rest_keywords
+        .iter()
+        .map(|r#type| format!("**kwargs: {type}"));
+    let parameters: Vec<String> = positional.chain(keywords).chain(rest).collect();
+    format!(
+        "{name}({}) -> {}",
+        parameters.join(", "),
+        overload.return_type
+    )
+}
+
+/// Fails unless the "the native function" steps listed every overload of each fixture.
+fn assert_every_overload_listed(world: &AstWorld) {
+    for name in &world.natives {
+        let function = native_function(name).expect("fixture native function should exist");
+        for overload in signature_texts(&function) {
+            assert!(
+                world.native_signatures.contains(&overload),
+                "the steps for {name} leave out its overload {overload:?}"
+            );
+        }
+    }
 }
 
 /// The fixture native functions that "the native function" can register.
@@ -260,6 +323,7 @@ impl NativeType for Time {
 
 #[when(expr = "I evaluate the input")]
 fn when_i_evaluate_the_input(world: &mut AstWorld) {
+    assert_every_overload_listed(world);
     let input = world.input.take().expect("input should be set");
     world.result = Some(evaluate(&input, &world.natives));
 }

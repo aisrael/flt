@@ -7,7 +7,7 @@ Feature: Functions as values
   docs/native-functions-and-values.md#native-functions.
 
   Background:
-    Given the native function "identity"
+    Given the native function "identity(v: Any) -> Any"
 
   Scenario: A native function's name evaluates to a function value
     Given the input 'identity'

@@ -1,4 +1,4 @@
-//! Function types: `fn(P1, P2, ...V, k: K) -> R`
+//! Function types: `fn(P1, P2, *V, k: K) -> R`
 
 use std::fmt;
 
@@ -36,7 +36,7 @@ impl FunctionType {
     }
 
     /// Create a new function type whose parameters end with a variadic one, which takes
-    /// zero or more values of type `variadic`, e.g. `fn(String, ...Any) -> String`
+    /// zero or more values of type `variadic`, e.g. `fn(String, *Any) -> String`
     pub fn with_variadic(parameters: Vec<Type>, variadic: Type, return_type: Type) -> Self {
         Self {
             variadic: Some(Box::new(variadic)),
@@ -70,7 +70,7 @@ impl From<&FunctionSignature> for FunctionType {
     }
 }
 
-/// Writes `fn(P1, P2, ...V, k: K, **T) -> R`. `->` groups before `|`, so a union return type is
+/// Writes `fn(P1, P2, *V, k: K, **T) -> R`. `->` groups before `|`, so a union return type is
 /// bracketed, e.g. `fn(Number) -> (Number | None)`.
 impl fmt::Display for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -86,7 +86,7 @@ impl fmt::Display for FunctionType {
                 format!("\"{}\": {type}", escape_string(name))
             }
         });
-        let variadic = self.variadic.iter().map(|r#type| format!("...{type}"));
+        let variadic = self.variadic.iter().map(|r#type| format!("*{type}"));
         let rest_keywords = self.rest_keywords.iter().map(|r#type| format!("**{type}"));
         for (i, parameter) in parameters
             .chain(variadic)
@@ -152,9 +152,9 @@ mod tests {
     fn test_display_with_variadic() {
         let function_type =
             FunctionType::with_variadic(vec![Type::string()], Type::any(), Type::string());
-        assert_eq!(function_type.to_string(), "fn(String, ...Any) -> String");
+        assert_eq!(function_type.to_string(), "fn(String, *Any) -> String");
         let function_type = FunctionType::with_variadic(vec![], Type::any(), Type::number());
-        assert_eq!(function_type.to_string(), "fn(...Any) -> Number");
+        assert_eq!(function_type.to_string(), "fn(*Any) -> Number");
         let function_type = with_keywords(
             FunctionType::with_variadic(vec![Type::any()], Type::any(), Type::any()),
             &[("k", Type::number())],
@@ -162,7 +162,7 @@ mod tests {
         );
         assert_eq!(
             function_type.to_string(),
-            "fn(Any, ...Any, k: Number, **Any) -> Any"
+            "fn(Any, *Any, k: Number, **Any) -> Any"
         );
     }
 

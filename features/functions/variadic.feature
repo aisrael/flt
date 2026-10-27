@@ -6,8 +6,8 @@ Feature: Variadic arguments
   docs/adrs/011-variadic-arguments.md.
 
   Background:
-    Given the native function "count_args"
-    And the native function "sprintf"
+    Given the native function "count_args(*args: Any) -> Number"
+    And the native function "sprintf(format: String, *args: Any) -> String"
 
   Scenario Outline: A variadic argument takes any number of arguments
     Given the input '<input>'
@@ -25,7 +25,7 @@ Feature: Variadic arguments
   Scenario: The type of a function with only a variadic argument
     Given the input 'typeof(count_args)'
     When I evaluate the input
-    Then the result should be "fn(...Any) -> Number"
+    Then the result should be "fn(*Any) -> Number"
 
   Scenario Outline: Fixed arguments are filled before the variadic one
     Given the input '<input>'
@@ -48,7 +48,7 @@ Feature: Variadic arguments
   Scenario: The type of a function with a fixed argument before the variadic one
     Given the input 'typeof(sprintf)'
     When I evaluate the input
-    Then the result should be "fn(String, ...Any) -> String"
+    Then the result should be "fn(String, *Any) -> String"
 
   Scenario: A variadic argument doesn't receive keywords
     Given the input 'count_args(1, 2, k: 3)'

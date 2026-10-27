@@ -14,8 +14,8 @@ Feature: Native types and values
   which the fixtures never register.
 
   Background:
-    Given the native function "date"
-    And the native function "days_between"
+    Given the native function "date(yyyy: Number, mm: Number, dd: Number) -> Date"
+    And the native function "days_between(from: Date, to: Date) -> Number"
 
   Scenario: A native value prints as the host displays it
     Given the input 'date(2026, 10, 25)'
@@ -64,7 +64,7 @@ Feature: Native types and values
       | typeof(days_between)  | fn(Date, Date) -> Number           |
 
   Scenario Outline: Native values compare with the host's equality
-    Given the native function "time"
+    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
     And the input '<input>'
     When I evaluate the input
     Then the result should be "<result>"
@@ -89,7 +89,7 @@ Feature: Native types and values
     Then the evaluation should fail with "Expected Date, found Number"
 
   Scenario: A native function rejects a value of another native type
-    Given the native function "time"
+    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
     And the input 'days_between(time(12, 0, 0), date(2026, 10, 25))'
     When I evaluate the input
     Then the evaluation should fail with "Expected Date, found Time"
@@ -115,13 +115,13 @@ Feature: Native types and values
     Then the evaluation should fail with "Cannot bind Date: it's a native type"
 
   Scenario: A value of an unregistered native type still has its type
-    Given the native function "time"
+    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
     And the input 'typeof(time(12, 0, 0))'
     When I evaluate the input
     Then the result should be "Time"
 
   Scenario: An unregistered native type's name is unbound
-    Given the native function "time"
+    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
     And the input 'Time'
     When I evaluate the input
     Then the evaluation should fail with "Unbound identifier: Time"

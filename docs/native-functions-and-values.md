@@ -158,12 +158,12 @@ A native function's last positional argument can be variadic, made with `Argumen
 them after the arguments before it, all in one flat `&[Value]`:
 
 ```rust
-/// count_args(...args) returns how many arguments it was given
+/// count_args(*args) returns how many arguments it was given
 fn count_args(args: &[Value]) -> Result<Value, Error> {
     Ok(Value::from(args.len() as u64))
 }
 
-// count_args has type fn(...Any) -> Number
+// count_args has type fn(*Any) -> Number
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "count_args",
@@ -180,9 +180,9 @@ count_args(1, 2, 3)            # 3
 1 |> count_args(2)             # 2
 ```
 
-- **The arguments before a variadic one are required.** `sprintf`, defined with `vec![Argument::string("format"), Argument::variadic("args", Type::any())]`, has type `fn(String, ...Any) -> String`, so `sprintf("x")` passes and `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
+- **The arguments before a variadic one are required.** `sprintf`, defined with `vec![Argument::string("format"), Argument::variadic("args", Type::any())]`, has type `fn(String, *Any) -> String`, so `sprintf("x")` passes and `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
 - **Whether no values is an error is up to the handler.** A call that passes the arity check reaches the handler even if the variadic argument got nothing.
-- **Only the last positional argument can be variadic.** `FunctionDefinition::new` and `add_overload` panic on a variadic argument anywhere else. Keywords are declared separately, so a function can have both: its type lists the variadic parameter before its keywords, e.g. `fn(Any, ...Any, k: Number) -> Any`.
+- **Only the last positional argument can be variadic.** `FunctionDefinition::new` and `add_overload` panic on a variadic argument anywhere else. Keywords are declared separately, so a function can have both: its type lists the variadic parameter before its keywords, e.g. `fn(Any, *Any, k: Number) -> Any`.
 - **A variadic argument takes only positional values.** A function can declare keywords too, with `NativeFunction::with_keywords`, and gets them in its `Map`, as for any function.
 
 ## Native Types and Values
