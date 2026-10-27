@@ -9,6 +9,7 @@ use nom::Parser;
 use crate::errors::Error;
 use crate::parser::IResult;
 use crate::utils::escape_string;
+use crate::utils::write_name;
 
 use super::number::Numeric;
 
@@ -88,7 +89,10 @@ impl Display for Literal {
             Literal::Number(n) => write!(f, "{}", n),
             Literal::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Literal::Boolean(b) => write!(f, "{}", b),
-            Literal::Symbol(s) => write!(f, "{}", s),
+            Literal::Symbol(s) => {
+                write!(f, ":")?;
+                write_name(f, s)
+            }
             Literal::None => write!(f, "None"),
         }
     }

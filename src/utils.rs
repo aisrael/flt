@@ -1,3 +1,5 @@
+use std::fmt;
+
 /// Escapes a string for display as a string literal.
 pub fn escape_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -8,6 +10,15 @@ pub fn escape_string(s: &str) -> String {
 pub fn is_bare_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(char::is_alphabetic) && chars.all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Writes `name` bare if it's a valid bare name, and quoted otherwise.
+pub(crate) fn write_name(f: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
+    if is_bare_name(name) {
+        write!(f, "{name}")
+    } else {
+        write!(f, "\"{}\"", escape_string(name))
+    }
 }
 
 #[cfg(test)]

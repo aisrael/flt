@@ -71,6 +71,8 @@ Examples:
 :"hello world"
 ```
 
+A symbol prints as it'd be written, with its `:`. It's bare if its name is a letter, then letters, digits or `_`, and quoted otherwise, so `:id` prints `:id` and `:"hello world"` prints `:"hello world"`. The same goes for a symbol in a printed expression: `select(:id, :"full name")` prints `select(:id, :"full name")`, which parses back to the same expression.
+
 ### Maps
 
 A literal map is a dictionary-like collection with unique keys mapping to their associated values. They start with `{` and end with `}`. Each key is a [symbol](#symbols), written bare (a letter, then letters, digits or `_`) or quoted, then followed by a `:`. The value is any valid expression.
