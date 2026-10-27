@@ -9,7 +9,7 @@ Feature: Keyword arguments
 
   Background:
     Given the native function 'greet(name: String, greeting: String = "Hello") -> String'
-    And the native function "options(**Any) -> Map"
+    And the native function "options(**kwargs: Any) -> Map"
     And the native function "keys(map: Map) -> Array"
 
   Scenario: An omitted keyword takes its default

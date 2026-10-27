@@ -41,16 +41,19 @@ keywords, so `*` and `**` mark them, as in Python and Ruby.
 ### 3. Signatures with argument names
 
 Where a signature names its arguments, each positional argument is `name: T`, a variadic one is
-`*name: T`, a keyword is `name: T = default`, and rest keywords are `**T`, with no name:
+`*name: T`, a keyword is `name: T = default`, and rest keywords are `**kwargs: T`:
 
 ```
 sprintf(format: String, *args: Any) -> String
 greet(name: String, greeting: String = "Hello") -> String
-select(plan: Any, *columns: Any, **Any) -> Any
+select(plan: Any, *columns: Any, **kwargs: Any) -> Any
 ```
 
-Leaving out the positional names and the defaults gives the function's type: `sprintf`'s is
-`fn(String, *Any) -> String`.
+Rest keywords have no name of their own, so they're always `kwargs`, as in Python's `**kwargs`.
+A variadic argument keeps the name its host gives it.
+
+Leaving out the positional names, `kwargs` and the defaults gives the function's type: `sprintf`'s
+is `fn(String, *Any) -> String`, and `select`'s is `fn(Any, *Any, **Any) -> Any`.
 
 ### 4. It's notation, not syntax
 
