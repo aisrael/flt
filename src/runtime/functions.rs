@@ -9,23 +9,14 @@ use crate::runtime::MapKey;
 use crate::runtime::Value;
 use crate::Error;
 
-/// The handler backing a native function: a Rust closure, which may capture host state.
-pub type NativeFn = Box<dyn Fn(&[Value]) -> Result<Value, Error> + Send + Sync>;
-
-/// The handler backing a native function that takes keyword arguments. It gets the
-/// positional arguments, then the keyword arguments with their defaults filled in.
-pub type KeywordFn = Box<dyn Fn(&[Value], &Map) -> Result<Value, Error> + Send + Sync>;
-
-/// A native function's handler, with or without keyword arguments.
-enum Handler {
-    Positional(NativeFn),
-    Keywords(KeywordFn),
-}
+/// The handler backing a native function: a Rust closure, which may capture host state. It
+/// gets the positional arguments, then the keyword arguments with their defaults filled in.
+pub type NativeFn = Box<dyn Fn(&[Value], &Map) -> Result<Value, Error> + Send + Sync>;
 
 /// A native function pairs a type signature with a Rust implementation.
 pub struct NativeFunction {
     pub definition: FunctionDefinition,
-    handler: Handler,
+    handler: NativeFn,
 }
 
 impl NativeFunction {
@@ -46,7 +37,7 @@ impl NativeFunction {
         );
         Self {
             definition,
-            handler: Handler::Positional(Box::new(handler)),
+            handler: Box::new(move |args, _| handler(args)),
         }
     }
 
@@ -58,7 +49,7 @@ impl NativeFunction {
     ) -> Self {
         Self {
             definition,
-            handler: Handler::Keywords(Box::new(handler)),
+            handler: Box::new(handler),
         }
     }
 
@@ -84,10 +75,7 @@ impl NativeFunction {
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
         let signature = self.definition.resolve(args.len())?;
         let keywords = signature.bind_keywords(&self.definition.name, keywords)?;
-        match &self.handler {
-            Handler::Positional(handler) => handler(args),
-            Handler::Keywords(handler) => handler(args, &keywords),
-        }
+        (self.handler)(args, &keywords)
     }
 }
 
