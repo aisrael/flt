@@ -6,8 +6,8 @@ Feature: Variadic arguments
   docs/adrs/011-variadic-arguments.md.
 
   Background:
-    Given the native function "count_args"
-    And the native function "sprintf"
+    Given the native function "count_args(...args: Any) -> Number"
+    And the native function "sprintf(format: String, ...args: Any) -> String"
 
   Scenario Outline: A variadic argument takes any number of arguments
     Given the input '<input>'

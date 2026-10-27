@@ -21,7 +21,7 @@ Feature: Pipe operator
     Then the result should be "Type"
 
   Scenario: Piping into a function bound to another name
-    Given the native function "identity"
+    Given the native function "identity(v: Any) -> Any"
     And the input 'let g = identity; 42 |> g'
     When I evaluate the input
     Then the result should be "42"
@@ -67,7 +67,7 @@ Feature: Pipe operator
     Then the result should be "true"
 
   Scenario Outline: A call and a pipe into a function are equivalent
-    Given the native function "identity"
+    Given the native function "identity(v: Any) -> Any"
     And the input '<input>'
     When I evaluate the input
     Then the result should be "<result>"
@@ -99,7 +99,7 @@ Feature: Pipe operator
       | f k: 1 \|> g()     |
 
   Scenario: Piping a parenthesized call
-    Given the native function "identity"
+    Given the native function "identity(v: Any) -> Any"
     And the input 'identity(1) |> typeof'
     When I evaluate the input
     Then the result should be "Number"

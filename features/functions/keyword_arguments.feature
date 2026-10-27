@@ -8,9 +8,9 @@ Feature: Keyword arguments
   docs/adrs/010-keyword-arguments.md.
 
   Background:
-    Given the native function "greet"
-    And the native function "options"
-    And the native function "keys"
+    Given the native function 'greet(name: String, greeting: String = "Hello") -> String'
+    And the native function "options(**Any) -> Map"
+    And the native function "keys(map: Map) -> Array"
 
   Scenario: An omitted keyword takes its default
     Given the input 'greet("Ann")'
