@@ -151,6 +151,40 @@ runtime.register_function(NativeFunction::with_keywords(
 options(b: 1, a: 2)            # {b: 1, a: 2}
 ```
 
+### Variadic Arguments
+
+A native function's last argument can be variadic, made with `Argument::variadic`
+([ADR 011](./adrs/011-variadic-arguments.md)). It takes zero or more values, and the handler gets
+them after the arguments before it, all in one flat `&[Value]`:
+
+```rust
+/// count_args(...args) returns how many arguments it was given
+fn count_args(args: &[Value]) -> Result<Value, Error> {
+    Ok(Value::from(args.len() as u64))
+}
+
+// count_args has type fn(...Any) -> Number
+runtime.register_function(NativeFunction::new(
+    FunctionDefinition::new(
+        "count_args",
+        Type::number(),
+        vec![Argument::variadic("args", Type::any())],
+    ),
+    count_args,
+))?;
+```
+
+```flt
+count_args()                   # 0
+count_args(1, 2, 3)            # 3
+1 |> count_args(2)             # 2
+```
+
+- **The arguments before a variadic one are required.** `sprintf`, defined with `vec![Argument::string("format"), Argument::variadic("args", Type::any())]`, has type `fn(String, ...Any) -> String`, so `sprintf("x")` passes and `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
+- **Whether no values is an error is up to the handler.** A call that passes the arity check reaches the handler even if the variadic argument got nothing.
+- **Only the last argument can be variadic.** `FunctionDefinition::new` and `add_overload` panic on a variadic argument anywhere else.
+- **A variadic argument takes only positional values.** A function can declare keywords too, with `NativeFunction::with_keywords`, and gets them in its `Map`, as for any function.
+
 ## Native Types and Values
 
 Native functions can also pass the host's own Rust values through flt, as native values ([ADR 007](./adrs/007-native-types-and-values.md)). A native value is a value of a native type, such as a date or a lazy query plan, that only the host understands.

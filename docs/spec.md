@@ -103,6 +103,11 @@ unless the function declares that it accepts any keywords. Keyword values aren't
 Positional arguments are evaluated left to right, then keyword values left to right. A function
 type lists its keywords after its parameters, e.g. `fn(String, greeting: String) -> String`.
 
+A function's last parameter may be **variadic**: it takes zero or more positional arguments, never
+keywords. A function with `k` parameters before it accepts any call with at least `k` positional
+arguments. A function type shows it as `...T`, after the other parameters and before any keywords,
+e.g. `fn(String, ...Any) -> String`.
+
 ### Pipe
 
 `x |> f(a, ...)` evaluates as `f(x, a, ...)`, and `x |> f` as `f(x)`: the left side becomes the
@@ -141,7 +146,9 @@ names, then native type names. Calls raise:
 - `Undefined function: <name>` when the name isn't bound;
 - `<name> is not a function` when the name is bound to a value that isn't a function;
 - `Function <name> expected <expected> argument(s), found <found>` when no signature of the
-  function takes that many arguments.
+  function takes that many arguments;
+- `Function <name> expected at least <minimum> argument(s), found <found>` when the function's
+  first signature is variadic and the call has fewer arguments than it requires.
 
 ## 7. Bindings
 

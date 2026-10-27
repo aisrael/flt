@@ -54,7 +54,7 @@ A name that is neither a variable, a function nor a type is an error, e.g. `Foo`
 
 ## Function Types
 
-A function's type is written `fn(P1, P2) -> R`, listing its parameter types and its return type. A function that takes no parameters has the type `fn() -> R`.
+A function's type is written `fn(P1, P2) -> R`, listing its parameter types and its return type. A function that takes no parameters has the type `fn() -> R`. A [variadic](./native-functions-and-values.md#variadic-arguments) last parameter shows as `...T`, the type of each value it takes, so `fn(String, ...Any) -> String` takes a string and then any number of values.
 
 `->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
 
