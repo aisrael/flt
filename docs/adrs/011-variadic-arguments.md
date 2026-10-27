@@ -43,49 +43,57 @@ signature with `k` arguments before its variadic one accepts any call with at le
 arguments:
 
 ```rust
-// k = 0: concat takes only a variadic argument
-FunctionDefinition::new("concat", Type::string(), vec![Argument::variadic("parts", Type::any())])
-// k = 1: count_args takes one argument before its variadic one
+// k = 0: count_args takes only a variadic argument
+FunctionDefinition::new("count_args", Type::number(), vec![Argument::variadic("args", Type::any())])
+// k = 1: sprintf takes a format before its variadic argument
 FunctionDefinition::new(
-    "count_args",
-    Type::number(),
-    vec![Argument::new("first", Type::any()), Argument::variadic("rest", Type::any())],
+    "sprintf",
+    Type::string(),
+    vec![Argument::string("format"), Argument::variadic("args", Type::any())],
 )
 ```
 
 ```flt
-concat()             # passes: parts is empty
-concat("a", "b")     # passes
-count_args(1)        # passes: rest is empty
-count_args(1, 2, 3)  # passes
-count_args()         # Function count_args expected at least 1 argument(s), found 0
+count_args()         # passes: args is empty
+count_args(1, 2)     # passes
+sprintf("x")         # passes: args is empty
+sprintf("%d", 1)     # passes
+sprintf()            # Function sprintf expected at least 1 argument(s), found 0
 ```
 
 As before, a call passes if any overload accepts it. Otherwise, if the first overload is variadic,
 the error says how many arguments it needs at least. A function without a variadic overload raises
 `Function <name> expected <expected> argument(s), found <found>`, as before. A piped value counts
-as an argument, as in [ADR 004](004-pipe-operator.md), so `1 |> count_args` passes.
+as an argument, as in [ADR 004](004-pipe-operator.md), so `"%d" |> sprintf(1)` passes.
 
 ### 3. Variadic parameters show as `...T` in function types
 
 ```flt
-typeof(count_args)   # fn(Any, ...Any) -> Number
+typeof(count_args)   # fn(...Any) -> Number
+typeof(sprintf)      # fn(String, ...Any) -> String
 ```
 
 The type of a variadic argument is the type of each value it takes, not of a collection. As
 elsewhere, it isn't checked ([ADR 003](003-functions-as-values.md), decision 4).
 
-### 4. Keyword arguments are left to a later decision
+### 4. A variadic argument takes only positional values
 
-This ADR doesn't change keyword arguments. The parser still passes them as one trailing map
-([ADR 004](004-pipe-operator.md)) with symbol keys
-([ADR 009](009-symbol-keys-and-ordered-maps.md)), which a variadic argument would take as its last
-value. That isn't part of this decision and isn't documented or tested. A separate decision is expected to give signatures their own keyword arguments, after
-which a variadic argument would take only positional values.
+Keyword arguments are passed separately from positional ones
+([ADR 010](010-keyword-arguments.md)), so a variadic argument never receives them. A call's
+keywords are matched against the keywords its signature declares, as for any function, and an
+undeclared one is an error:
+
+```flt
+count_args(1, 2, k: 3)   # Function count_args got an unexpected keyword argument: k
+```
+
+A signature can declare keywords alongside a variadic argument, and a call can pass keywords with
+no variadic values, as in datu's `select(plan, total: sum(:b))`. That's one reason a variadic
+argument takes zero or more values rather than one or more.
 
 ### 5. The concept is the language's; the Rust API is the runtime's
 
-The spec says a function may take a variable number of trailing arguments (decisions 1 to 3).
+The spec says a function may take a variable number of trailing arguments (decisions 1 to 4).
 `Argument::variadic` and the panic on a misplaced variadic argument belong to the reference
 runtime, as in [ADR 006](006-no-shadowing.md) (decision 5).
 
