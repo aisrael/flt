@@ -4,10 +4,10 @@ use std::fmt::Display;
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use nom::bytes::complete::tag;
-use nom::IResult;
 use nom::Parser;
 
 use crate::errors::Error;
+use crate::parser::IResult;
 use crate::utils::escape_string;
 
 use super::number::Numeric;

@@ -7,10 +7,11 @@ use nom::character::complete::satisfy;
 use nom::combinator::map;
 use nom::combinator::recognize;
 use nom::sequence::pair;
-use nom::IResult;
 use nom::Parser;
 
 use super::string::parse_string;
+
+use crate::parser::IResult;
 
 /// Parses a Ruby-like symbol: `:identifier` or `:"string"`.
 /// - Identifier form: `:` followed by an identifier that starts with a letter,

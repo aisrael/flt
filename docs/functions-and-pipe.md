@@ -34,7 +34,7 @@ typeof(greet)                  # fn(String, greeting: String) -> String
 ```
 
 - **A keyword the function doesn't declare is an error**, even for a function that declares none: `greet("Ann", tone: "warm")` raises `Function greet got an unexpected keyword argument: tone`, and so does `typeof(1, k: 2)`, with `k`. A function can declare that it accepts any other keywords instead.
-- **A keyword can't be repeated.** `greet("Ann", greeting: "Hi", greeting: "Yo")` is a parse error, and so is `greet("Ann", greeting: "Hi", "greeting": "Yo")`, since both keys are `:greeting`.
+- **A keyword can't be repeated.** `greet("Ann", greeting: "Hi", greeting: "Yo")` is a parse error, `Duplicate keyword argument greeting in the call to greet`, and so is `greet("Ann", greeting: "Hi", "greeting": "Yo")`, since both keys are `:greeting`.
 - **A keyword is never filled by position.** `greet("Ann", "Hi")` passes two positional arguments, and raises `Function greet expected 1 argument(s), found 2`.
 - **A map is a positional argument.** `f(k: 1)` passes the keyword `k`, and `f({k: 1})` passes one map.
 - **Keyword values aren't type-checked yet**, like positional arguments ([Calls](#calls)).

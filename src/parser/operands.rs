@@ -1,11 +1,11 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::value;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::UnaryOp;
+use crate::parser::IResult;
 
 /// Parses a unary operand: `!`, `+`, or `-`.
 pub fn parse_unary_op(input: &str) -> IResult<&str, UnaryOp> {

@@ -73,10 +73,23 @@ Feature: Keyword arguments
     Then parsing should fail
 
     Examples:
-      | input                                          |
-      | greet("Ann", greeting: "Hi", greeting: "Yo")   |
-      | greet("Ann", greeting: "Hi", "greeting": "Yo") |
-      | greet "Ann", greeting: "Hi", greeting: "Yo"    |
+      | input                                           |
+      | greet("Ann", greeting: "Hi", greeting: "Yo")    |
+      | greet("Ann", greeting: "Hi", "greeting": "Yo")  |
+      | greet "Ann", greeting: "Hi", greeting: "Yo"     |
+      | "Ann" \|> greet(greeting: "Hi", greeting: "Yo") |
+
+  Scenario Outline: A repeated keyword's error names the keyword and the call
+    Given the input '<input>'
+    When I evaluate the input
+    Then the evaluation should fail with exactly '<error>'
+
+    Examples:
+      | input                                          | error                                                                  |
+      | greet("Ann", greeting: "Hi", greeting: "Yo")   | Parser Error: Duplicate keyword argument greeting in the call to greet |
+      | greet("Ann", greeting: "Hi", "greeting": "Yo") | Parser Error: Duplicate keyword argument greeting in the call to greet |
+      | greet "Ann", greeting: "Hi", greeting: "Yo"    | Parser Error: Duplicate keyword argument greeting in the call to greet |
+      | options("c d": 1, "c d": 2)                    | Parser Error: Duplicate keyword argument "c d" in the call to options  |
 
   Scenario: A map literal keeps the last duplicate key
     Given the input 'keys({n: 1, n: 2})'

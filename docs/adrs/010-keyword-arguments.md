@@ -65,7 +65,8 @@ declares rest keywords.
 ### 4. A duplicate keyword is a syntax error
 
 `f(n: 1, n: 2)` doesn't parse, and neither does `f(n: 1, "n": 2)`, since both name the keyword
-`:n`. Map literals don't change: `{n: 1, n: 2}` is `{n: 2}` (ADR 009), so `f({n: 1, n: 2})` is
+`:n`. The error names both the keyword and the call: `Duplicate keyword argument n in the call to
+f`. Map literals don't change: `{n: 1, n: 2}` is `{n: 2}` (ADR 009), so `f({n: 1, n: 2})` is
 fine.
 
 ### 5. Calls and pipes

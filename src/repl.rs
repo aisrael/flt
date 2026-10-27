@@ -6,6 +6,7 @@ use crate::ast::Identifier;
 use crate::ast::Statement;
 use crate::errors::RuntimeError;
 use crate::parser::parse_statement;
+use crate::parser::ParseErrorKind;
 use crate::runtime::Runtime;
 use crate::runtime::SimpleRuntime;
 use crate::Error;
@@ -151,7 +152,13 @@ fn parse_full(line: &str) -> Result<Statement, String> {
                 ))
             }
         }
-        Err(e) => Err(format!("parse error: {:?}", e)),
+        // flt's own errors say what's wrong; nom's are shown as they are
+        Err(nom::Err::Error(e) | nom::Err::Failure(e))
+            if !matches!(e.kind, ParseErrorKind::Nom(_)) =>
+        {
+            Err(format!("parse error: {e}"))
+        }
+        Err(e) => Err(format!("parse error: {e:?}")),
     }
 }
 
@@ -439,6 +446,14 @@ mod tests {
         assert_eq!(
             repl.inspect_identifier("typeof"),
             "(function) fn(Any) -> Type"
+        );
+    }
+
+    #[test]
+    fn test_parse_error_names_a_repeated_keyword() {
+        assert_eq!(
+            parse_full("f(n: 1, n: 2)").unwrap_err(),
+            "parse error: Duplicate keyword argument n in the call to f"
         );
     }
 

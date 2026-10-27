@@ -1,25 +1,28 @@
+use indexmap::IndexMap;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
-use nom::combinator::map_res;
 use nom::combinator::verify;
 use nom::error::ErrorKind;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
-use indexmap::IndexMap;
+use crate::parser::IResult;
+use crate::parser::ParseError;
 
 use super::comment::{multispace0_or_comment, multispace1_or_comment};
 use super::map::parse_kv_pair;
 use super::parse_identifier;
+
+/// A call's positional arguments and keyword arguments
+type CallArgs = (Vec<Expr>, IndexMap<String, Expr>);
 
 /// Internal enum used only during parsing to represent one arg (positional or key-value).
 enum ParsedArg {
@@ -51,21 +54,39 @@ fn parse_arg_disallow_unary_plus<'a>(
     let mut inner = parse_arg(expr_parser);
     move |input: &'a str| {
         if input.starts_with('+') {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                ErrorKind::Tag,
-            )));
+            return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
         inner(input)
     }
 }
 
+/// Parses the argument list of a call to `name` with `list`, then splits it with
+/// [`collect_args`].
+fn call_args<'a, 'n, P>(
+    name: &'n Identifier,
+    mut list: P,
+) -> impl FnMut(&'a str) -> IResult<&'a str, CallArgs> + 'n
+where
+    P: Parser<&'a str, Output = Vec<ParsedArg>, Error = ParseError<&'a str>> + 'n,
+{
+    move |input: &'a str| {
+        let (rest, items) = list.parse(input)?;
+        let args = collect_args(name, input, items)?;
+        Ok((rest, args))
+    }
+}
+
 /// Splits parsed args into positionals (all leading Positional) and keyword_args (the rest).
-/// A key holds its unquoted text, so `n:` and `"n":` are the same keyword and can't both
-/// appear.
-fn collect_args(
+/// A key holds its unquoted text, so `n:` and `"n":` are the same keyword.
+///
+/// A positional argument after a keyword argument doesn't match. A repeated keyword is a
+/// failure instead, so the call doesn't parse as something else, such as the bare name
+/// `f` followed by stray input, and the error names the keyword.
+fn collect_args<'a>(
+    name: &Identifier,
+    input: &'a str,
     items: Vec<ParsedArg>,
-) -> Result<(Vec<Expr>, IndexMap<String, Expr>), &'static str> {
+) -> Result<CallArgs, nom::Err<ParseError<&'a str>>> {
     let mut positional_args = Vec::new();
     let mut keyword_args = IndexMap::new();
 
@@ -73,14 +94,17 @@ fn collect_args(
         match item {
             ParsedArg::Positional(expr) => {
                 if !keyword_args.is_empty() {
-                    return Err("positional argument after key-value pair");
+                    return Err(nom::Err::Error(ParseError::new(input, ErrorKind::MapRes)));
                 }
                 positional_args.push(expr);
             }
             ParsedArg::KeyValue(key, value) => {
-                if keyword_args.insert(key, value).is_some() {
-                    return Err("duplicate keyword argument");
+                if keyword_args.contains_key(&key) {
+                    return Err(nom::Err::Failure(ParseError::duplicate_keyword(
+                        input, &name.0, &key,
+                    )));
                 }
+                keyword_args.insert(key, value);
             }
         }
     }
@@ -90,7 +114,7 @@ fn collect_args(
 /// Parses a function call: `Identifier` `(` args `)` or `Identifier` args.
 /// Parentheses are optional; without them, at least one argument is required.
 /// Arguments are comma-separated expressions, with optional trailing key-value
-/// pairs that are collected into a `MapLiteral` as the final argument.
+/// pairs, the keyword arguments.
 pub fn parse_function_call(
     parse_expr: fn(&str) -> IResult<&str, Expr>,
 ) -> impl FnMut(&str) -> IResult<&str, FunctionCall> {
@@ -104,12 +128,12 @@ pub fn parse_function_call(
                     tag("("),
                     delimited(
                         multispace0_or_comment,
-                        map_res(
+                        call_args(
+                            &name,
                             separated_list0(
                                 (multispace0_or_comment, tag(","), multispace0_or_comment),
                                 parse_arg(parse_expr),
                             ),
-                            collect_args,
                         ),
                         multispace0_or_comment,
                     ),
@@ -119,14 +143,14 @@ pub fn parse_function_call(
             preceded(
                 multispace1_or_comment,
                 verify(
-                    map_res(
+                    call_args(
+                        &name,
                         separated_list1(
                             (multispace0_or_comment, tag(","), multispace0_or_comment),
                             parse_arg_disallow_unary_plus(parse_expr),
                         ),
-                        collect_args,
                     ),
-                    |(positional_args, keyword_args): &(Vec<Expr>, IndexMap<String, Expr>)| {
+                    |(positional_args, keyword_args): &CallArgs| {
                         !positional_args
                             .iter()
                             .chain(keyword_args.values())
@@ -183,12 +207,12 @@ pub fn parse_function_call_parens_only(
                 tag("("),
                 delimited(
                     multispace0_or_comment,
-                    map_res(
+                    call_args(
+                        &name,
                         separated_list0(
                             (multispace0_or_comment, tag(","), multispace0_or_comment),
                             parse_arg(parse_expr),
                         ),
-                        collect_args,
                     ),
                     multispace0_or_comment,
                 ),

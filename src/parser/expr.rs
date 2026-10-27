@@ -7,7 +7,6 @@ use nom::combinator::verify;
 use nom::multi::many0;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::IResult;
 use nom::Parser;
 
 use super::array::parse_array_literal;
@@ -24,6 +23,7 @@ use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::Keyword;
+use crate::parser::IResult;
 
 /// Parses a `{ expr }` block used by control-flow expressions.
 fn parse_block_expr(input: &str) -> IResult<&str, Expr> {
