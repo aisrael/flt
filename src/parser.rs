@@ -3,6 +3,7 @@
 mod array;
 mod boolean;
 mod comment;
+mod error;
 mod expr;
 mod function;
 mod identifier;
@@ -19,6 +20,9 @@ pub use crate::ast::BinaryOp;
 pub use crate::ast::Expr;
 pub use crate::ast::Literal;
 pub use crate::ast::UnaryOp;
+pub use error::IResult;
+pub use error::ParseError;
+pub use error::ParseErrorKind;
 pub use expr::parse_expr;
 pub use identifier::parse_identifier;
 pub use literal::parse_literal;

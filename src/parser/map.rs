@@ -10,13 +10,13 @@ use nom::combinator::recognize;
 use nom::multi::separated_list0;
 use nom::sequence::pair;
 use nom::sequence::separated_pair;
-use nom::IResult;
 use nom::Parser;
 
 use super::comment::multispace0_or_comment;
 use super::string::parse_string;
 use crate::ast::Expr;
 use crate::ast::KeyValue;
+use crate::parser::IResult;
 
 /// Parses a map key: bare identifier or quoted string.
 pub fn parse_map_key(input: &str) -> IResult<&str, Cow<'_, str>> {

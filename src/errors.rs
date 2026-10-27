@@ -59,6 +59,8 @@ pub enum RuntimeError {
         expected: usize,
         found: usize,
     },
+    #[error("Function {name} got an unexpected keyword argument: {key}")]
+    UnexpectedKeywordArgument { name: String, key: String },
     #[error("Cannot bind {name}: it's {reason}")]
     CannotBind { name: String, reason: ProtectedName },
     /// A host registered a function or a native type (`kind`) under a name that's in use

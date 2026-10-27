@@ -1,30 +1,33 @@
+use indexmap::IndexMap;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::map;
-use nom::combinator::map_res;
 use nom::combinator::verify;
 use nom::error::ErrorKind;
 use nom::multi::separated_list0;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
-use crate::ast::KeyValue;
+use crate::parser::IResult;
+use crate::parser::ParseError;
 
 use super::comment::{multispace0_or_comment, multispace1_or_comment};
 use super::map::parse_kv_pair;
 use super::parse_identifier;
 
+/// A call's positional arguments and keyword arguments
+type CallArgs = (Vec<Expr>, IndexMap<String, Expr>);
+
 /// Internal enum used only during parsing to represent one arg (positional or key-value).
 enum ParsedArg {
     Positional(Expr),
-    KeyValue(KeyValue),
+    KeyValue(String, Expr),
 }
 
 fn parse_arg<'a>(
@@ -33,10 +36,7 @@ fn parse_arg<'a>(
     move |input: &'a str| {
         alt((
             map(parse_kv_pair(expr_parser), |(k, v)| {
-                ParsedArg::KeyValue(KeyValue {
-                    key: k.into_owned(),
-                    value: v,
-                })
+                ParsedArg::KeyValue(k.into_owned(), v)
             }),
             map(expr_parser, ParsedArg::Positional),
         ))
@@ -54,32 +54,57 @@ fn parse_arg_disallow_unary_plus<'a>(
     let mut inner = parse_arg(expr_parser);
     move |input: &'a str| {
         if input.starts_with('+') {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                ErrorKind::Tag,
-            )));
+            return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
         inner(input)
     }
 }
 
+/// Parses the argument list of a call to `name` with `list`, then splits it with
+/// [`collect_args`].
+fn call_args<'a, 'n, P>(
+    name: &'n Identifier,
+    mut list: P,
+) -> impl FnMut(&'a str) -> IResult<&'a str, CallArgs> + 'n
+where
+    P: Parser<&'a str, Output = Vec<ParsedArg>, Error = ParseError<&'a str>> + 'n,
+{
+    move |input: &'a str| {
+        let (rest, items) = list.parse(input)?;
+        let args = collect_args(name, input, items)?;
+        Ok((rest, args))
+    }
+}
+
 /// Splits parsed args into positionals (all leading Positional) and keyword_args (the rest).
-fn collect_args(items: Vec<ParsedArg>) -> Result<(Vec<Expr>, Vec<KeyValue>), &'static str> {
+/// A key holds its unquoted text, so `n:` and `"n":` are the same keyword.
+///
+/// A positional argument after a keyword argument doesn't match. A repeated keyword is a
+/// failure instead, so the call doesn't parse as something else, such as the bare name
+/// `f` followed by stray input, and the error names the keyword.
+fn collect_args<'a>(
+    name: &Identifier,
+    input: &'a str,
+    items: Vec<ParsedArg>,
+) -> Result<CallArgs, nom::Err<ParseError<&'a str>>> {
     let mut positional_args = Vec::new();
-    let mut keyword_args = Vec::new();
-    let mut seen_kv = false;
+    let mut keyword_args = IndexMap::new();
 
     for item in items {
         match item {
             ParsedArg::Positional(expr) => {
-                if seen_kv {
-                    return Err("positional argument after key-value pair");
+                if !keyword_args.is_empty() {
+                    return Err(nom::Err::Error(ParseError::new(input, ErrorKind::MapRes)));
                 }
                 positional_args.push(expr);
             }
-            ParsedArg::KeyValue(kv) => {
-                seen_kv = true;
-                keyword_args.push(kv);
+            ParsedArg::KeyValue(key, value) => {
+                if keyword_args.contains_key(&key) {
+                    return Err(nom::Err::Failure(ParseError::duplicate_keyword(
+                        input, &name.0, &key,
+                    )));
+                }
+                keyword_args.insert(key, value);
             }
         }
     }
@@ -89,7 +114,7 @@ fn collect_args(items: Vec<ParsedArg>) -> Result<(Vec<Expr>, Vec<KeyValue>), &'s
 /// Parses a function call: `Identifier` `(` args `)` or `Identifier` args.
 /// Parentheses are optional; without them, at least one argument is required.
 /// Arguments are comma-separated expressions, with optional trailing key-value
-/// pairs that are collected into a `MapLiteral` as the final argument.
+/// pairs, the keyword arguments.
 pub fn parse_function_call(
     parse_expr: fn(&str) -> IResult<&str, Expr>,
 ) -> impl FnMut(&str) -> IResult<&str, FunctionCall> {
@@ -103,12 +128,12 @@ pub fn parse_function_call(
                     tag("("),
                     delimited(
                         multispace0_or_comment,
-                        map_res(
+                        call_args(
+                            &name,
                             separated_list0(
                                 (multispace0_or_comment, tag(","), multispace0_or_comment),
                                 parse_arg(parse_expr),
                             ),
-                            collect_args,
                         ),
                         multispace0_or_comment,
                     ),
@@ -118,17 +143,17 @@ pub fn parse_function_call(
             preceded(
                 multispace1_or_comment,
                 verify(
-                    map_res(
+                    call_args(
+                        &name,
                         separated_list1(
                             (multispace0_or_comment, tag(","), multispace0_or_comment),
                             parse_arg_disallow_unary_plus(parse_expr),
                         ),
-                        collect_args,
                     ),
-                    |(positional_args, keyword_args): &(Vec<Expr>, Vec<KeyValue>)| {
+                    |(positional_args, keyword_args): &CallArgs| {
                         !positional_args
                             .iter()
-                            .chain(keyword_args.iter().map(|kv| &kv.value))
+                            .chain(keyword_args.values())
                             .any(has_unparenthesized_pipe)
                     },
                 ),
@@ -182,12 +207,12 @@ pub fn parse_function_call_parens_only(
                 tag("("),
                 delimited(
                     multispace0_or_comment,
-                    map_res(
+                    call_args(
+                        &name,
                         separated_list0(
                             (multispace0_or_comment, tag(","), multispace0_or_comment),
                             parse_arg(parse_expr),
                         ),
-                        collect_args,
                     ),
                     multispace0_or_comment,
                 ),
@@ -214,8 +239,9 @@ mod tests {
     use super::parse_function_call;
     use crate::ast::Expr;
     use crate::ast::FunctionCall;
+    use indexmap::IndexMap;
+
     use crate::ast::Identifier;
-    use crate::ast::KeyValue;
     use crate::ast::Numeric;
     use crate::parser::expr::parse_expr;
 
@@ -228,7 +254,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("trim").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_string("string")],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -245,7 +271,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -262,7 +288,7 @@ mod tests {
                     positional_args: vec![Expr::literal_number(
                         Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                     )],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -282,7 +308,7 @@ mod tests {
                         ),
                         Expr::literal_number(2),
                     ],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -297,7 +323,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -312,7 +338,7 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1), Expr::literal_number(2),],
-                    keyword_args: vec![],
+                    keyword_args: IndexMap::new(),
                 }
             ))
         );
@@ -327,10 +353,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "optional".into(),
-                        value: Expr::literal_boolean(true),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "optional".to_string(),
+                        Expr::literal_boolean(true)
+                    )]),
                 }
             ))
         );
@@ -345,16 +371,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![],
-                    keyword_args: vec![
-                        KeyValue {
-                            key: "name".into(),
-                            value: Expr::literal_string("Alice"),
-                        },
-                        KeyValue {
-                            key: "age".into(),
-                            value: Expr::literal_number(30),
-                        },
-                    ],
+                    keyword_args: IndexMap::from([
+                        ("name".to_string(), Expr::literal_string("Alice")),
+                        ("age".to_string(), Expr::literal_number(30)),
+                    ]),
                 }
             ))
         );
@@ -369,10 +389,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "optional".into(),
-                        value: Expr::literal_boolean(true),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "optional".to_string(),
+                        Expr::literal_boolean(true)
+                    )]),
                 }
             ))
         );
@@ -384,6 +404,42 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_duplicate_keyword_fails() {
+        for input in [
+            "foo(a: 1, a: 2)",
+            r#"foo(a: 1, "a": 2)"#,
+            "foo(1, a: 1, b: 2, a: 3)",
+            "foo a: 1, a: 2",
+        ] {
+            assert!(
+                parse_function_call(parse_expr)(input).is_err(),
+                "{input} should fail to parse"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_keywords_differ_from_a_map_argument() {
+        let (_, keywords) = parse_function_call(parse_expr)("foo(k: 1)").unwrap();
+        let (_, map) = parse_function_call(parse_expr)("foo({k: 1})").unwrap();
+        assert_eq!(keywords.positional_args, vec![]);
+        assert_eq!(keywords.keyword_args.len(), 1);
+        assert_eq!(
+            map.positional_args,
+            vec![Expr::map_literal(vec![("k", Expr::literal_number(1))])]
+        );
+        assert!(map.keyword_args.is_empty());
+    }
+
+    #[test]
+    fn test_display_round_trips() {
+        for input in ["foo(1, k: 2)", r#"foo(1, "c d": 2)"#, "foo(k: 2)", "foo()"] {
+            let (_, call) = parse_function_call(parse_expr)(input).unwrap();
+            assert_eq!(call.to_string(), input);
+        }
+    }
+
+    #[test]
     fn test_parse_with_quoted_kv_key() {
         assert_eq!(
             parse_function_call(parse_expr)(r#"foo(1, "output file": "out.csv")"#),
@@ -392,10 +448,10 @@ mod tests {
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
                     positional_args: vec![Expr::literal_number(1)],
-                    keyword_args: vec![KeyValue {
-                        key: "output file".into(),
-                        value: Expr::literal_string("out.csv"),
-                    }],
+                    keyword_args: IndexMap::from([(
+                        "output file".to_string(),
+                        Expr::literal_string("out.csv")
+                    )]),
                 }
             ))
         );

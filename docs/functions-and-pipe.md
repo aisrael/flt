@@ -22,7 +22,24 @@ baz(a: 1, b: 2)
 qux(1, 2, option: "value")
 ```
 
-Keys follow the same rules as [map keys](./literals.md#maps): each is a symbol, written bare or quoted, so `bar: true` passes the key `:bar`. The parser collects keyword arguments into a single map and passes them as the final argument to the call.
+Keys follow the same rules as [map keys](./literals.md#maps): each is a symbol, written bare or quoted, so `bar: true` and `"bar": true` both pass the keyword `:bar`.
+
+Keyword arguments are passed by name, separately from the positional ones ([ADR 010](./adrs/010-keyword-arguments.md)). A function declares which keywords it accepts, each with a default, so a call can leave any of them out. With a host that registers the [native function](./native-functions-and-values.md#keyword-arguments) `greet`, which declares the keyword `greeting` with the default `"Hello"`:
+
+```flt
+greet("Ann")                   # "Hello, Ann"
+greet("Ann", greeting: "Hi")   # "Hi, Ann"
+"Ann" |> greet(greeting: "Hi") # "Hi, Ann"
+typeof(greet)                  # fn(String, greeting: String) -> String
+```
+
+- **A keyword the function doesn't declare is an error**, even for a function that declares none: `greet("Ann", tone: "warm")` raises `Function greet got an unexpected keyword argument: tone`, and so does `typeof(1, k: 2)`, with `k`. A function can declare that it accepts any other keywords instead.
+- **A keyword can't be repeated.** `greet("Ann", greeting: "Hi", greeting: "Yo")` is a parse error, `Duplicate keyword argument greeting in the call to greet`, and so is `greet("Ann", greeting: "Hi", "greeting": "Yo")`, since both keys are `:greeting`.
+- **A keyword is never filled by position.** `greet("Ann", "Hi")` passes two positional arguments, and raises `Function greet expected 1 argument(s), found 2`.
+- **A map is a positional argument.** `f(k: 1)` passes the keyword `k`, and `f({k: 1})` passes one map.
+- **Keyword values aren't type-checked yet**, like positional arguments ([Calls](#calls)).
+
+Positional arguments are evaluated first, left to right, then keyword values, left to right.
 
 ### Whitespace form
 
@@ -44,7 +61,7 @@ The pipe operator `|>` passes the value on its left as the **first** argument of
 1 |> typeof()            # typeof(1)         → Number
 typeof(1) |> typeof      # typeof(typeof(1)) → Type
 10 |> sub(3)             # sub(10, 3)        → 7
-x |> f(a, k: v)          # f(x, a, {k: v})
+x |> f(a, k: v)          # f(x, a, k: v)
 a |> f |> g(1)           # g(f(a), 1)
 1 |> typeof == Number    # (1 |> typeof) == Number → true
 READ("input") |> SELECT(:id) |> WRITE("output")
@@ -72,7 +89,7 @@ let g = identity
 42 |> g                  # identity(42) → 42
 ```
 
-Keyword arguments are collected into a trailing map, so the piped value goes before them and they stay last: `x |> f(a, k: v)` calls `f` with `x`, `a` and `{k: v}`.
+The piped value is passed positionally, before the call's other positional arguments: `x |> f(a, k: v)` calls `f` with `x` and `a` positionally and `k` by keyword.
 
 ### Equivalent Forms
 
@@ -149,9 +166,10 @@ f(42)                 # 42
 
 ## Calls
 
-Before a function runs, the runtime checks the number of arguments against the function's signature. Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
+Before a function runs, the runtime checks the number of positional arguments against the function's signature, then checks its [keyword arguments](#keyword-arguments) against the keywords that signature declares. Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
 
 - `identity(1, 2)` raises `Function identity expected 1 argument(s), found 2`.
+- `identity(1, k: 2)` raises `Function identity got an unexpected keyword argument: k`.
 - `let x = 1; x(2)` raises `x is not a function`.
 - `nope(1)`, where `nope` isn't bound, raises `Undefined function: nope`.
 

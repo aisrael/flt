@@ -22,7 +22,7 @@ Feature: Conditionals
   Scenario: If with block then-branch only and function call (no else)
     Given the input "if false { do() }"
     When I parse the input
-    Then the output should be 'IfExpr { condition: Literal(Boolean(false)), then_branch: FunctionCall(Identifier("do"), []), else_branch: None }'
+    Then the output should be 'IfExpr { condition: Literal(Boolean(false)), then_branch: FunctionCall(FunctionCall { name: Identifier("do"), positional_args: [], keyword_args: {} }), else_branch: None }'
 
   Scenario: If with expression branches (no blocks)
     Given the input 'if success "Ok" else ":("'

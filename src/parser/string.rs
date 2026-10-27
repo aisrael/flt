@@ -7,12 +7,12 @@ use nom::combinator::success;
 use nom::combinator::value;
 use nom::multi::many0;
 use nom::sequence::delimited;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::Literal;
+use crate::parser::IResult;
 
 /// Parses an interpolated string: `"..."` with `{expr}` for interpolation.
 /// Escapes: `\"`, `\\`, `\{` (literal `{`).

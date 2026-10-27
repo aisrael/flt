@@ -1,6 +1,5 @@
 use nom::branch::alt;
 use nom::combinator::map;
-use nom::IResult;
 use nom::Parser;
 
 use super::boolean::parse_boolean;
@@ -9,6 +8,7 @@ use super::string::parse_string;
 use super::symbol::parse_symbol;
 use crate::ast::parse_none;
 use crate::ast::Literal;
+use crate::parser::IResult;
 
 /// Parses a literal: number, string, boolean, or symbol.
 pub fn parse_literal(input: &str) -> IResult<&str, Literal> {

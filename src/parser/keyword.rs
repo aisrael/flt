@@ -1,9 +1,9 @@
 use nom::bytes::complete::take_while1;
 use nom::combinator::map_opt;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::Keyword;
+use crate::parser::IResult;
 
 fn is_identifier_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '-' || c == '_'

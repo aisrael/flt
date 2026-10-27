@@ -2,8 +2,9 @@ use nom::bytes::complete::take_while;
 use nom::character::complete::satisfy;
 use nom::combinator::recognize;
 use nom::sequence::pair;
-use nom::IResult;
 use nom::Parser;
+
+use crate::parser::IResult;
 
 /// Parses an identifier: starts with a letter, followed by zero or more
 /// alphanumeric, hyphen, or underscore characters.

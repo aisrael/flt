@@ -9,8 +9,9 @@ use nom::combinator::opt;
 use nom::combinator::value;
 use nom::multi::many0;
 use nom::multi::many1;
-use nom::IResult;
 use nom::Parser;
+
+use crate::parser::IResult;
 
 /// Parses a single comment: `#` followed by any characters until end of line.
 fn parse_comment(input: &str) -> IResult<&str, ()> {

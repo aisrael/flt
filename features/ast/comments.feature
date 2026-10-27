@@ -33,7 +33,7 @@ Feature: Comments
        2)
       """
     When I parse the input
-    Then the output should be 'FunctionCall(Identifier("add"), [Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))])'
+    Then the output should be 'FunctionCall(FunctionCall { name: Identifier("add"), positional_args: [Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))], keyword_args: {} })'
 
   Scenario: Comment between string concatenation operands
     Given the multiline input

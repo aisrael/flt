@@ -10,10 +10,11 @@ use nom::combinator::recognize;
 use nom::multi::many0;
 use nom::sequence::pair;
 use nom::sequence::preceded;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::Numeric;
+use crate::parser::IResult;
+use crate::parser::ParseError;
 
 /// Parses a numeric: optional `+` or `-`, digits (with optional `_`), then optionally `.` followed by any number of decimal digits (with optional `_`).
 pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
@@ -36,7 +37,7 @@ pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
 
     match Numeric::from_str(&number) {
         Ok(value) => Ok((input, value)),
-        Err(_) => Err(nom::Err::Failure(nom::error::Error::new(
+        Err(_) => Err(nom::Err::Failure(ParseError::new(
             input,
             nom::error::ErrorKind::Float,
         ))),

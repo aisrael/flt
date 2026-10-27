@@ -90,7 +90,8 @@ The evaluator currently supports:
 - `Undefined function: <name>` - calling a name that has no binding
 - `<name> is not a function` - calling a name bound to a value that isn't a function
 - `Cannot pipe into <expr>` - piping into something other than a call or a function name (e.g. `1 |> 2`)
-- `Function <name> expected <expected> argument(s), found <found>` - calling any function with the wrong number of arguments
+- `Function <name> expected <expected> argument(s), found <found>` - calling any function with the wrong number of positional arguments
+- `Function <name> got an unexpected keyword argument: <key>` - calling a function with a [keyword argument](./functions-and-pipe.md#keyword-arguments) it doesn't declare
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 - `Cannot bind <name>: it's a native type` - binding the name of a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host

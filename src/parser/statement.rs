@@ -3,12 +3,12 @@ use nom::bytes::complete::tag;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::verify;
-use nom::IResult;
 use nom::Parser;
 
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::Statement;
+use crate::parser::IResult;
 use crate::Error;
 
 use super::comment::multispace0_or_comment;
@@ -74,7 +74,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
 /// one line with no `;` between them. Empty source, or source with only comments, has no
 /// statements.
 pub fn parse_statements(source: &str) -> Result<Vec<Statement>, Error> {
-    let parse_error = |e: nom::Err<nom::error::Error<&str>>| Error::ParserError(e.to_string());
+    let parse_error = Error::from;
     let mut statements = Vec::new();
     let (mut rest, _) = multispace0_or_comment(source).map_err(parse_error)?;
     while !rest.is_empty() {

@@ -16,6 +16,7 @@ use indexmap::IndexMap;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
+use crate::ast::FunctionCall;
 use crate::ast::Literal;
 use crate::ast::Statement;
 use crate::ast::UnaryOp;
@@ -462,9 +463,9 @@ impl SimpleRuntime {
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
     /// like an identifier.
-    fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, Error> {
+    fn call_function(&self, name: &str, args: &[Value], keywords: Map) -> Result<Value, Error> {
         match self.lookup(name) {
-            Some(Value::Function(function)) => function.call(args),
+            Some(Value::Function(function)) => function.call_with_keywords(args, keywords),
             Some(_) => Err(Error::RuntimeError(RuntimeError::NotCallable(
                 name.to_string(),
             ))),
@@ -472,6 +473,25 @@ impl SimpleRuntime {
                 name.to_string(),
             ))),
         }
+    }
+
+    /// Evaluates a call's positional arguments, then its keyword values, each left to right,
+    /// and calls the function. A piped value goes before the positional arguments.
+    fn eval_function_call(
+        &mut self,
+        call: &FunctionCall,
+        piped: Option<Value>,
+    ) -> Result<Value, Error> {
+        let mut args: Vec<Value> = piped.into_iter().collect();
+        for arg in &call.positional_args {
+            args.push(self.eval_expr(arg)?);
+        }
+        let mut keywords = Map::new();
+        for (key, value) in &call.keyword_args {
+            let value = self.eval_expr(value)?;
+            keywords.insert(MapKey::symbol(key.as_str()), value);
+        }
+        self.call_function(call.name.0.as_str(), &args, keywords)
     }
 
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, Error> {
@@ -504,19 +524,13 @@ impl SimpleRuntime {
                 let val = self.eval_expr(inner)?;
                 Self::eval_unary(*op, &val)
             }
-            // `x |> f(a, ...)` calls `f(x, a, ...)`, and `x |> f` calls `f(x)`. The right
-            // side is never evaluated on its own.
+            // `x |> f(a, ..., k: v)` calls `f(x, a, ..., k: v)`, and `x |> f` calls `f(x)`.
+            // The right side is never evaluated on its own.
             Expr::BinaryExpr(left, BinaryOp::Pipe, right) => {
                 let value = self.eval_expr(left)?;
                 match right.as_ref() {
-                    Expr::FunctionCall(name, args) => {
-                        let mut values = vec![value];
-                        for arg in args {
-                            values.push(self.eval_expr(arg)?);
-                        }
-                        self.call_function(name.0.as_str(), &values)
-                    }
-                    Expr::Ident(name) => self.call_function(name.as_str(), &[value]),
+                    Expr::FunctionCall(call) => self.eval_function_call(call, Some(value)),
+                    Expr::Ident(name) => self.call_function(name.as_str(), &[value], Map::new()),
                     other => Err(Error::RuntimeError(RuntimeError::InvalidPipeTarget(
                         other.to_string(),
                     ))),
@@ -527,13 +541,7 @@ impl SimpleRuntime {
                 let r = self.eval_expr(right)?;
                 Self::eval_binary(&l, *op, &r)
             }
-            Expr::FunctionCall(name, args) => {
-                let arg_values = args
-                    .iter()
-                    .map(|arg| self.eval_expr(arg))
-                    .collect::<Result<Vec<Value>, Error>>()?;
-                self.call_function(name.0.as_str(), &arg_values)
-            }
+            Expr::FunctionCall(call) => self.eval_function_call(call, None),
             Expr::Parenthesized(inner) => self.eval_expr(inner),
             Expr::FieldAccess(inner, field) => {
                 let value = self.eval_expr(inner)?;
@@ -1000,24 +1008,34 @@ mod tests {
     }
 
     #[test]
-    fn test_native_function_sees_keyword_arguments_in_source_order() {
+    fn test_native_function_sees_rest_keywords_in_call_order() {
         let mut runtime = SimpleRuntime::default();
         runtime
-            .register_function(NativeFunction::new(
-                FunctionDefinition::new(
-                    "keys",
-                    Type::array(),
-                    vec![Argument::new("map", Type::map())],
-                ),
-                |args| {
+            .register_function(NativeFunction::with_keywords(
+                FunctionDefinition::new("keys", Type::array(), vec![]).rest_keywords(Type::any()),
+                |_args, keywords| {
                     Ok(Value::Array(
-                        map_keys(&args[0]).into_iter().map(Value::from).collect(),
+                        keywords.keys().cloned().map(Value::from).collect(),
                     ))
                 },
             ))
             .unwrap();
         let value = runtime.eval("keys(z: 1, y: 2, x: 3)").unwrap();
         assert_eq!(value.to_string(), "[:z, :y, :x]");
+    }
+
+    #[test]
+    fn test_keyword_arguments_are_not_a_positional_map() {
+        let mut runtime = runtime_with_identity();
+        assert_eq!(
+            runtime.eval("identity({k: 1})").unwrap(),
+            Value::Map(Map::from([(MapKey::symbol("k"), Value::from(1u64))]))
+        );
+        assert!(matches!(
+            runtime.eval("identity(1, k: 2)"),
+            Err(Error::RuntimeError(RuntimeError::UnexpectedKeywordArgument { name, key }))
+                if name == "identity" && key == "k"
+        ));
     }
 
     #[test]
@@ -1507,6 +1525,25 @@ mod tests {
                 |args| Ok(Value::Array(args.to_vec())),
             ))
             .unwrap();
+        // kwargs(a, b, **rest) returns [a, b, rest]
+        runtime
+            .register_function(NativeFunction::with_keywords(
+                FunctionDefinition::new(
+                    "kwargs",
+                    Type::array(),
+                    vec![
+                        Argument::new("a", Type::any()),
+                        Argument::new("b", Type::any()),
+                    ],
+                )
+                .rest_keywords(Type::any()),
+                |args, keywords| {
+                    let mut values = args.to_vec();
+                    values.push(Value::Map(keywords.clone()));
+                    Ok(Value::Array(values))
+                },
+            ))
+            .unwrap();
         let calls = Arc::new(AtomicU64::new(0));
         runtime
             .register_function(NativeFunction::new(
@@ -1578,15 +1615,35 @@ mod tests {
     }
 
     #[test]
-    fn test_pipe_keeps_keyword_arguments_last() {
+    fn test_pipe_passes_piped_value_positionally() {
         let mut runtime = runtime_for_pipes();
-        let value = runtime.eval("1 |> args(2, k: 3)").unwrap();
+        let value = runtime.eval("1 |> kwargs(2, k: 3)").unwrap();
         assert_eq!(
             value,
             Value::Array(vec![
                 number(1),
                 number(2),
                 Value::Map(Map::from([(MapKey::symbol("k"), number(3))])),
+            ])
+        );
+    }
+
+    /// The piped value, then positional arguments, then keyword values, each left to right
+    #[test]
+    fn test_keyword_values_are_evaluated_after_positional_arguments() {
+        let mut runtime = runtime_for_pipes();
+        let value = runtime
+            .eval("next() |> kwargs(next(), b: next(), a: next())")
+            .unwrap();
+        assert_eq!(
+            value,
+            Value::Array(vec![
+                number(1),
+                number(2),
+                Value::Map(Map::from([
+                    (MapKey::symbol("b"), number(3)),
+                    (MapKey::symbol("a"), number(4)),
+                ])),
             ])
         );
     }

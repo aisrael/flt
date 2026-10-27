@@ -1,11 +1,11 @@
 use nom::bytes::complete::tag;
 use nom::combinator::opt;
 use nom::multi::separated_list0;
-use nom::IResult;
 use nom::Parser;
 
 use super::comment::multispace0_or_comment;
 use crate::ast::Expr;
+use crate::parser::IResult;
 
 /// Parses an array literal: `[ expr, ... ]`.
 ///

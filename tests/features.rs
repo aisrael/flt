@@ -22,6 +22,8 @@ use flt::runtime::functions::FunctionDefinition;
 use flt::runtime::functions::NativeFunction;
 use flt::runtime::native::NativeType;
 use flt::runtime::types::Type;
+use flt::runtime::Map;
+use flt::runtime::MapKey;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
@@ -100,6 +102,34 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 vec![Argument::new("v", Type::any())],
             ),
             |args| Ok(args[0].clone()),
+        )),
+        "greet" => Some(NativeFunction::with_keywords(
+            FunctionDefinition::new("greet", Type::string(), vec![Argument::string("name")])
+                .keyword("greeting", Type::string(), Value::String("Hello".into())),
+            |args: &[Value], keywords: &Map| match (
+                &args[0],
+                &keywords[&MapKey::symbol("greeting")],
+            ) {
+                (Value::String(name), Value::String(greeting)) => {
+                    Ok(Value::String(format!("{greeting}, {name}")))
+                }
+                _ => Ok(Value::None),
+            },
+        )),
+        "options" => Some(NativeFunction::with_keywords(
+            FunctionDefinition::new("options", Type::map(), vec![]).rest_keywords(Type::any()),
+            |_args: &[Value], keywords: &Map| Ok(Value::Map(keywords.clone())),
+        )),
+        "keys" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "keys",
+                Type::array(),
+                vec![Argument::new("map", Type::map())],
+            ),
+            |args| match &args[0] {
+                Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::from).collect())),
+                _ => Ok(Value::Array(vec![])),
+            },
         )),
         "date" => Some(NativeFunction::new(
             FunctionDefinition::new(
@@ -468,16 +498,34 @@ fn then_output_should_be_field_access(world: &mut AstWorld, field: String) {
 
 #[then(regex = r#"^the output should be a function call "([^"]*)" with (\d+) args$"#)]
 fn then_output_should_be_function_call(world: &mut AstWorld, name: String, arg_count: usize) {
+    then_output_should_be_function_call_with_keywords(world, name, arg_count, 0);
+}
+
+#[then(
+    regex = r#"^the output should be a function call "([^"]*)" with (\d+) args and (\d+) keyword args$"#
+)]
+fn then_output_should_be_function_call_with_keywords(
+    world: &mut AstWorld,
+    name: String,
+    arg_count: usize,
+    keyword_count: usize,
+) {
     let output = world.output.take().expect("output should be set");
     let expr = output.expect("parse should succeed");
     match &expr {
-        Expr::FunctionCall(ident, args) => {
-            assert_eq!(ident.0, name, "expected function name {name:?}");
+        Expr::FunctionCall(call) => {
+            assert_eq!(call.name.0, name, "expected function name {name:?}");
             assert_eq!(
-                args.len(),
+                call.positional_args.len(),
                 arg_count,
                 "expected {arg_count} args, got {}",
-                args.len()
+                call.positional_args.len()
+            );
+            assert_eq!(
+                call.keyword_args.len(),
+                keyword_count,
+                "expected {keyword_count} keyword args, got {}",
+                call.keyword_args.len()
             );
         }
         _ => panic!("expected function call, got {expr:?}"),

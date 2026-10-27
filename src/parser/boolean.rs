@@ -1,8 +1,9 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::value;
-use nom::IResult;
 use nom::Parser;
+
+use crate::parser::IResult;
 
 /// Parses a boolean literal: `true` or `false`.
 pub fn parse_boolean(input: &str) -> IResult<&str, bool> {
