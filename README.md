@@ -152,6 +152,8 @@ The runtime evaluates expressions and statements: literals (including maps and a
   - `parse_unary_op`
 - `flt::ast`:
   - `Expr`
+  - `FunctionCall` (a call's name, positional arguments and keyword arguments)
+  - `KeywordArgs` (a call's keyword arguments, in source order)
   - `Literal`
   - `Identifier`
   - `Numeric`
