@@ -166,7 +166,7 @@ f(42)                 # 42
 
 ## Calls
 
-Before a function runs, the runtime checks the number of positional arguments against the function's signature, then checks its [keyword arguments](#keyword-arguments) against the keywords that signature declares. A signature whose last argument is [variadic](./native-functions-and-values.md#variadic-arguments) takes any number of positional arguments after the ones before it ([ADR 011](./adrs/011-variadic-arguments.md)). Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
+Before a function runs, the runtime checks the number of positional arguments against the function's signature, then checks its [keyword arguments](#keyword-arguments) against the keywords that signature declares. A signature whose last positional argument is [variadic](./native-functions-and-values.md#variadic-arguments) takes any number of positional arguments after the ones before it ([ADR 011](./adrs/011-variadic-arguments.md)). Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
 
 - `identity(1, 2)` raises `Function identity expected 1 argument(s), found 2`.
 - `sprintf()`, where `sprintf` has type `fn(String, ...Any) -> String`, raises `Function sprintf expected at least 1 argument(s), found 0`.

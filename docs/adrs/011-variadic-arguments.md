@@ -19,7 +19,7 @@ columns and so on would be guesswork, and each would show up in the function's t
 
 ## Decisions
 
-### 1. The last argument of a signature can be variadic
+### 1. The last positional argument of a signature can be variadic
 
 ```rust
 FunctionDefinition::new(
@@ -33,8 +33,9 @@ A variadic argument takes zero or more values: `select(plan)`, `select(plan, :a)
 `select(plan, :a, :b)` all reach the handler, which receives every value as one flat `&[Value]`.
 Whether no columns is an error is up to the handler.
 
-Only the last argument can be variadic. A variadic argument anywhere else is a host bug, so
-`FunctionDefinition::new` and `add_overload` panic on it.
+Only the last positional argument can be variadic. A variadic argument anywhere else is a host
+bug, so `FunctionDefinition::new` and `add_overload` panic on it. Keyword arguments are declared
+separately ([ADR 010](010-keyword-arguments.md)), so they don't count: a function can have both.
 
 ### 2. Arity with a variadic argument
 
