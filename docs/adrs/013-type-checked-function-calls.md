@@ -1,23 +1,24 @@
-# ADR 013: Type-Checked Overloads
+# ADR 013: Type-Checked Function Calls
 
 - **Date:** 2026-10-27
 - **Status:** Proposed.
 
 ## Context
 
-A function can have several signatures, but they only describe it:
+A function's signatures declare the types of its arguments, keywords and result, and those types
+show in the function's type, but a call checks only the number of arguments:
 
+- **Types aren't checked.** Nothing enforces the declared types
+  ([ADR 003](003-functions-as-values.md), decision 4; [ADR 010](010-keyword-arguments.md),
+  decision 6). Each function checks its own arguments, and nothing checks what it returns, so
+  `typeof` can show a return type the function doesn't keep to.
 - **The overload is picked by argument count alone.** A call passes if some overload takes that
-  many positional arguments ([ADR 003](003-functions-as-values.md), decision 4), the first such
-  overload in declaration order is the one whose keywords are checked
-  ([ADR 010](010-keyword-arguments.md), decision 5), and a variadic overload takes any count from
-  its minimum up ([ADR 011](011-variadic-arguments.md)). How a variadic overload combines with
-  fixed ones was left open.
-- **Types aren't checked.** Argument, keyword and return types show in a function's type, but
-  nothing enforces them (ADR 003, decision 4; ADR 010, decision 6). Each handler checks its own
-  arguments, and nothing checks what it returns.
+  many positional arguments (ADR 003, decision 4), the first such overload in declaration order is
+  the one whose keywords are checked (ADR 010, decision 5), and a variadic overload takes any count
+  from its minimum up ([ADR 011](011-variadic-arguments.md)). How a variadic overload combines
+  with fixed ones was left open.
 
-datu's `count` has two forms with one argument each:
+Checking types can't keep the second rule. datu's `count` has two forms with one argument each:
 
 ```
 count(plan: DatuPlan) -> Number
@@ -29,8 +30,8 @@ count(column: Any) -> DatuSelectItem
 always the one picked, and one handler serves both by looking at its argument.
 
 Checking types against the overload picked by count would break `count`: `count(:id)` would be
-checked against `count(plan: DatuPlan)` and fail, though the second overload accepts it. So the
-types have to pick the overload.
+checked against `count(plan: DatuPlan)` and fail, though the second overload accepts it. So a
+type-checked call has to let the types pick the overload.
 
 ## Decisions
 
