@@ -107,9 +107,9 @@ type lists its keywords after its positional parameters, e.g.
 A function's last positional parameter may be **variadic**: it takes zero or more positional
 arguments, never keywords. Keywords are declared separately, so a function can have both. A
 function with `k` positional parameters before the variadic one accepts any call with at least `k`
-positional arguments. A function type shows the variadic parameter as `...T`, after the other
-positional parameters and before any keywords, e.g. `fn(String, ...Any) -> String` or
-`fn(Any, ...Any, k: Number) -> Any`.
+positional arguments. A function type shows the variadic parameter as `*T`, after the other
+positional parameters and before any keywords, e.g. `fn(String, *Any) -> String` or
+`fn(Any, *Any, k: Number) -> Any`.
 
 ### Pipe
 

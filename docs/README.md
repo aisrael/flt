@@ -29,6 +29,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 009: Symbol Keys and Ordered Maps](adrs/009-symbol-keys-and-ordered-maps.md)
 - [ADR 010: Keyword Arguments](adrs/010-keyword-arguments.md)
 - [ADR 011: Variadic Arguments](adrs/011-variadic-arguments.md)
+- [ADR 012: Variadic Notation](adrs/012-variadic-notation.md)
 
 ## Scope
 

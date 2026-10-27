@@ -759,7 +759,7 @@ mod tests {
     fn test_type_shows_variadic() {
         assert_eq!(
             variadic_definition(1).r#type().to_string(),
-            "fn(Any, ...Any) -> Any"
+            "fn(Any, *Any) -> Any"
         );
     }
 

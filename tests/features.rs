@@ -119,12 +119,12 @@ fn signature_texts(function: &NativeFunction) -> Vec<String> {
         .collect()
 }
 
-/// One overload as a signature: positional arguments, `...` before a variadic one, keywords
+/// One overload as a signature: positional arguments, `*` before a variadic one, keywords
 /// with their defaults, `**T` for rest keywords, then the return type.
 fn signature_text(name: &str, overload: &FunctionSignature) -> String {
     let positional = overload.arguments.iter().map(|argument| {
-        let dots = if argument.variadic { "..." } else { "" };
-        format!("{dots}{}: {}", argument.name, argument.r#type)
+        let star = if argument.variadic { "*" } else { "" };
+        format!("{star}{}: {}", argument.name, argument.r#type)
     });
     let keywords = overload
         .keywords

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- **Variadic parameters print as `*T`**: Function types show a variadic parameter as `*T` instead of `...T`, matching `**T` for rest keywords, so `typeof(sprintf)` prints `fn(String, *Any) -> String` ([ADR 012](https://github.com/aisrael/flt/blob/main/docs/adrs/012-variadic-notation.md)).
+
 ### New Features
 
 - **`flt::ast::KeywordArgs`**: The type of `FunctionCall.keyword_args` has a name, so a host can write it in its own signatures, e.g. `fn select_items(keywords: &KeywordArgs)`, without depending on `indexmap` itself. It's an alias for `IndexMap<String, Expr>`, so code that already writes that type keeps compiling.
