@@ -28,6 +28,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 008: The `Runtime` Trait](adrs/008-the-runtime-trait.md)
 - [ADR 009: Symbol Keys and Ordered Maps](adrs/009-symbol-keys-and-ordered-maps.md)
 - [ADR 010: Keyword Arguments](adrs/010-keyword-arguments.md)
+- [ADR 011: Variadic Arguments](adrs/011-variadic-arguments.md)
 
 ## Scope
 

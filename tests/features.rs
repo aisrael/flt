@@ -120,6 +120,27 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             FunctionDefinition::new("options", Type::map(), vec![]).rest_keywords(Type::any()),
             |_args: &[Value], keywords: &Map| Ok(Value::Map(keywords.clone())),
         )),
+        "count_args" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "count_args",
+                Type::number(),
+                vec![Argument::variadic("args", Type::any())],
+            ),
+            |args| Ok(Value::from(args.len() as u64)),
+        )),
+        // A stub, not a real sprintf: it returns the variadic values it was given, so
+        // scenarios can see which arguments went to `format` and which to `args`.
+        "sprintf" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "sprintf",
+                Type::string(),
+                vec![
+                    Argument::string("format"),
+                    Argument::variadic("args", Type::any()),
+                ],
+            ),
+            |args| Ok(Value::Array(args[1..].to_vec())),
+        )),
         "keys" => Some(NativeFunction::new(
             FunctionDefinition::new(
                 "keys",

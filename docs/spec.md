@@ -101,7 +101,15 @@ the function's positional parameters, then its keywords against the keywords tha
 declares: an undeclared keyword raises `Function <name> got an unexpected keyword argument: <key>`,
 unless the function declares that it accepts any keywords. Keyword values aren't type-checked.
 Positional arguments are evaluated left to right, then keyword values left to right. A function
-type lists its keywords after its parameters, e.g. `fn(String, greeting: String) -> String`.
+type lists its keywords after its positional parameters, e.g.
+`fn(String, greeting: String) -> String`.
+
+A function's last positional parameter may be **variadic**: it takes zero or more positional
+arguments, never keywords. Keywords are declared separately, so a function can have both. A
+function with `k` positional parameters before the variadic one accepts any call with at least `k`
+positional arguments. A function type shows the variadic parameter as `...T`, after the other
+positional parameters and before any keywords, e.g. `fn(String, ...Any) -> String` or
+`fn(Any, ...Any, k: Number) -> Any`.
 
 ### Pipe
 
@@ -141,7 +149,9 @@ names, then native type names. Calls raise:
 - `Undefined function: <name>` when the name isn't bound;
 - `<name> is not a function` when the name is bound to a value that isn't a function;
 - `Function <name> expected <expected> argument(s), found <found>` when no signature of the
-  function takes that many arguments.
+  function takes that many positional arguments;
+- `Function <name> expected at least <minimum> argument(s), found <found>` when the function's
+  first signature is variadic and the call has fewer positional arguments than it requires.
 
 ## 7. Bindings
 

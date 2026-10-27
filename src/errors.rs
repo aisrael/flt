@@ -59,6 +59,12 @@ pub enum RuntimeError {
         expected: usize,
         found: usize,
     },
+    #[error("Function {name} expected at least {minimum} argument(s), found {found}")]
+    TooFewArguments {
+        name: String,
+        minimum: usize,
+        found: usize,
+    },
     #[error("Function {name} got an unexpected keyword argument: {key}")]
     UnexpectedKeywordArgument { name: String, key: String },
     #[error("Cannot bind {name}: it's {reason}")]
