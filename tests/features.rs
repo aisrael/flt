@@ -18,13 +18,13 @@ use flt::ast::Statement;
 use flt::parser::parse_expr;
 use flt::parser::parse_statement;
 use flt::runtime::functions::Argument;
+use flt::runtime::functions::Arguments;
 use flt::runtime::functions::FunctionDefinition;
 use flt::runtime::functions::FunctionSignature;
 use flt::runtime::functions::NativeFunction;
 use flt::runtime::native::NativeType;
 use flt::runtime::types::Type;
 use flt::runtime::Map;
-use flt::runtime::MapKey;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
@@ -164,24 +164,20 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 Type::any(),
                 vec![Argument::new("v", Type::any())],
             ),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.get::<&Value>("v")?.clone()),
         )),
-        "greet" => Some(NativeFunction::with_keywords(
+        "greet" => Some(NativeFunction::new(
             FunctionDefinition::new("greet", Type::string(), vec![Argument::string("name")])
                 .keyword("greeting", Type::string(), Value::String("Hello".into())),
-            |args: &[Value], keywords: &Map| match (
-                &args[0],
-                &keywords[&MapKey::symbol("greeting")],
-            ) {
-                (Value::String(name), Value::String(greeting)) => {
-                    Ok(Value::String(format!("{greeting}, {name}")))
-                }
-                _ => Ok(Value::None),
+            |args| {
+                let name: &str = args.get("name")?;
+                let greeting: &str = args.get("greeting")?;
+                Ok(Value::String(format!("{greeting}, {name}")))
             },
         )),
-        "options" => Some(NativeFunction::with_keywords(
+        "options" => Some(NativeFunction::new(
             FunctionDefinition::new("options", Type::map(), vec![]).rest_keywords(Type::any()),
-            |_args: &[Value], keywords: &Map| Ok(Value::Map(keywords.clone())),
+            |args| Ok(Value::Map(args.keywords().clone())),
         )),
         "count_args" => Some(NativeFunction::new(
             FunctionDefinition::new(
@@ -189,7 +185,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 Type::number(),
                 vec![Argument::variadic("args", Type::any())],
             ),
-            |args| Ok(Value::from(args.len() as u64)),
+            |args| Ok(Value::from(args.rest().len())),
         )),
         // A stub, not a real sprintf: it lists the variadic values it was given, so scenarios
         // can see which arguments went to `format` and which to `args`.
@@ -210,9 +206,9 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 Type::array(),
                 vec![Argument::new("map", Type::map())],
             ),
-            |args| match &args[0] {
-                Value::Map(map) => Ok(Value::Array(map.keys().cloned().map(Value::from).collect())),
-                _ => Ok(Value::Array(vec![])),
+            |args| {
+                let map: &Map = args.get("map")?;
+                Ok(Value::Array(map.keys().cloned().map(Value::from).collect()))
             },
         )),
         "date" => Some(NativeFunction::new(
@@ -226,9 +222,9 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 ],
             ),
             |args| {
-                let year = i32::try_from(&args[0])?;
-                let month = u32::try_from(&args[1])?;
-                let day = u32::try_from(&args[2])?;
+                let year: i32 = args.get("yyyy")?;
+                let month: u32 = args.get("mm")?;
+                let day: u32 = args.get("dd")?;
                 match NaiveDate::from_ymd_opt(year, month, day) {
                     Some(date) => Ok(Value::native(Date(date))),
                     None => Err(Error::native(std::io::Error::other(format!(
@@ -247,8 +243,8 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 ],
             ),
             |args| {
-                let from = args[0].downcast_native::<Date>()?;
-                let to = args[1].downcast_native::<Date>()?;
+                let from = args.native::<Date>("from")?;
+                let to = args.native::<Date>("to")?;
                 Ok(Value::from((to.0 - from.0).num_days()))
             },
         )),
@@ -263,9 +259,9 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 ],
             ),
             |args| {
-                let hour = u32::try_from(&args[0])?;
-                let min = u32::try_from(&args[1])?;
-                let sec = u32::try_from(&args[2])?;
+                let hour: u32 = args.get("hh")?;
+                let min: u32 = args.get("mm")?;
+                let sec: u32 = args.get("ss")?;
                 match NaiveTime::from_hms_opt(hour, min, sec) {
                     Some(time) => Ok(Value::native(Time(time))),
                     None => Err(Error::native(std::io::Error::other(format!(
@@ -306,12 +302,12 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             FunctionDefinition::new("liar", Type::number(), vec![]),
             |_args| Ok(Value::String("not a number".into())),
         )),
-        "scores" => Some(NativeFunction::with_keywords(
+        "scores" => Some(NativeFunction::new(
             FunctionDefinition::new("scores", Type::map(), vec![]).rest_keywords(Type::number()),
-            |_args: &[Value], keywords: &Map| Ok(Value::Map(keywords.clone())),
+            |args| Ok(Value::Map(args.keywords().clone())),
         )),
         // `foo` and `oof` have the same two overloads, declared in opposite orders.
-        "foo" => Some(NativeFunction::with_keywords(
+        "foo" => Some(NativeFunction::new(
             with_t(
                 with_n(FunctionDefinition::new(
                     "foo",
@@ -322,7 +318,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             ),
             n_or_t,
         )),
-        "oof" => Some(NativeFunction::with_keywords(
+        "oof" => Some(NativeFunction::new(
             with_n(
                 with_t(FunctionDefinition::new(
                     "oof",
@@ -335,14 +331,14 @@ fn native_function(name: &str) -> Option<NativeFunction> {
         )),
         // `pick` and `kcip` have the same two overloads, declared in opposite orders. Each
         // overload's `which` default names it, so a call returns the overload that matched.
-        "pick" => Some(NativeFunction::with_keywords(
+        "pick" => Some(NativeFunction::new(
             FunctionDefinition::new("pick", Type::string(), arity_0())
                 .keyword("which", Type::string(), Value::String("arity 0".into()))
                 .add_overload(Type::string(), arity_1())
                 .keyword("which", Type::string(), Value::String("arity 1".into())),
             which,
         )),
-        "kcip" => Some(NativeFunction::with_keywords(
+        "kcip" => Some(NativeFunction::new(
             FunctionDefinition::new("kcip", Type::string(), arity_1())
                 .keyword("which", Type::string(), Value::String("arity 1".into()))
                 .add_overload(Type::string(), arity_0())
@@ -374,13 +370,74 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             .add_overload(Type::any(), vec![Argument::new("a", Type::any())]),
             |_args| Ok(Value::None),
         )),
+        // `n` is positional in one overload and a keyword in the other.
+        "repeat" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "repeat",
+                Type::string(),
+                vec![Argument::string("s"), Argument::number("n")],
+            )
+            .add_overload(Type::string(), vec![Argument::string("s")])
+            .keyword("n", Type::number(), Value::from(2u64)),
+            |args| {
+                let s: &str = args.get("s")?;
+                let n: usize = args.get("n")?;
+                Ok(Value::String(s.repeat(n)))
+            },
+        )),
+        "twice" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "twice",
+                Type::option(Type::number()),
+                vec![Argument::new("n", Type::option(Type::number()))],
+            ),
+            |args| match args.get::<Option<i64>>("n")? {
+                Some(n) => Ok(Value::from(n * 2)),
+                None => Ok(Value::None),
+            },
+        )),
+        // Declares `Any`, but reads it as a string.
+        "shout" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "shout",
+                Type::string(),
+                vec![Argument::new("v", Type::any())],
+            ),
+            |args| {
+                let v: &str = args.get("v")?;
+                Ok(Value::String(format!("{}!", v.to_uppercase())))
+            },
+        )),
+        "size" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "size",
+                Type::number(),
+                vec![Argument::new("items", Type::array())],
+            ),
+            |args| Ok(Value::from(args.get::<&[Value]>("items")?.len())),
+        )),
+        // Reads `nmae`, which it doesn't declare.
+        "typo" => Some(NativeFunction::new(
+            FunctionDefinition::new("typo", Type::string(), vec![Argument::string("name")]),
+            |args| Ok(args.get::<&Value>("nmae")?.clone()),
+        )),
+        // Reads its variadic argument as one value.
+        "first" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "first",
+                Type::any(),
+                vec![Argument::variadic("values", Type::any())],
+            ),
+            |args| Ok(args.get::<&Value>("values")?.clone()),
+        )),
         _ => None,
     }
 }
 
 /// sprintf(format, *args) lists `args`, e.g. `[1, a]`, ignoring `format`
-fn sprintf(args: &[Value]) -> Result<Value, Error> {
-    let values: Vec<String> = args[1..]
+fn sprintf(args: &Arguments) -> Result<Value, Error> {
+    let values: Vec<String> = args
+        .rest()
         .iter()
         .map(|value| match value {
             Value::String(s) => s.clone(),
@@ -390,28 +447,26 @@ fn sprintf(args: &[Value]) -> Result<Value, Error> {
     Ok(Value::String(format!("[{}]", values.join(", "))))
 }
 
-/// describe(value) says whether it was given a number or text
-fn describe(args: &[Value]) -> Result<Value, Error> {
-    let kind = match &args[0] {
-        Value::Number(_) => "number",
-        _ => "text",
+/// describe(n) or describe(s) says whether it was given a number or text
+fn describe(args: &Arguments) -> Result<Value, Error> {
+    let kind = match args.value("n") {
+        Some(_) => "number",
+        None => "text",
     };
     Ok(Value::String(kind.into()))
 }
 
 /// pad(s, width) pads `s` on the left to `width` characters
-fn pad(args: &[Value]) -> Result<Value, Error> {
-    let width = usize::try_from(&args[1])?;
-    match &args[0] {
-        Value::String(s) => Ok(Value::String(format!("{s:>width$}"))),
-        _ => Ok(Value::None),
-    }
+fn pad(args: &Arguments) -> Result<Value, Error> {
+    let s: &str = args.get("s")?;
+    let width: usize = args.get("width")?;
+    Ok(Value::String(format!("{s:>width$}")))
 }
 
 /// total(*values) adds up its values
-fn total(args: &[Value]) -> Result<Value, Error> {
+fn total(args: &Arguments) -> Result<Value, Error> {
     let mut sum = BigDecimal::from(0);
-    for value in args {
+    for value in args.rest() {
         if let Value::Number(n) = value {
             sum += n;
         }
@@ -434,12 +489,8 @@ fn with_t(definition: FunctionDefinition) -> FunctionDefinition {
 }
 
 /// Returns "n" or "t", whichever keyword the matching overload declares
-fn n_or_t(_args: &[Value], keywords: &Map) -> Result<Value, Error> {
-    let name = if keywords.contains_key(&MapKey::symbol("n")) {
-        "n"
-    } else {
-        "t"
-    };
+fn n_or_t(args: &Arguments) -> Result<Value, Error> {
+    let name = if args.value("n").is_some() { "n" } else { "t" };
     Ok(Value::String(name.into()))
 }
 
@@ -457,8 +508,8 @@ fn arity_1() -> Vec<Argument> {
 }
 
 /// Returns the `which` keyword, which names the overload that matched
-fn which(_args: &[Value], keywords: &Map) -> Result<Value, Error> {
-    Ok(keywords[&MapKey::symbol("which")].clone())
+fn which(args: &Arguments) -> Result<Value, Error> {
+    Ok(args.get::<&Value>("which")?.clone())
 }
 
 /// Registers the fixture native types that the named fixture functions use. `Time` is

@@ -17,6 +17,9 @@ pub enum Error {
     RuntimeError(RuntimeError),
     #[error("Interpreter Error: {0}")]
     InterpreterError(InterpreterError),
+    /// A host's handler using flt's API wrongly: a bug in the host, not in the flt source
+    #[error("Handler Error: {0}")]
+    HandlerError(HandlerError),
     /// An error raised by a host's native function, shown unchanged
     #[error(transparent)]
     Native(Box<dyn std::error::Error + Send + Sync>),
@@ -33,6 +36,19 @@ impl Error {
 pub enum InterpreterError {
     #[error("Not yet implemented")]
     NotYetImplemented,
+}
+
+/// A native function's handler using flt's API wrongly, raised at the interface between flt and
+/// the host's handlers. Unlike [`Error::Native`], which carries the host's own errors, it's flt
+/// reporting a bug in the handler.
+#[derive(Debug, Error, PartialEq)]
+pub enum HandlerError {
+    /// The handler read a name that the overload that matched doesn't declare
+    #[error("Function {name} has no argument {argument}")]
+    UndeclaredArgument { name: String, argument: String },
+    /// The handler read a variadic argument, which has any number of values, as one value
+    #[error("Argument {argument} of {name} is variadic; read it with Arguments::rest")]
+    VariadicArgument { name: String, argument: String },
 }
 
 #[derive(Debug, Error, PartialEq)]

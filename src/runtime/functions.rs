@@ -5,16 +5,19 @@ use std::fmt;
 
 use crate::errors::ArgumentCount;
 use crate::errors::ArgumentCounts;
+use crate::errors::HandlerError;
 use crate::errors::RuntimeError;
+use crate::runtime::native::NativeType;
 use crate::runtime::types::Type;
+use crate::runtime::unexpected_type;
 use crate::runtime::Map;
 use crate::runtime::MapKey;
 use crate::runtime::Value;
 use crate::Error;
 
 /// The handler backing a native function: a Rust closure, which may capture host state. It
-/// gets the positional arguments, then the keyword arguments with their defaults filled in.
-pub type NativeFn = Box<dyn Fn(&[Value], &Map) -> Result<Value, Error> + Send + Sync>;
+/// gets the call's [`Arguments`], and reads them by name.
+pub type NativeFn = Box<dyn Fn(&Arguments) -> Result<Value, Error> + Send + Sync>;
 
 /// A native function pairs a type signature with a Rust implementation.
 pub struct NativeFunction {
@@ -23,32 +26,11 @@ pub struct NativeFunction {
 }
 
 impl NativeFunction {
-    /// Create a new native function from a definition and a handler.
-    ///
-    /// # Panics
-    ///
-    /// If the definition declares keyword arguments, which the handler couldn't see. Use
-    /// [`NativeFunction::with_keywords`] for those.
+    /// Create a new native function from a definition and a handler, with or without keyword
+    /// arguments.
     pub fn new(
         definition: FunctionDefinition,
-        handler: impl Fn(&[Value]) -> Result<Value, Error> + Send + Sync + 'static,
-    ) -> Self {
-        assert!(
-            !definition.declares_keywords(),
-            "Function {} declares keyword arguments, so it needs NativeFunction::with_keywords",
-            definition.name
-        );
-        Self {
-            definition,
-            handler: Box::new(move |args, _| handler(args)),
-        }
-    }
-
-    /// Create a native function whose handler also receives the call's keyword arguments,
-    /// with defaults filled in.
-    pub fn with_keywords(
-        definition: FunctionDefinition,
-        handler: impl Fn(&[Value], &Map) -> Result<Value, Error> + Send + Sync + 'static,
+        handler: impl Fn(&Arguments) -> Result<Value, Error> + Send + Sync + 'static,
     ) -> Self {
         Self {
             definition,
@@ -78,7 +60,12 @@ impl NativeFunction {
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
         let signature = self.definition.resolve(args, &keywords)?;
         let keywords = signature.bind_keywords(&self.definition.name, keywords)?;
-        let result = (self.handler)(args, &keywords)?;
+        let result = (self.handler)(&Arguments {
+            function_name: &self.definition.name,
+            signature,
+            positional: args,
+            keywords: &keywords,
+        })?;
         if signature.return_type.accepts(&result) {
             Ok(result)
         } else {
@@ -106,6 +93,180 @@ impl fmt::Debug for NativeFunction {
             .finish_non_exhaustive()
     }
 }
+
+/// A call's arguments, as a native function's handler gets them: the positional values, the
+/// keywords bound to the overload that matched, and that overload, which names them. A handler
+/// reads each argument by its name, whether the call passed it positionally or as a keyword.
+#[derive(Clone, Copy)]
+pub struct Arguments<'a> {
+    function_name: &'a str,
+    signature: &'a FunctionSignature,
+    positional: &'a [Value],
+    keywords: &'a Map,
+}
+
+impl<'a> Arguments<'a> {
+    /// The argument or declared keyword called `name`, converted to `T`. It raises
+    /// `Expected <type>, found <type>` or `Cannot convert <number> to <type>` if the value
+    /// doesn't convert, and a [`HandlerError`] if the overload has no single value of that name.
+    pub fn get<T: FromValue<'a>>(&self, name: &str) -> Result<T, Error> {
+        T::from_value(self.lookup(name)?)
+    }
+
+    /// Borrows the native value of the argument or declared keyword called `name`, raising
+    /// `Expected <T::NAME>, found <type>` if it isn't a `T`, and a [`HandlerError`] if the
+    /// overload has no single value of that name.
+    pub fn native<T: NativeType>(&self, name: &str) -> Result<&'a T, Error> {
+        self.lookup(name)?.downcast_native::<T>()
+    }
+
+    /// The value of the argument or declared keyword called `name`, or `None` if the overload
+    /// that matched has none: it declares no such name, or it's the variadic argument, whose
+    /// values are in [`Arguments::rest`].
+    pub fn value(&self, name: &str) -> Option<&'a Value> {
+        self.lookup(name).ok()
+    }
+
+    /// The values of the variadic last argument, empty if the overload has none.
+    pub fn rest(&self) -> &'a [Value] {
+        if self.signature.is_variadic() {
+            &self.positional[self.signature.minimum_arguments()..]
+        } else {
+            &[]
+        }
+    }
+
+    /// The keyword arguments: every declared keyword, in declaration order, with the call's
+    /// value or else its default, then any rest keywords in call order.
+    pub fn keywords(&self) -> &'a Map {
+        self.keywords
+    }
+
+    /// Every positional value, including the variadic argument's.
+    pub fn positional(&self) -> &'a [Value] {
+        self.positional
+    }
+
+    /// The name of the function being called.
+    pub fn function_name(&self) -> &'a str {
+        self.function_name
+    }
+
+    /// The overload that matched the call.
+    pub fn signature(&self) -> &'a FunctionSignature {
+        self.signature
+    }
+
+    /// The positional argument called `name`, else the declared keyword
+    fn lookup(&self, name: &str) -> Result<&'a Value, Error> {
+        let arguments = &self.signature.arguments;
+        let value = match arguments.iter().position(|argument| argument.name == name) {
+            Some(i) if arguments[i].variadic => {
+                return Err(self.handler_error(name, |name, argument| {
+                    HandlerError::VariadicArgument { name, argument }
+                }));
+            }
+            Some(i) => self.positional.get(i),
+            None if self.signature.declares_keyword(name) => {
+                self.keywords.get(&MapKey::symbol(name))
+            }
+            None => None,
+        };
+        value.ok_or_else(|| {
+            self.handler_error(name, |name, argument| HandlerError::UndeclaredArgument {
+                name,
+                argument,
+            })
+        })
+    }
+
+    fn handler_error(
+        &self,
+        argument: &str,
+        error: impl FnOnce(String, String) -> HandlerError,
+    ) -> Error {
+        Error::HandlerError(error(self.function_name.to_string(), argument.to_string()))
+    }
+}
+
+/// A Rust type that a handler can read an argument as, with [`Arguments::get`]. A conversion
+/// that fails raises an error, e.g. `Expected String, found Number`.
+pub trait FromValue<'a>: Sized {
+    fn from_value(value: &'a Value) -> Result<Self, Error>;
+}
+
+/// The value as it is
+impl<'a> FromValue<'a> for &'a Value {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        Ok(value)
+    }
+}
+
+impl<'a> FromValue<'a> for &'a str {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        match value {
+            Value::String(s) => Ok(s),
+            other => Err(unexpected_type(&Type::string().to_string(), other)),
+        }
+    }
+}
+
+impl<'a> FromValue<'a> for String {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        <&str>::from_value(value).map(str::to_string)
+    }
+}
+
+impl<'a> FromValue<'a> for bool {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        match value {
+            Value::Boolean(b) => Ok(*b),
+            other => Err(unexpected_type(&Type::boolean().to_string(), other)),
+        }
+    }
+}
+
+impl<'a> FromValue<'a> for &'a Map {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        match value {
+            Value::Map(map) => Ok(map),
+            other => Err(unexpected_type(&Type::map().to_string(), other)),
+        }
+    }
+}
+
+/// An array's elements
+impl<'a> FromValue<'a> for &'a [Value] {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        match value {
+            Value::Array(values) => Ok(values),
+            other => Err(unexpected_type(&Type::array().to_string(), other)),
+        }
+    }
+}
+
+/// `None` for `None`, and otherwise the value converted to `T`, for an `Option<…>` argument
+impl<'a, T: FromValue<'a>> FromValue<'a> for Option<T> {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        match value {
+            Value::None => Ok(None),
+            other => T::from_value(other).map(Some),
+        }
+    }
+}
+
+/// Rust number types convert as their `TryFrom<&Value>` does
+macro_rules! from_value_for_numbers {
+    ($($t:ty),*) => {$(
+        impl<'a> FromValue<'a> for $t {
+            fn from_value(value: &'a Value) -> Result<Self, Error> {
+                <$t>::try_from(value)
+            }
+        }
+    )*};
+}
+
+from_value_for_numbers!(i32, i64, u32, u64, usize, f64);
 
 /// A function definition is a collection of function signatures (overloads)
 pub struct FunctionDefinition {
@@ -189,13 +350,6 @@ impl FunctionDefinition {
         self.overloads
             .last_mut()
             .expect("a function definition has at least one overload")
-    }
-
-    /// Whether any overload declares keyword arguments or rest keywords.
-    fn declares_keywords(&self) -> bool {
-        self.overloads
-            .iter()
-            .any(|overload| !overload.keywords.is_empty() || overload.rest_keywords.is_some())
     }
 
     /// Check if the function definition accepts the given arguments.
@@ -306,6 +460,11 @@ impl FunctionSignature {
             rest_keywords: None,
             return_type,
         }
+    }
+
+    /// Whether the signature declares a keyword argument called `name`
+    fn declares_keyword(&self, name: &str) -> bool {
+        self.keywords.iter().any(|keyword| keyword.name == name)
     }
 
     /// Whether the last argument is variadic
@@ -507,7 +666,7 @@ mod tests {
                 Type::any(),
                 vec![Argument::new("v", Type::any())],
             ),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.get::<&Value>("v")?.clone()),
         )
     }
 
@@ -622,9 +781,7 @@ mod tests {
 
     /// echo(**) returns the keyword arguments it was given, as a map
     fn echo(definition: FunctionDefinition) -> NativeFunction {
-        NativeFunction::with_keywords(definition, |_args, keywords| {
-            Ok(Value::Map(keywords.clone()))
-        })
+        NativeFunction::new(definition, |args| Ok(Value::Map(args.keywords().clone())))
     }
 
     fn unexpected_keyword(result: Result<Value, Error>) -> Option<(String, String)> {
@@ -785,7 +942,7 @@ mod tests {
     #[test]
     fn test_variadic_handler_gets_every_value() {
         let function = NativeFunction::new(variadic_definition(1), |args| {
-            Ok(Value::Array(args.to_vec()))
+            Ok(Value::Array(args.positional().to_vec()))
         });
         let args = [number(1), number(2), number(3)];
         assert_eq!(function.call(&args).unwrap(), Value::Array(args.to_vec()));
@@ -808,11 +965,15 @@ mod tests {
 
     #[test]
     fn test_variadic_takes_declared_keywords() {
-        let function = NativeFunction::with_keywords(
+        let function = NativeFunction::new(
             variadic_definition(0).keyword("k", Type::any(), 0u64),
-            |args, keywords| {
+            |args| {
                 Ok(Value::Array(
-                    args.iter().chain(keywords.values()).cloned().collect(),
+                    args.rest()
+                        .iter()
+                        .chain(args.keywords().values())
+                        .cloned()
+                        .collect(),
                 ))
             },
         );
@@ -885,24 +1046,6 @@ mod tests {
         assert_eq!(
             variadic_definition(1).r#type().to_string(),
             "fn(Any, *Any) -> Any"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "NativeFunction::with_keywords")]
-    fn test_new_panics_on_a_definition_with_keywords() {
-        NativeFunction::new(
-            FunctionDefinition::new("f", Type::any(), vec![]).keyword("k", Type::any(), 1u64),
-            |_args| Ok(Value::None),
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "NativeFunction::with_keywords")]
-    fn test_new_panics_on_a_definition_with_rest_keywords() {
-        NativeFunction::new(
-            FunctionDefinition::new("f", Type::any(), vec![]).rest_keywords(Type::any()),
-            |_args| Ok(Value::None),
         );
     }
 
@@ -1133,7 +1276,7 @@ mod tests {
                 Type::string(),
                 vec![Argument::string("s"), Argument::number("width")],
             ),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.get::<&Value>("s")?.clone()),
         );
         assert_eq!(
             error(&pad, &[number(1), number(2)], &[]),
@@ -1232,7 +1375,7 @@ mod tests {
         let function = NativeFunction::new(
             FunctionDefinition::new("f", Type::number(), vec![Argument::number("n")])
                 .add_overload(Type::string(), vec![Argument::string("s")]),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.positional()[0].clone()),
         );
         assert_eq!(function.call(&[number(1)]).unwrap(), number(1));
         assert_eq!(function.call(&[string("a")]).unwrap(), string("a"));
@@ -1292,6 +1435,362 @@ mod tests {
             "k",
             Type::number(),
             string("one"),
+        );
+    }
+
+    /// Calls a function of `definition` whose handler is `handler`
+    fn call(
+        definition: FunctionDefinition,
+        args: &[Value],
+        call_keywords: &[(&str, Value)],
+        handler: impl Fn(&Arguments) -> Result<Value, Error> + Send + Sync + 'static,
+    ) -> Result<Value, Error> {
+        NativeFunction::new(definition, handler).call_with_keywords(args, keywords(call_keywords))
+    }
+
+    #[test]
+    fn test_get_reads_positional_arguments_by_name() {
+        let pad = FunctionDefinition::new(
+            "pad",
+            Type::string(),
+            vec![Argument::string("s"), Argument::number("width")],
+        );
+        let result = call(pad, &[string("ab"), number(4)], &[], |args| {
+            let width: usize = args.get("width")?;
+            let s: &str = args.get("s")?;
+            Ok(string(&format!("{s:>width$}")))
+        });
+        assert_eq!(result.unwrap(), string("  ab"));
+    }
+
+    /// greet(name, greeting = "Hello") returns "<greeting>, <name>"
+    fn greet() -> NativeFunction {
+        NativeFunction::new(
+            FunctionDefinition::new("greet", Type::string(), vec![Argument::string("name")])
+                .keyword("greeting", Type::string(), string("Hello")),
+            |args| {
+                let name: &str = args.get("name")?;
+                let greeting: &str = args.get("greeting")?;
+                Ok(string(&format!("{greeting}, {name}")))
+            },
+        )
+    }
+
+    #[test]
+    fn test_get_reads_declared_keywords_with_their_defaults() {
+        assert_eq!(
+            greet().call(&[string("Ann")]).unwrap(),
+            string("Hello, Ann")
+        );
+        assert_eq!(
+            greet()
+                .call_with_keywords(&[string("Ann")], keywords(&[("greeting", string("Hi"))]))
+                .unwrap(),
+            string("Hi, Ann")
+        );
+    }
+
+    /// repeat(s, n) and repeat(s, n = 2): `n` is positional in one overload, a keyword in the
+    /// other
+    fn repeat() -> NativeFunction {
+        NativeFunction::new(
+            FunctionDefinition::new(
+                "repeat",
+                Type::string(),
+                vec![Argument::string("s"), Argument::number("n")],
+            )
+            .add_overload(Type::string(), vec![Argument::string("s")])
+            .keyword("n", Type::number(), number(2)),
+            |args| {
+                let s: &str = args.get("s")?;
+                let n: usize = args.get("n")?;
+                Ok(string(&s.repeat(n)))
+            },
+        )
+    }
+
+    #[test]
+    fn test_an_argument_is_read_by_name_whether_positional_or_keyword() {
+        let ab = [string("ab")];
+        assert_eq!(
+            repeat().call(&[string("ab"), number(3)]).unwrap(),
+            string("ababab")
+        );
+        assert_eq!(repeat().call(&ab).unwrap(), string("abab"));
+        assert_eq!(
+            repeat()
+                .call_with_keywords(&ab, keywords(&[("n", number(3))]))
+                .unwrap(),
+            string("ababab")
+        );
+    }
+
+    #[test]
+    fn test_from_value_converts_to_rust_types() {
+        let map = keywords(&[("k", number(1))]);
+        let array = vec![number(1), string("a")];
+        assert_eq!(<&Value>::from_value(&number(1)).unwrap(), &number(1));
+        assert_eq!(<&str>::from_value(&string("a")).unwrap(), "a");
+        assert_eq!(String::from_value(&string("a")).unwrap(), "a");
+        assert!(bool::from_value(&Value::Boolean(true)).unwrap());
+        assert_eq!(<&Map>::from_value(&Value::Map(map.clone())).unwrap(), &map);
+        assert_eq!(
+            <&[Value]>::from_value(&Value::Array(array.clone())).unwrap(),
+            array.as_slice()
+        );
+        assert_eq!(i32::from_value(&Value::from(-3i64)).unwrap(), -3);
+        assert_eq!(i64::from_value(&Value::from(-3i64)).unwrap(), -3);
+        assert_eq!(u32::from_value(&number(3)).unwrap(), 3);
+        assert_eq!(u64::from_value(&number(3)).unwrap(), 3);
+        assert_eq!(usize::from_value(&number(3)).unwrap(), 3);
+        assert_eq!(f64::from_value(&number(3)).unwrap(), 3.0);
+    }
+
+    #[test]
+    fn test_from_value_reads_none_as_none_for_an_option() {
+        assert_eq!(Option::<i64>::from_value(&Value::None).unwrap(), None);
+        assert_eq!(Option::<i64>::from_value(&number(2)).unwrap(), Some(2));
+        assert_eq!(Option::<&str>::from_value(&string("a")).unwrap(), Some("a"));
+    }
+
+    #[test]
+    fn test_from_value_raises_an_error_for_a_value_that_does_not_convert() {
+        let error = |result: Result<(), Error>| result.unwrap_err().to_string();
+        let cases = [
+            (
+                error(<&str>::from_value(&number(1)).map(drop)),
+                "Expected String, found Number",
+            ),
+            (
+                error(String::from_value(&symbol("a")).map(drop)),
+                "Expected String, found Symbol",
+            ),
+            (
+                error(bool::from_value(&string("true")).map(drop)),
+                "Expected Boolean, found String",
+            ),
+            (
+                error(<&Map>::from_value(&Value::Array(vec![])).map(drop)),
+                "Expected Map, found Array",
+            ),
+            (
+                error(<&[Value]>::from_value(&Value::Map(Map::new())).map(drop)),
+                "Expected Array, found Map",
+            ),
+            (
+                error(usize::from_value(&Value::from(-1i64)).map(drop)),
+                "Cannot convert -1 to usize",
+            ),
+            (
+                error(Option::<&str>::from_value(&number(1)).map(drop)),
+                "Expected String, found Number",
+            ),
+        ];
+        for (found, expected) in cases {
+            assert_eq!(found, format!("Runtime Error: {expected}"));
+        }
+    }
+
+    #[test]
+    fn test_get_raises_the_conversion_error() {
+        let shout = FunctionDefinition::new(
+            "shout",
+            Type::string(),
+            vec![Argument::new("v", Type::any())],
+        );
+        let result = call(shout, &[number(1)], &[], |args| {
+            Ok(string(&args.get::<&str>("v")?.to_uppercase()))
+        });
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Runtime Error: Expected String, found Number"
+        );
+    }
+
+    #[test]
+    fn test_native_borrows_a_native_value() {
+        use crate::runtime::native::fixtures::Meters;
+        use crate::runtime::native::fixtures::Seconds;
+
+        let length = || {
+            FunctionDefinition::new(
+                "length",
+                Type::number(),
+                vec![Argument::new("m", Type::any())],
+            )
+        };
+        let handler = |args: &Arguments| Ok(Value::from(args.native::<Meters>("m")?.0));
+        assert_eq!(
+            call(length(), &[Value::native(Meters(5))], &[], handler).unwrap(),
+            Value::from(5i64)
+        );
+        assert_eq!(
+            call(length(), &[Value::native(Seconds(5))], &[], handler)
+                .unwrap_err()
+                .to_string(),
+            "Runtime Error: Expected Meters, found Seconds"
+        );
+    }
+
+    #[test]
+    fn test_value_tells_overloads_apart_by_their_names() {
+        let describe = NativeFunction::new(
+            FunctionDefinition::new("describe", Type::string(), vec![Argument::number("n")])
+                .add_overload(Type::string(), vec![Argument::string("s")]),
+            |args| {
+                let kind = match (args.value("n"), args.value("s")) {
+                    (Some(_), None) => "number",
+                    (None, Some(_)) => "text",
+                    _ => "both or neither",
+                };
+                Ok(string(kind))
+            },
+        );
+        assert_eq!(describe.call(&[number(1)]).unwrap(), string("number"));
+        assert_eq!(describe.call(&[string("a")]).unwrap(), string("text"));
+    }
+
+    #[test]
+    fn test_rest_gives_the_variadic_values() {
+        let function = NativeFunction::new(variadic_definition(1), |args| {
+            Ok(Value::Array(args.rest().to_vec()))
+        });
+        assert_eq!(
+            function.call(&[number(1), number(2), number(3)]).unwrap(),
+            Value::Array(vec![number(2), number(3)])
+        );
+        assert_eq!(function.call(&[number(1)]).unwrap(), Value::Array(vec![]));
+    }
+
+    #[test]
+    fn test_rest_is_empty_without_a_variadic_argument() {
+        let result = call(
+            FunctionDefinition::new("f", Type::any(), vec![Argument::number("n")]),
+            &[number(1)],
+            &[],
+            |args| Ok(Value::Array(args.rest().to_vec())),
+        );
+        assert_eq!(result.unwrap(), Value::Array(vec![]));
+    }
+
+    #[test]
+    fn test_rest_keywords_are_in_keywords_but_have_no_names() {
+        let options =
+            || FunctionDefinition::new("options", Type::any(), vec![]).rest_keywords(Type::any());
+        let a = [("a", number(1))];
+        assert_eq!(
+            call(options(), &[], &a, |args| Ok(Value::Map(
+                args.keywords().clone()
+            )))
+            .unwrap(),
+            Value::Map(keywords(&a))
+        );
+        assert!(matches!(
+            call(options(), &[], &a, |args| Ok(args.get::<&Value>("a")?.clone())),
+            Err(Error::HandlerError(HandlerError::UndeclaredArgument { name, argument }))
+                if name == "options" && argument == "a"
+        ));
+    }
+
+    #[test]
+    fn test_positional_function_name_and_signature() {
+        let definition = FunctionDefinition::new("f", Type::any(), vec![Argument::number("a")])
+            .add_overload(
+                Type::any(),
+                vec![Argument::number("a"), Argument::number("b")],
+            );
+        let result = call(definition, &[number(1), number(2)], &[], |args| {
+            Ok(Value::Array(vec![
+                string(args.function_name()),
+                Value::Array(args.positional().to_vec()),
+                Value::from(args.signature().arguments.len()),
+            ]))
+        });
+        assert_eq!(
+            result.unwrap(),
+            Value::Array(vec![
+                string("f"),
+                Value::Array(vec![number(1), number(2)]),
+                number(2),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_reading_an_undeclared_name_is_a_handler_error() {
+        let typo = || FunctionDefinition::new("typo", Type::any(), vec![Argument::string("name")]);
+        let ann = [string("Ann")];
+        let via_get = call(typo(), &ann, &[], |args| {
+            Ok(args.get::<&Value>("nmae")?.clone())
+        });
+        assert!(matches!(
+            &via_get,
+            Err(Error::HandlerError(HandlerError::UndeclaredArgument { name, argument }))
+                if name == "typo" && argument == "nmae"
+        ));
+        assert_eq!(
+            via_get.unwrap_err().to_string(),
+            "Handler Error: Function typo has no argument nmae"
+        );
+        let via_native = call(typo(), &ann, &[], |args| {
+            use crate::runtime::native::fixtures::Meters;
+            Ok(Value::from(args.native::<Meters>("nmae")?.0))
+        });
+        assert_eq!(
+            via_native.unwrap_err().to_string(),
+            "Handler Error: Function typo has no argument nmae"
+        );
+        assert_eq!(
+            call(typo(), &ann, &[], |args| Ok(Value::Boolean(
+                args.value("nmae").is_some()
+            )))
+            .unwrap(),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_names_are_those_of_the_overload_that_matched() {
+        let definition = FunctionDefinition::new("f", Type::any(), vec![Argument::number("n")])
+            .add_overload(Type::any(), vec![Argument::string("s")]);
+        let result = call(definition, &[string("a")], &[], |args| {
+            Ok(args.get::<&Value>("n")?.clone())
+        });
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Handler Error: Function f has no argument n"
+        );
+    }
+
+    #[test]
+    fn test_reading_a_variadic_argument_by_name_is_a_handler_error() {
+        let first = || {
+            FunctionDefinition::new(
+                "first",
+                Type::any(),
+                vec![Argument::variadic("values", Type::any())],
+            )
+        };
+        for args in [vec![number(1), number(2)], vec![]] {
+            let result = call(first(), &args, &[], |args| {
+                Ok(args.get::<&Value>("values")?.clone())
+            });
+            assert!(matches!(
+                &result,
+                Err(Error::HandlerError(HandlerError::VariadicArgument { name, argument }))
+                    if name == "first" && argument == "values"
+            ));
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Handler Error: Argument values of first is variadic; read it with Arguments::rest"
+            );
+        }
+        assert_eq!(
+            call(first(), &[number(1)], &[], |args| {
+                Ok(Value::Boolean(args.value("values").is_some()))
+            })
+            .unwrap(),
+            Value::Boolean(false)
         );
     }
 }

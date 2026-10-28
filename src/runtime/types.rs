@@ -226,7 +226,7 @@ mod tests {
                 Type::any(),
                 vec![Argument::new("v", Type::any())],
             ),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.get::<&Value>("v")?.clone()),
         )))
     }
 
@@ -334,7 +334,7 @@ mod tests {
         let overloaded = Value::Function(Arc::new(NativeFunction::new(
             FunctionDefinition::new("f", Type::number(), vec![Argument::number("n")])
                 .add_overload(Type::string(), vec![Argument::string("s")]),
-            |args| Ok(args[0].clone()),
+            |args| Ok(args.positional()[0].clone()),
         )));
         let number_to_number = FunctionType::new(vec![Type::number()], Type::number());
         let string_to_string = FunctionType::new(vec![Type::string()], Type::string());

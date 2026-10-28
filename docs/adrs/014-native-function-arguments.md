@@ -97,7 +97,7 @@ use the same name for the same thing.
 - `native::<T>(name)` borrows a native value, as `Value::downcast_native` does
   ([ADR 007](007-native-types-and-values.md)).
 - `value(name)` gives the `&Value`, or `None` if the called overload has no argument or keyword of
-  that name. A handler serving overloads with different argument names uses it to tell them apart:
+  that name, or if it's the variadic argument (decision 5). A handler serving overloads with different argument names uses it to tell them apart:
 
   ```rust
   /// head(plan, ...) or head(path, ...)

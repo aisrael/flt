@@ -105,7 +105,7 @@ pad("ab", 4)          # "  ab"
 
   A host can implement the `FromValue` trait for types of its own.
 - **`args.native::<T>(name)`** borrows a [native value](#native-types-and-values).
-- **`args.value(name)`** gives the `&Value`, or `None` if the overload that matched has no argument or keyword of that name ([Overloads](#overloads)).
+- **`args.value(name)`** gives the `&Value`, or `None` if the overload that matched has no argument or keyword of that name, or if it's the variadic argument, whose values are in `args.rest()` ([Overloads](#overloads)).
 - **`args.rest()`** gives a [variadic argument](#variadic-arguments)'s values, and **`args.keywords()`** the keyword arguments as a map.
 - **`args.positional()`** gives every positional value as a slice, **`args.function_name()`** the function's name, and **`args.signature()`** the overload that matched.
 
