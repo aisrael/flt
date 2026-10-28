@@ -70,8 +70,9 @@ impl From<&FunctionSignature> for FunctionType {
     }
 }
 
-/// Writes `fn(P1, P2, *V, k: K, **T) -> R`. `->` groups before `|`, so a union return type is
-/// bracketed, e.g. `fn(Number) -> (Number | None)`.
+/// Writes `fn(P1, P2, *V, k: K, **T) -> R`. A union is bracketed where `|` would otherwise be
+/// misread: after `*` or `**`, e.g. `fn(*(String | Symbol)) -> String`, and as the return type,
+/// since `->` groups before `|`, e.g. `fn(Number) -> (Number | None)`.
 impl fmt::Display for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "fn(")?;
@@ -86,8 +87,14 @@ impl fmt::Display for FunctionType {
                 format!("\"{}\": {type}", escape_string(name))
             }
         });
-        let variadic = self.variadic.iter().map(|r#type| format!("*{type}"));
-        let rest_keywords = self.rest_keywords.iter().map(|r#type| format!("**{type}"));
+        let variadic = self
+            .variadic
+            .iter()
+            .map(|r#type| format!("*{}", Bracketed(r#type)));
+        let rest_keywords = self
+            .rest_keywords
+            .iter()
+            .map(|r#type| format!("**{}", Bracketed(r#type)));
         for (i, parameter) in parameters
             .chain(variadic)
             .chain(keywords)
@@ -99,9 +106,18 @@ impl fmt::Display for FunctionType {
             }
             write!(f, "{parameter}")?;
         }
-        match self.return_type.as_ref() {
-            Type::Union(_) => write!(f, ") -> ({})", self.return_type),
-            return_type => write!(f, ") -> {return_type}"),
+        write!(f, ") -> {}", Bracketed(&self.return_type))
+    }
+}
+
+/// Writes a type, in brackets if it's a union
+struct Bracketed<'a>(&'a Type);
+
+impl fmt::Display for Bracketed<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Type::Union(_) => write!(f, "({})", self.0),
+            r#type => write!(f, "{type}"),
         }
     }
 }
@@ -134,6 +150,26 @@ mod tests {
             Type::union(Type::number(), Type::none()),
         );
         assert_eq!(function_type.to_string(), "fn(Number) -> (Number | None)");
+    }
+
+    #[test]
+    fn test_display_brackets_union_after_stars() {
+        let string_or_symbol = Type::union(Type::string(), Type::symbol());
+        let function_type =
+            FunctionType::with_variadic(vec![], string_or_symbol.clone(), Type::string());
+        assert_eq!(
+            function_type.to_string(),
+            "fn(*(String | Symbol)) -> String"
+        );
+        let function_type = with_keywords(
+            FunctionType::new(vec![string_or_symbol.clone()], Type::map()),
+            &[("k", Type::union(Type::number(), Type::none()))],
+            Some(string_or_symbol),
+        );
+        assert_eq!(
+            function_type.to_string(),
+            "fn(String | Symbol, k: Number | None, **(String | Symbol)) -> Map"
+        );
     }
 
     #[test]
