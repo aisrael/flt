@@ -94,7 +94,7 @@ The evaluator currently supports:
 - `Argument <argument> of <name> expects <type>, found <type>` - calling a function with an argument of the wrong type, e.g. `days_between(1, date(2026, 1, 1))` when `days_between` takes a `Date`
 - `Function <name> got an unexpected keyword argument: <key>` - calling a function with a [keyword argument](./functions-and-pipe.md#keyword-arguments) it doesn't declare
 - `Keyword argument <key> of <name> expects <type>, found <type>` - calling a function with a keyword argument of the wrong type
-- `No overload of <name> accepts (<type>, …)` - calling an overloaded function with arguments none of its signatures of that arity accepts, e.g. `No overload of describe accepts (Boolean)`
+- `No overload of <name> accepts (<type>, …)` - calling an overloaded function with arguments none of its signatures of that arity accepts, when none of them is [closest](./functions-and-pipe.md#overloads), e.g. `No overload of describe accepts (Boolean)`. If one is closest, the error is that overload's, e.g. `Argument n of head expects Number, found String`
 - `Function <name> returned <type>, expected <type>` - a native function whose result isn't of its signature's return type
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`

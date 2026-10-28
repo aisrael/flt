@@ -266,6 +266,7 @@ describe(true)                 # error: No overload of describe accepts (Boolean
 ```
 
 - **The overload is picked by arity, longest first, then by type and keywords**, as described in [Overloads](./functions-and-pipe.md#overloads). The order the overloads are declared in doesn't matter, except that if several of the same arity match a call, `SimpleRuntime` runs the one declared first.
+- **A call that doesn't match gets the closest overload's error**, if one is closest, as described in [Overloads](./functions-and-pipe.md#overloads). `describe(true)` fails at the first argument of both, so neither is closer.
 - **Each overload has its own return type**, and the handler's result is checked against the one that matched.
 - **Use a union when the forms do the same thing**, as in `column: Symbol | String`, and overloads when they do different things or return different types. `count(plan: Plan) -> Number`, which runs a query, and `count(column: Symbol | String) -> Aggregate`, which builds an aggregate, are two overloads.
 - **Give the same thing the same name in every overload**, and the handler can read it without knowing which overload matched. `args.value` tells overloads apart by their names, as `describe` does.

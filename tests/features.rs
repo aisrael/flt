@@ -416,6 +416,31 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             ),
             |args| Ok(Value::from(args.get::<&[Value]>("items")?.len())),
         )),
+        // Two overloads of two arguments that differ only in the first, like datu's `head`.
+        "head" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "head",
+                Type::array(),
+                vec![Argument::new("items", Type::array()), Argument::number("n")],
+            )
+            .add_overload(
+                Type::string(),
+                vec![Argument::string("s"), Argument::number("n")],
+            ),
+            |args| {
+                let n: usize = args.get("n")?;
+                match args.value("items") {
+                    Some(_) => {
+                        let items: &[Value] = args.get("items")?;
+                        Ok(Value::Array(items.iter().take(n).cloned().collect()))
+                    }
+                    None => {
+                        let s: &str = args.get("s")?;
+                        Ok(Value::String(s.chars().take(n).collect()))
+                    }
+                }
+            },
+        )),
         // Reads `nmae`, which it doesn't declare.
         "typo" => Some(NativeFunction::new(
             FunctionDefinition::new("typo", Type::string(), vec![Argument::string("name")]),
