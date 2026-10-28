@@ -9,7 +9,8 @@ Feature: Native types and values
 
   The fixtures register chrono's `NaiveDate` as the native type `Date`, with
   `date(yyyy, mm, dd) -> Date` and `days_between(from: Date, to: Date) -> Number`.
-  `date` reads its arguments with `i32::try_from` and `u32::try_from`.
+  `date` reads its arguments with `args.get::<i32>` and `args.get::<u32>`, and
+  `days_between` with `args.native::<Date>`.
   `time(hh, mm, ss) -> Time` makes a value of a second native type, `NaiveTime`,
   which the fixtures never register.
 
