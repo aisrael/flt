@@ -96,11 +96,11 @@ duplicate keyword is a syntax error.
 Keyword arguments are passed by name, separately from positional ones, so `foo(1, bar: true)`
 passes `1` positionally and `bar` by keyword, while `foo(1, { bar: true })` passes two positional
 arguments. A function declares the keywords it accepts, each with a default that a call may leave
-out. A positional argument never fills a keyword. A call's arguments are checked by count against
-the function's positional parameters, then its keywords against the keywords that function
-declares: an undeclared keyword raises `Function <name> got an unexpected keyword argument: <key>`,
-unless the function declares that it accepts any keywords. Keyword values aren't type-checked.
-Positional arguments are evaluated left to right, then keyword values left to right. A function
+out. A positional argument never fills a keyword. A function can also accept any other keywords,
+as rest keywords of a given type. A call's keywords help pick the signature it calls (see
+[Type-checked calls](#type-checked-calls)), and a keyword no signature declares raises
+`Function <name> got an unexpected keyword argument: <key>`. Positional arguments are evaluated
+left to right, then keyword values left to right. A function
 type lists its keywords after its positional parameters, e.g.
 `fn(String, greeting: String) -> String`.
 
@@ -111,6 +111,38 @@ positional arguments. A function type shows the variadic parameter as `*T`, afte
 positional parameters and before any keywords, e.g. `fn(String, *Any) -> String` or
 `fn(Any, *Any, k: Number) -> Any`.
 
+### Type-checked calls
+
+A function may have several signatures, or **overloads**. Every call is checked against them by
+type. A signature **matches** a call if:
+
+- it takes that many positional arguments;
+- each positional argument, and each value of a variadic parameter, is of its parameter's type;
+- each keyword the call passes is one the signature declares, with a value of that keyword's type,
+  or is accepted by the signature's rest keywords, with a value of their type. A keyword the call
+  leaves out takes its default.
+
+A value is of type `Any` always; of a built-in type if it has that type; of `A | B` if it's of
+either; of `Option<T>` if it's `None` or of `T`; of a native type only if it's a value of that same
+native type, whatever its name; and of a function type if the function's type, or one of its
+signatures' types, is exactly that type.
+
+A signature's **arity** is the number of its positional parameters before any variadic one. The
+signatures are tried in order of arity, longest first, and the first that matches is called, so the
+order they were declared in doesn't matter. If several signatures of the same arity match, the spec
+doesn't say which one is called. The function's result must be of the called signature's return
+type.
+
+```
+foo(*args: Any) -> String
+foo(a: Number, *args: Any) -> String
+```
+
+```flt
+foo(1, :b)       # the second: arity 1 is tried before arity 0
+foo(:b)          # the first
+```
+
 ### Pipe
 
 `x |> f(a, ...)` evaluates as `f(x, a, ...)`, and `x |> f` as `f(x)`: the left side becomes the
@@ -118,7 +150,7 @@ positional parameters and before any keywords, e.g. `fn(String, *Any) -> String`
 e.g. `READ("input") |> SELECT(:id) |> WRITE("output")`. `|>` sits at level 9 above.
 
 The left side is evaluated first, then the right side's arguments. The right side must be a call or a
-bare name, resolved and arity-checked like any call, with the piped value counted:
+bare name, resolved and checked like any call, with the piped value as its first argument:
 `1 |> typeof(2)` raises `Function typeof expected 1 argument(s), found 2`. Anything else raises
 `Cannot pipe into <expr>`. The piped value is positional: `x |> f(a, k: v)` passes `x` and `a`
 positionally and `k` by keyword.
@@ -148,10 +180,20 @@ names, then native type names. Calls raise:
 
 - `Undefined function: <name>` when the name isn't bound;
 - `<name> is not a function` when the name is bound to a value that isn't a function;
-- `Function <name> expected <expected> argument(s), found <found>` when no signature of the
-  function takes that many positional arguments;
-- `Function <name> expected at least <minimum> argument(s), found <found>` when the function's
-  first signature is variadic and the call has fewer positional arguments than it requires.
+- `Function <name> expected <counts> argument(s), found <found>` when no signature of the
+  function takes that many positional arguments. `<counts>` lists the counts its signatures take,
+  smallest first, with `at least <n>` for a variadic one, e.g. `1`, `at least 1`, `1 or 2` or
+  `1, 2 or at least 3`;
+- when one signature takes that many positional arguments but doesn't match, the first thing that
+  fails, checking positional arguments first, then keywords in call order:
+  - `Argument <argument> of <name> expects <type>, found <type>`;
+  - `Function <name> got an unexpected keyword argument: <key>`;
+  - `Keyword argument <key> of <name> expects <type>, found <type>`;
+- `No overload of <name> accepts (<type>, …, <key>: <type>, …)` when several signatures take that
+  many positional arguments and none matches, listing the call's positional argument types, then
+  its keywords;
+- `Function <name> returned <type>, expected <type>` when the result isn't of the called
+  signature's return type.
 
 ## 7. Bindings
 

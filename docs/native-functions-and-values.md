@@ -65,7 +65,7 @@ let f = identity
 f(42)                 # 42
 ```
 
-Before a native function runs, the runtime checks the number of arguments against the function's signature ([Calls](./functions-and-pipe.md#calls)). Argument types aren't checked yet, not even [native types](#native-types-and-values); that is left to the function itself.
+Before a native function runs, the runtime checks the call against the function's signature, by the number of arguments and by type, including [native types](#native-types-and-values) ([Calls](./functions-and-pipe.md#calls), [ADR 013](./adrs/013-type-checked-function-calls.md)). A handler only ever sees arguments of the types it declares, and a function with several signatures runs its handler with the arguments of whichever one matched ([Overloads](#overloads)). After the handler returns, the runtime checks its result against the signature's return type: a handler for `-> Number` that returns a string raises `Function <name> returned String, expected Number`. Declare `Any` for an argument or result the function checks itself.
 
 A map arrives as `Value::Map(flt::runtime::Map)`, keyed by `MapKey`. A key written in flt source, in a map literal or as a call's [keyword argument](#keyword-arguments), is a symbol, `MapKey::Symbol`. A host can also use string keys, `MapKey::String`, which flt source can't write yet; a symbol and a string with the same text are different keys. In `SimpleRuntime`, maps keep insertion order, so a handler iterating a map literal sees its entries in source order. Hosts build maps with `flt::runtime::Map` too.
 
@@ -128,8 +128,9 @@ greet("Ann", tone: "warm")     # error: Function greet got an unexpected keyword
 ```
 
 - **The map holds every declared keyword**, with the call's value or else the default, so `keywords[&MapKey::symbol("greeting")]` is always there. Its keys are symbols, in declaration order.
-- **`keyword` adds to the most recently added overload**, so each overload declares its own keywords. The runtime picks the overload by the number of positional arguments, then checks the call's keywords against that overload's.
-- **Keyword values aren't type-checked**, like positional arguments. The handler checks them itself, as `greet` does.
+- **`keyword` adds to the most recently added overload**, so each overload declares its own keywords, and a call's keywords help pick the overload ([Overloads](#overloads)).
+- **Keyword values are type-checked**, like positional arguments, so `greet("Ann", greeting: 1)` raises `Keyword argument greeting of greet expects String, found Number`, and `greet`'s handler only sees a string. Rest keywords are checked against the type given to `rest_keywords`.
+- **A default must be of its keyword's type.** `keyword` panics if it isn't, since that's a bug in the definition.
 - **`NativeFunction::new` is for functions without keywords.** It panics if the definition declares any, since its handler couldn't see them. Its handler is never called with keywords: a call that passes any raises `Function <name> got an unexpected keyword argument: <key>`.
 
 A function that takes any keywords, such as one whose keywords name things the user picks, declares rest keywords with `FunctionDefinition::rest_keywords`. They follow the declared keywords in the map, in call order:
@@ -181,9 +182,46 @@ count_args(1, 2, 3)            # 3
 ```
 
 - **The arguments before a variadic one are required.** `sprintf`, defined with `vec![Argument::string("format"), Argument::variadic("args", Type::any())]`, has type `fn(String, *Any) -> String`, so `sprintf("x")` passes and `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
-- **Whether no values is an error is up to the handler.** A call that passes the arity check reaches the handler even if the variadic argument got nothing.
+- **Each value is type-checked** against the variadic argument's type: with `total(*values: Number)`, `total(1, "a")` raises `Argument values of total expects Number, found String`.
+- **Whether no values is an error is up to the handler.** A call that passes the checks reaches the handler even if the variadic argument got nothing.
 - **Only the last positional argument can be variadic.** `FunctionDefinition::new` and `add_overload` panic on a variadic argument anywhere else. Keywords are declared separately, so a function can have both: its type lists the variadic parameter before its keywords, e.g. `fn(Any, *Any, k: Number) -> Any`.
 - **A variadic argument takes only positional values.** A function can declare keywords too, with `NativeFunction::with_keywords`, and gets them in its `Map`, as for any function.
+
+### Overloads
+
+`FunctionDefinition::add_overload` gives a function another signature. The overloads share one handler, which gets the arguments of whichever overload matched the call:
+
+```rust
+/// describe(value) says whether it was given a number or text
+fn describe(args: &[Value]) -> Result<Value, Error> {
+    let kind = match &args[0] {
+        Value::Number(_) => "number",
+        _ => "text",
+    };
+    Ok(Value::String(kind.into()))
+}
+
+// describe has type fn(Number) -> String | fn(String | Symbol) -> String
+runtime.register_function(NativeFunction::new(
+    FunctionDefinition::new("describe", Type::string(), vec![Argument::number("n")])
+        .add_overload(
+            Type::string(),
+            vec![Argument::new("s", Type::union(Type::string(), Type::symbol()))],
+        ),
+    describe,
+))?;
+```
+
+```flt
+describe(1)                    # "number"
+describe("a")                  # "text"
+describe(:a)                   # "text"
+describe(true)                 # error: No overload of describe accepts (Boolean)
+```
+
+- **The overload is picked by arity, longest first, then by type and keywords**, as described in [Overloads](./functions-and-pipe.md#overloads). The order the overloads are declared in doesn't matter, except that if several of the same arity match a call, `SimpleRuntime` runs the one declared first.
+- **Each overload has its own return type**, and the handler's result is checked against the one that matched.
+- **Use a union when the forms do the same thing**, as in `column: Symbol | String`, and overloads when they do different things or return different types. `count(plan: Plan) -> Number`, which runs a query, and `count(column: Symbol | String) -> Aggregate`, which builds an aggregate, are two overloads.
 
 ## Native Types and Values
 
@@ -282,7 +320,7 @@ install(&mut runtime)?;
 
 - `Value::native(Date(date))` makes a native value.
 - `value.downcast_native::<Date>()` reads one back. Given any other value, it raises `Expected Date, found <type>`.
-- `value.get_native::<Date>()` reads one back as an `Option`, for a handler that accepts more than one kind of value.
+- `value.get_native::<Date>()` reads one back as an `Option`, for a handler that accepts more than one kind of value, e.g. one declared with a union type.
 - `Type::native::<Date>()` names the native type in a signature.
 - `runtime.register_native_type::<Date>()` registers the type. Through a `&mut dyn Runtime`, call `runtime.register_native_type_info(NativeTypeInfo::of::<Date>())` instead, since the generic method can't be called there.
 - `Value::from` turns a Rust `u64`, `i64` or `usize` into a `Number`.
@@ -303,7 +341,7 @@ typeof(Date)                               # Type
 typeof(days_between)                       # fn(Date, Date) -> Number
 new_year |> days_between(date(2026, 10, 25))   # 297
 new_year == date(2026, 1, 1)               # true: the host's PartialEq compares the dates
-days_between(1, new_year)                  # error: Expected Date, found Number
+days_between(1, new_year)                  # error: Argument from of days_between expects Date, found Number
 date(2026, -1, 1)                          # error: Cannot convert -1 to u32
 Date(2026, 1, 1)                           # error: Date is not a function
 new_year.year                              # error: Invalid Operand Type
@@ -314,7 +352,7 @@ let Date = 1                               # error: Cannot bind Date: it's a nat
 - **They print as the host displays them**, with nothing added: a `Date` prints as `2026-01-01`.
 - **They compare as the host defines.** `==` and `!=` use the host's `PartialEq`, so two `Date`s for the same day are equal. Values of different native types are never equal, and a native value never equals any other kind of value. Native values can't be ordered: `<`, `>`, `<=` and `>=` raise `Invalid Operand Type`.
 - **A native type's name evaluates to that type**, like a [built-in type's name](./types.md#types-as-values). It can't be bound: `let Date = 1` raises `Cannot bind Date: it's a native type`, and `/unset Date` in the REPL reports the same reason.
-- **Function types can name native types**, as in `fn(Date, Date) -> Number`. The runtime still checks only the number of arguments, so a function that takes a `Date` checks the value itself: `days_between(1, new_year)` raises `Expected Date, found Number`.
+- **Function types can name native types**, as in `fn(Date, Date) -> Number`, and the runtime checks them like any type: `days_between(1, new_year)` raises `Argument from of days_between expects Date, found Number`. Two native types with the same name are still different types.
 - **`<>` treats a native value as the empty string**, as it does for function values.
 
 ## Host Errors

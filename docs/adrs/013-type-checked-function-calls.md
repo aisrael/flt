@@ -1,7 +1,7 @@
 # ADR 013: Type-Checked Function Calls
 
 - **Date:** 2026-10-27
-- **Status:** Proposed.
+- **Status:** Accepted.
 
 ## Context
 
@@ -69,8 +69,9 @@ greet("Ann", greeting: 1)    # Keyword argument greeting of greet expects String
 
 ### 3. Overloads are tried by arity, longest first
 
-An overload matches a call if it takes that many positional arguments and accepts each of them.
-An overload's arity is the number of its positional arguments before any variadic one. The
+An overload matches a call if it takes that many positional arguments, accepts each of them, and
+accepts each of the call's keywords (decision 5). An overload's arity is the number of its
+positional arguments before any variadic one. The
 overloads are tried in order of arity, longest first, and the first that matches is the one
 called. So a call picks the overload that matches the most of its arguments one for one, whatever
 order the overloads were declared in:
@@ -117,15 +118,34 @@ show(x: Any) -> String
 show(1)          # both accept 1, so either may be called
 ```
 
+The same goes for overloads that a call's keywords don't tell apart (decision 5).
+
 `SimpleRuntime` calls the one declared first, for now (decision 9). Nothing else about which
 overload is called depends on the order overloads were declared in.
 
-### 5. Keywords don't pick the overload
+### 5. Keywords help pick the overload
 
-The overload is picked by its positional arguments, then the call's keywords are checked against
-that overload's keywords, as in ADR 010. A keyword value of the wrong type is an error, not a
-reason to try the next overload. Rest keywords are checked against their type, so
-`**kwargs: Number` accepts only numbers ([ADR 012](012-variadic-notation.md)).
+An overload accepts a call's keywords if it declares each one, with a type that accepts its value,
+or takes it as a rest keyword of a type that accepts it. So `**kwargs: Number` accepts only
+numbers ([ADR 012](012-variadic-notation.md)). A keyword the call leaves out takes its default, so
+it never stops an overload from matching. Overloads of the same arity can then differ in their
+keywords:
+
+```
+foo(s: String, n: Number = 0, b: Boolean = false) -> String
+foo(s: String, t: String = "", b: Boolean = false) -> String
+```
+
+```flt
+foo("abc", n: 1)            # the first: only it declares n
+foo("abc", b: true, n: 1)   # the first, whichever was declared first
+foo("abc", t: "x")          # the second
+foo("abc", b: true)         # both accept it: a tie (decision 4)
+foo("abc", n: "x")          # No overload of foo accepts (String, n: String)
+```
+
+This replaces ADR 010's rule that the overload is picked by its positional arguments alone, with
+its keywords checked afterwards (decision 5).
 
 ### 6. The return value is checked
 
@@ -141,17 +161,32 @@ the function, not in the call, but it's reported where it happens rather than pa
 
 ### 7. Errors
 
-- No overload takes that many positional arguments: unchanged,
-  `Function <name> expected <expected> argument(s), found <found>`, or
-  `Function <name> expected at least <minimum> argument(s), found <found>` when the first overload
-  is variadic.
-- One overload takes that many, but an argument doesn't match:
-  `Argument <argument> of <name> expects <type>, found <type>`, naming the first argument that
-  fails. A variadic value names the variadic argument.
+- No overload takes that many positional arguments:
+  `Function <name> expected <counts> argument(s), found <found>`. `<counts>` lists every count the
+  function's overloads accept, smallest first, whatever order they were declared in. A variadic
+  overload contributes `at least <minimum>`, and an exact count that a minimum already covers is
+  left out:
+
+  | Overloads                              | Error for `f()`                                               |
+  | -------------------------------------- | ------------------------------------------------------------- |
+  | `f(a)`                                 | `Function f expected 1 argument(s), found 0`                  |
+  | `f(a, *rest)`                          | `Function f expected at least 1 argument(s), found 0`         |
+  | `f(a)`, `f(a, b)`                      | `Function f expected 1 or 2 argument(s), found 0`             |
+  | `f(a)`, `f(a, b, *rest)`               | `Function f expected 1 or at least 2 argument(s), found 0`    |
+  | `f(a)`, `f(a, b)`, `f(a, b, c, *rest)` | `Function f expected 1, 2 or at least 3 argument(s), found 0` |
+
+  A function with one overload gets the same messages as before. ADR 011 built this error from the
+  first overload, so its count depended on declaration order.
+- One overload takes that many, but the call doesn't match it: the error names the first thing
+  that fails, positional arguments first, then keywords in call order:
+  - `Argument <argument> of <name> expects <type>, found <type>`. A variadic value names the
+    variadic argument;
+  - `Function <name> got an unexpected keyword argument: <key>`, as in ADR 010;
+  - `Keyword argument <key> of <name> expects <type>, found <type>`.
 - Several overloads take that many, and none matches:
-  `No overload of <name> accepts (<type>, <type>, …)`, listing the call's positional argument
-  types. The overloads aren't listed; `typeof` shows them.
-- A keyword value doesn't match: `Keyword argument <key> of <name> expects <type>, found <type>`.
+  `No overload of <name> accepts (<type>, …, <key>: <type>, …)`, listing the types of the call's
+  positional arguments, then its keywords in call order. The overloads aren't listed; `typeof`
+  shows them.
 - The return value doesn't match: `Function <name> returned <type>, expected <type>`.
 
 ### 8. A function's type doesn't change
@@ -170,8 +205,12 @@ The spec says calls are checked and overloads picked as in decisions 1 to 7. In 
   called. This is a tie-breaker for now, and the only part of picking an overload that depends on
   declaration order;
 - overloads keep sharing one handler, which gets the arguments of whichever overload matched;
-- `FunctionDefinition::resolve` takes the call's positional values instead of their count, and
-  returns the matching signature. `check_arity` still checks the count alone;
+- `FunctionDefinition::resolve` takes the call's positional values and keywords instead of the
+  count, and returns the matching signature. `check_arity` still checks the count alone;
+- the two count errors become one, `RuntimeError::ArgumentCountMismatch { name, expected, found }`,
+  where `expected` is an `ArgumentCounts`: the accepted counts, each an `ArgumentCount::Exactly(n)`
+  or `ArgumentCount::AtLeast(n)`, whose `Display` writes `1, 2 or at least 3`.
+  `RuntimeError::TooFewArguments`, which ADR 011 added only to say "at least", goes;
 - `FunctionDefinition::keyword` panics if a keyword's default doesn't match its type, as
   `FunctionDefinition::new` panics on a misplaced variadic argument (ADR 011). It's a bug in host
   code, found when the function is defined.
@@ -191,8 +230,15 @@ follow.
   the same arity may get such a rule later, replacing `SimpleRuntime`'s tie-breaker.
 - **Checking types only when a function has one overload.** Rejected: it leaves overloaded
   functions unchecked, which are the ones where checks help most.
-- **Letting keywords pick the overload.** Rejected: an overload would be chosen by arguments that
-  may be left out, and ADR 010 already picks by positional arguments.
+- **Picking by positional arguments alone, then checking keywords** (ADR 010). Rejected:
+  overloads of the same arity that differ only in their keywords couldn't be told apart, so
+  `foo("abc", n: 1)` would reach whichever `foo` was declared first, and fail if that one doesn't
+  declare `n`.
+- **Leaving the count errors as ADR 011 has them.** Rejected: the message would still depend on
+  declaration order, and would name one count when others work too.
+- **Keeping `TooFewArguments` and adding a third count error for overloaded functions.** Rejected:
+  `ArgumentCountMismatch` and `TooFewArguments` describe the same mistake, and differ only in how
+  the accepted counts are worded. One error whose `expected` holds the counts covers every case.
 - **Not checking return values, or only in debug builds.** Rejected: a wrong return type is
   otherwise silent, and `typeof` would show something untrue.
 
@@ -202,6 +248,8 @@ follow.
   and so do functions whose results don't match their return types. Hosts need declared types
   that match what their handlers accept and return; `Any` keeps the old behaviour.
 - New errors, as in decision 7, and new `RuntimeError` variants for them.
-- Breaking Rust API changes: `FunctionDefinition::resolve` takes `&[Value]`, and
-  `FunctionDefinition::keyword` panics on a default of the wrong type.
+- Breaking Rust API changes: `FunctionDefinition::resolve` takes the call's values and keywords;
+  `RuntimeError::ArgumentCountMismatch`'s `expected` is an `ArgumentCounts` instead of a `usize`,
+  and `RuntimeError::TooFewArguments` is gone; and `FunctionDefinition::keyword` panics on a
+  default of the wrong type.
 - Handlers can stop checking their own argument types, though checks they keep aren't wrong.
