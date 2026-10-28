@@ -24,6 +24,7 @@ use crate::errors::ProtectedName;
 use crate::errors::RuntimeError;
 use crate::parser::parse_statements;
 use crate::runtime::functions::Argument;
+use crate::runtime::functions::Arguments;
 use crate::runtime::functions::FunctionDefinition;
 use crate::runtime::functions::NativeFunction;
 use crate::runtime::native::NativeType;
@@ -186,7 +187,7 @@ impl Value {
 }
 
 /// The error for a native function given `value` where it expected a value of type `expected`.
-fn unexpected_type(expected: &str, value: &Value) -> Error {
+pub(crate) fn unexpected_type(expected: &str, value: &Value) -> Error {
     match value.type_of() {
         Ok(found) => Error::RuntimeError(RuntimeError::UnexpectedType {
             expected: expected.to_string(),
@@ -365,8 +366,8 @@ fn register_builtins(global_scope: &mut GlobalScope) {
 }
 
 /// `typeof(v)`: the type of `v`. The runtime checks the number of arguments before calling it.
-fn builtin_typeof(args: &[Value]) -> Result<Value, Error> {
-    Ok(Value::Type(args[0].type_of()?))
+fn builtin_typeof(args: &Arguments) -> Result<Value, Error> {
+    Ok(Value::Type(args.get::<&Value>("V")?.type_of()?))
 }
 
 impl Runtime for SimpleRuntime {
@@ -1003,11 +1004,11 @@ mod tests {
     fn test_native_function_sees_rest_keywords_in_call_order() {
         let mut runtime = SimpleRuntime::default();
         runtime
-            .register_function(NativeFunction::with_keywords(
+            .register_function(NativeFunction::new(
                 FunctionDefinition::new("keys", Type::array(), vec![]).rest_keywords(Type::any()),
-                |_args, keywords| {
+                |args| {
                     Ok(Value::Array(
-                        keywords.keys().cloned().map(Value::from).collect(),
+                        args.keywords().keys().cloned().map(Value::from).collect(),
                     ))
                 },
             ))
@@ -1204,15 +1205,23 @@ mod tests {
         );
     }
 
+    /// Calls the registered built-in `typeof` with `value`
+    fn call_typeof(value: Value) -> Result<Value, Error> {
+        SimpleRuntime::default()
+            .get_function("typeof")
+            .expect("typeof is a built-in")
+            .call(&[value])
+    }
+
     #[test]
     fn test_builtin_typeof_returns_type() {
-        let result = builtin_typeof(&[Value::Number(BigDecimal::from(42))]).unwrap();
+        let result = call_typeof(Value::Number(BigDecimal::from(42))).unwrap();
         assert_eq!(result, Value::Type(Type::number()));
     }
 
     #[test]
     fn test_builtin_typeof_none() {
-        let result = builtin_typeof(&[Value::None]).unwrap();
+        let result = call_typeof(Value::None).unwrap();
         assert_eq!(result, Value::Type(Type::none()));
     }
 
@@ -1295,7 +1304,7 @@ mod tests {
                     Type::any(),
                     vec![Argument::new("v", Type::any())],
                 ),
-                |args| Ok(args[0].clone()),
+                |args| Ok(args.get::<&Value>("v")?.clone()),
             ))
             .unwrap();
         runtime
@@ -1500,7 +1509,7 @@ mod tests {
                     Type::number(),
                     vec![Argument::number("a"), Argument::number("b")],
                 ),
-                |args| SimpleRuntime::binary_number(&args[0], &args[1], |a, b| a - b),
+                |args| SimpleRuntime::binary_number(args.get("a")?, args.get("b")?, |a, b| a - b),
             ))
             .unwrap();
         runtime
@@ -1514,12 +1523,12 @@ mod tests {
                         Argument::new("c", Type::any()),
                     ],
                 ),
-                |args| Ok(Value::Array(args.to_vec())),
+                |args| Ok(Value::Array(args.positional().to_vec())),
             ))
             .unwrap();
         // kwargs(a, b, **rest) returns [a, b, rest]
         runtime
-            .register_function(NativeFunction::with_keywords(
+            .register_function(NativeFunction::new(
                 FunctionDefinition::new(
                     "kwargs",
                     Type::array(),
@@ -1529,9 +1538,9 @@ mod tests {
                     ],
                 )
                 .rest_keywords(Type::any()),
-                |args, keywords| {
-                    let mut values = args.to_vec();
-                    values.push(Value::Map(keywords.clone()));
+                |args| {
+                    let mut values = args.positional().to_vec();
+                    values.push(Value::Map(args.keywords().clone()));
                     Ok(Value::Array(values))
                 },
             ))
@@ -1755,7 +1764,7 @@ mod tests {
                 Type::native::<Meters>(),
                 vec![Argument::number("n")],
             ),
-            |args| Ok(Value::native(Meters(i64::try_from(&args[0])?))),
+            |args| Ok(Value::native(Meters(args.get("n")?))),
         )
     }
 

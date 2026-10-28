@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- **Handlers read their arguments by name**: A native function's handler takes `&Arguments` instead of `&[Value]` (and `&Map`), and reads each argument by the name its signature gives it, converted to a Rust type: `args.get::<&str>("path")?`, `args.get::<usize>("n")?` or `args.native::<Date>("from")?`. The name is looked up in the overload that matched, whether the call passed it positionally or as a keyword. A variadic argument's values come from `args.rest()`, and the keywords from `args.keywords()` ([ADR 014](https://github.com/aisrael/flt/blob/main/docs/adrs/014-native-function-arguments.md)).
+- **One constructor**: `NativeFunction::new` takes every handler, with or without keywords. `NativeFunction::with_keywords` is gone, and `new` no longer panics on a definition that declares keywords.
+- **Handler errors**: A new kind of error, `Error::HandlerError`, for a handler using flt's API wrongly: `Handler Error: Function <name> has no argument <argument>` for reading a name the matching overload doesn't declare, and `Handler Error: Argument <argument> of <name> is variadic; read it with Arguments::rest` for reading a variadic argument as one value.
+
 ## v0.3.0
 
 ### Breaking Changes
