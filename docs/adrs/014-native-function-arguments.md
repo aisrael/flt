@@ -114,17 +114,25 @@ A value that doesn't convert raises the errors that converting it does now:
 that doesn't fit, like `1.5` or `-1` as a `usize`. Since calls are type-checked, the wrong type
 means the declared type is wider than the handler accepts, for example `Any` read as a `String`.
 
-### 4. A name the overload doesn't declare is a bug
+### 4. A name the overload doesn't declare is an internal error
 
-`get` and `native` panic if the called overload declares no argument or keyword of that name, as
-`args[3]` panics today when there are three arguments. Only the host can make that mistake, and
-the panic names the function and the argument.
+`get` and `native` raise an internal error if the called overload declares no argument or keyword
+of that name. Only the host can make that mistake, so it isn't a `RuntimeError`, which is for
+mistakes in the flt source. It's a new kind of error, `Error::InternalError`, for bugs in the host
+or the runtime rather than in the call, starting with one variant:
+
+```rust
+InternalError::UndeclaredArgument { name: "head".into(), argument: "plan".into() }
+// Internal Error: Function head has no argument plan
+```
+
+The statement fails with it, as with any other error, and the host keeps running.
 
 ### 5. Variadic values and the rest
 
 - `rest()` gives the values of a variadic last argument
   ([ADR 011](011-variadic-arguments.md)) as a slice, empty if there are none. `get` and `native`
-  take one value, so they panic on the variadic argument's name.
+  take one value, so they raise `UndeclaredArgument` for the variadic argument's name too.
 - `keywords()` gives the bound keywords as a `Map`, for handlers that take rest keywords, like
   datu's `select(plan, *columns, **aliases)`.
 - `positional()` gives every positional value as a slice, as handlers get now, and
@@ -143,9 +151,11 @@ and which overload it reaches are as in ADR 013, and the spec is unchanged.
 - **Keeping `new` and `with_keywords`, and adding a third constructor for `Arguments`.** Rejected:
   three ways to build a native function, two of them superseded. flt is still at 0.x, and its own
   built-ins and datu are the handlers to migrate.
-- **Errors instead of panics for undeclared names.** Rejected: a misspelt name is a bug in the
-  host, not in the flt source, and an error would reach the user as if their call were wrong.
-  `value` covers the handlers that need to ask.
+- **Panicking on undeclared names**, as `args[3]` does today. Rejected: a misspelt name in one
+  handler would crash the host, such as datu's REPL, when it should fail only the statement that
+  reached it.
+- **A `RuntimeError` for undeclared names.** Rejected: a misspelt name is a bug in the host, not
+  in the flt source, and a `RuntimeError` would read as if the user's call were wrong.
 - **Using `TryFrom<&Value>` instead of a new trait.** Rejected: `Option<T>` can't implement it
   without overlapping the standard library's blanket `TryFrom`, and a trait of flt's own can be
   implemented for borrowed values like `&str`.
@@ -159,6 +169,8 @@ and which overload it reaches are as in ADR 013, and the spec is unchanged.
   `NativeFunction::with_keywords` is gone. flt's built-ins, its tests and datu's handlers move to
   the new API.
 - Hosts can drop helpers like datu's `string_arg`, and handlers stop indexing into their arguments.
-- A handler's argument names have to match its signature's, and a mismatch panics on the first
-  call that reaches it.
+- A handler's argument names have to match its signature's, and a mismatch raises
+  `UndeclaredArgument` on the first call that reaches it.
+- A new error kind, `Error::InternalError`, with the `InternalError` enum, for bugs in the host or
+  the runtime.
 - `docs/native-functions-and-values.md`'s examples are rewritten for `Arguments`.
