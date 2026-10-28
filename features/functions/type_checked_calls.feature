@@ -4,8 +4,9 @@ Feature: Type-checked function calls
   positional arguments, variadic values and keyword values, and the
   function's result. Overloads are tried by arity, longest first, and the
   first whose types and keywords match is called. See
-  docs/functions-and-pipe.md#calls and
-  docs/adrs/013-type-checked-function-calls.md.
+  docs/functions-and-pipe.md#calls,
+  docs/adrs/013-type-checked-function-calls.md and, for the errors when
+  several overloads take a call's count, docs/adrs/015-closest-overload-errors.md.
 
   Background:
     Given the native function "describe(n: Number) -> String"
@@ -62,7 +63,7 @@ Feature: Type-checked function calls
       | describe(:a)    | "text"   |
       | 1 \|> describe  | "number" |
 
-  Scenario: No overload accepts the arguments
+  Scenario: Overloads that fail at the same argument name none
     Given the input 'describe(true)'
     When I evaluate the input
     Then the evaluation should fail with exactly "Runtime Error: No overload of describe accepts (Boolean)"
@@ -121,8 +122,52 @@ Feature: Type-checked function calls
       | foo("abc", b: true)  | "n"    |
       | oof("abc", b: true)  | "t"    |
 
-  Scenario Outline: No overload accepts the keywords
+  Scenario Outline: Overloads of the same arity can differ in their first argument alone
+    Given the native function "head(items: Array, n: Number) -> Array"
+    And the native function "head(s: String, n: Number) -> String"
+    And the input '<input>'
+    When I evaluate the input
+    Then the result should be '<result>'
+
+    Examples:
+      | input                 | result |
+      | [1, 2, 3] \|> head(2) | [1, 2] |
+      | "abc" \|> head(2)     | "ab"   |
+
+  Scenario Outline: The error names the overload whose first failure comes latest
+    Given the native function "head(items: Array, n: Number) -> Array"
+    And the native function "head(s: String, n: Number) -> String"
+    And the input '<input>'
+    When I evaluate the input
+    Then the evaluation should fail with exactly '<error>'
+
+    Examples:
+      | input                  | error                                                            |
+      | [1, 2, 3] \|> head("x") | Runtime Error: Argument n of head expects Number, found String   |
+      | "abc" \|> head(:x)      | Runtime Error: Argument n of head expects Number, found Symbol   |
+
+  Scenario Outline: A keyword of the wrong type is closer than one that isn't accepted, whatever the order
     Given the native function 'foo(s: String, n: Number = 0, b: Boolean = false) -> String'
+    And the native function 'foo(s: String, t: String = "", b: Boolean = false) -> String'
+    And the native function 'oof(s: String, t: String = "", b: Boolean = false) -> String'
+    And the native function 'oof(s: String, n: Number = 0, b: Boolean = false) -> String'
+    And the input '<input>'
+    When I evaluate the input
+    Then the evaluation should fail with exactly '<error>'
+
+    Examples:
+      | input                       | error                                                                 |
+      | foo("abc", n: "x")          | Runtime Error: Keyword argument n of foo expects Number, found String |
+      | oof("abc", n: "x")          | Runtime Error: Keyword argument n of oof expects Number, found String |
+      | foo("abc", t: 1)            | Runtime Error: Keyword argument t of foo expects String, found Number |
+      | foo("abc", b: true, t: 1)   | Runtime Error: Keyword argument t of foo expects String, found Number |
+      | foo("abc", n: 1, z: 1)      | Runtime Error: Function foo got an unexpected keyword argument: z     |
+      | oof("abc", n: 1, z: 1)      | Runtime Error: Function oof got an unexpected keyword argument: z     |
+
+  Scenario Outline: Overloads that are equally close name none
+    Given the native function "head(items: Array, n: Number) -> Array"
+    And the native function "head(s: String, n: Number) -> String"
+    And the native function 'foo(s: String, n: Number = 0, b: Boolean = false) -> String'
     And the native function 'foo(s: String, t: String = "", b: Boolean = false) -> String'
     And the input '<input>'
     When I evaluate the input
@@ -130,8 +175,9 @@ Feature: Type-checked function calls
 
     Examples:
       | input                | error                                                          |
-      | foo("abc", n: "x")   | Runtime Error: No overload of foo accepts (String, n: String)  |
+      | head(1, 2)           | Runtime Error: No overload of head accepts (Number, Number)    |
       | foo("abc", z: 1)     | Runtime Error: No overload of foo accepts (String, z: Number)  |
+      | foo("abc", b: 1)     | Runtime Error: No overload of foo accepts (String, b: Number)  |
 
   Scenario Outline: The wrong number of arguments lists every accepted count
     Given the native function "two(x: Any) -> Any"

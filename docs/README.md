@@ -33,6 +33,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 012: Variadic Notation](adrs/012-variadic-notation.md)
 - [ADR 013: Type-Checked Function Calls](adrs/013-type-checked-function-calls.md)
 - [ADR 014: Native Function Arguments](adrs/014-native-function-arguments.md)
+- [ADR 015: Errors Name the Closest Overload](adrs/015-closest-overload-errors.md)
 
 ## Scope
 

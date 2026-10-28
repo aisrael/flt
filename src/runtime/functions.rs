@@ -380,8 +380,9 @@ impl FunctionDefinition {
     /// that all accept the call, the one declared first wins.
     ///
     /// If no overload takes that many positional arguments, the error lists the counts they
-    /// take. If one does, the error is the first way the call doesn't match it, and if several
-    /// do, `No overload of <name> accepts (…)`.
+    /// take. If some do, the error is the first way the call doesn't match the closest of them,
+    /// the one whose first failing check comes latest, and if several are equally close,
+    /// `No overload of <name> accepts (…)`.
     pub fn resolve(&self, args: &[Value], keywords: &Map) -> Result<&FunctionSignature, Error> {
         let mut candidates: Vec<&FunctionSignature> = self
             .overloads
@@ -390,30 +391,25 @@ impl FunctionDefinition {
             .collect();
         // A stable sort, so overloads of the same arity stay in declaration order
         candidates.sort_by_key(|overload| Reverse(overload.minimum_arguments()));
-        let mut mismatches = candidates
-            .iter()
-            .map(|overload| (*overload, overload.mismatch(&self.name, args, keywords)));
-        if let Some((overload, _)) = mismatches.find(|(_, mismatch)| mismatch.is_none()) {
-            return Ok(overload);
+        let mut mismatches = Vec::new();
+        for overload in candidates {
+            match overload.mismatch(&self.name, args, keywords) {
+                None => return Ok(overload),
+                Some(mismatch) => mismatches.push(mismatch),
+            }
         }
-        Err(Error::RuntimeError(match candidates.as_slice() {
-            [] => self.count_mismatch(args.len()),
-            [only] => only
-                .mismatch(&self.name, args, keywords)
-                .expect("the only candidate doesn't match"),
-            _ => RuntimeError::NoMatchingOverload {
-                name: self.name.clone(),
-                found: args
-                    .iter()
-                    .map(type_name)
-                    .chain(
-                        keywords
-                            .iter()
-                            .map(|(key, value)| format!("{}: {}", key_name(key), type_name(value))),
-                    )
-                    .collect(),
+        let Some(closest) = mismatches.iter().map(|mismatch| mismatch.progress).max() else {
+            return Err(Error::RuntimeError(self.count_mismatch(args.len())));
+        };
+        let mut closest = mismatches
+            .into_iter()
+            .filter(|mismatch| mismatch.progress == closest);
+        Err(Error::RuntimeError(
+            match (closest.next(), closest.next()) {
+                (Some(only), None) => only.error,
+                _ => self.no_matching_overload(args, keywords),
             },
-        }))
+        ))
     }
 
     /// Check that some overload takes `found` positional arguments.
@@ -439,6 +435,40 @@ impl FunctionDefinition {
             found,
         }
     }
+
+    /// The error for a call that several overloads take by count, none of them closer than
+    /// the others: it lists the types of the call's positional arguments, then its keywords
+    fn no_matching_overload(&self, args: &[Value], keywords: &Map) -> RuntimeError {
+        RuntimeError::NoMatchingOverload {
+            name: self.name.clone(),
+            found: args
+                .iter()
+                .map(type_name)
+                .chain(
+                    keywords
+                        .iter()
+                        .map(|(key, value)| format!("{}: {}", key_name(key), type_name(value))),
+                )
+                .collect(),
+        }
+    }
+}
+
+/// How far a call got through a signature's checks before one failed. A signature that gets
+/// further is closer to the call.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Progress {
+    /// The checks that passed: positional arguments first, then keywords in call order
+    passed: usize,
+    /// Whether the check that failed is for a keyword the signature accepts, with a value of
+    /// the wrong type
+    accepts_keyword: bool,
+}
+
+/// The first way a call doesn't match a signature, and how far it got before that
+struct Mismatch {
+    progress: Progress,
+    error: RuntimeError,
 }
 
 /// A function signature is a single function definition with a name, arguments, and return type
@@ -491,43 +521,57 @@ impl FunctionSignature {
 
     /// The first way a call that this signature takes by count doesn't match it, checking the
     /// positional arguments in order, then the keywords in call order, or `None` if it matches
-    fn mismatch(
-        &self,
-        function_name: &str,
-        args: &[Value],
-        keywords: &Map,
-    ) -> Option<RuntimeError> {
+    fn mismatch(&self, function_name: &str, args: &[Value], keywords: &Map) -> Option<Mismatch> {
         for (i, value) in args.iter().enumerate() {
             // Values past the last argument belong to the variadic one
             let argument = self.arguments.get(i).or(self.arguments.last())?;
             if !argument.r#type.accepts(value) {
-                return Some(RuntimeError::ArgumentTypeMismatch {
-                    name: function_name.to_string(),
-                    argument: argument.name.clone(),
-                    expected: argument.r#type.to_string(),
-                    found: type_name(value),
+                return Some(Mismatch {
+                    progress: Progress {
+                        passed: i,
+                        accepts_keyword: false,
+                    },
+                    error: RuntimeError::ArgumentTypeMismatch {
+                        name: function_name.to_string(),
+                        argument: argument.name.clone(),
+                        expected: argument.r#type.to_string(),
+                        found: type_name(value),
+                    },
                 });
             }
         }
-        for (key, value) in keywords {
+        for (i, (key, value)) in keywords.iter().enumerate() {
             let key = key_name(key);
+            let passed = args.len() + i;
             let declared = self.keywords.iter().find(|keyword| keyword.name == key);
             let r#type = match (declared, &self.rest_keywords) {
                 (Some(keyword), _) => &keyword.r#type,
                 (None, Some(rest)) => rest,
                 (None, None) => {
-                    return Some(RuntimeError::UnexpectedKeywordArgument {
-                        name: function_name.to_string(),
-                        key: key.to_string(),
+                    return Some(Mismatch {
+                        progress: Progress {
+                            passed,
+                            accepts_keyword: false,
+                        },
+                        error: RuntimeError::UnexpectedKeywordArgument {
+                            name: function_name.to_string(),
+                            key: key.to_string(),
+                        },
                     })
                 }
             };
             if !r#type.accepts(value) {
-                return Some(RuntimeError::KeywordTypeMismatch {
-                    name: function_name.to_string(),
-                    key: key.to_string(),
-                    expected: r#type.to_string(),
-                    found: type_name(value),
+                return Some(Mismatch {
+                    progress: Progress {
+                        passed,
+                        accepts_keyword: true,
+                    },
+                    error: RuntimeError::KeywordTypeMismatch {
+                        name: function_name.to_string(),
+                        key: key.to_string(),
+                        expected: r#type.to_string(),
+                        found: type_name(value),
+                    },
                 });
             }
         }
@@ -1258,13 +1302,100 @@ mod tests {
 
     #[test]
     fn test_no_overload_accepts_the_keywords() {
+        for reversed in [false, true] {
+            let function = foo(reversed);
+            assert_eq!(
+                error(&function, &[string("abc")], &[("z", number(1))]),
+                "Runtime Error: No overload of foo accepts (String, z: Number)"
+            );
+            assert_eq!(
+                error(&function, &[string("abc")], &[("b", number(1))]),
+                "Runtime Error: No overload of foo accepts (String, b: Number)"
+            );
+        }
+    }
+
+    /// head(items: Array, n: Number) and head(s: String, n: Number)
+    fn head() -> NativeFunction {
+        echo(
+            FunctionDefinition::new(
+                "head",
+                Type::map(),
+                vec![Argument::new("items", Type::array()), Argument::number("n")],
+            )
+            .add_overload(
+                Type::map(),
+                vec![Argument::string("s"), Argument::number("n")],
+            ),
+        )
+    }
+
+    #[test]
+    fn test_the_error_names_the_overload_whose_first_failure_comes_latest() {
         assert_eq!(
-            error(&foo(false), &[string("abc")], &[("n", string("x"))]),
-            "Runtime Error: No overload of foo accepts (String, n: String)"
+            error(&head(), &[Value::Array(vec![]), string("x")], &[]),
+            "Runtime Error: Argument n of head expects Number, found String"
         );
         assert_eq!(
-            error(&foo(false), &[string("abc")], &[("z", number(1))]),
-            "Runtime Error: No overload of foo accepts (String, z: Number)"
+            error(&head(), &[string("abc"), symbol("x")], &[]),
+            "Runtime Error: Argument n of head expects Number, found Symbol"
+        );
+        for reversed in [false, true] {
+            assert_eq!(
+                error(
+                    &foo(reversed),
+                    &[string("abc")],
+                    &[("n", number(1)), ("z", number(1))]
+                ),
+                "Runtime Error: Function foo got an unexpected keyword argument: z"
+            );
+        }
+    }
+
+    #[test]
+    fn test_overloads_that_fail_at_the_same_argument_name_none() {
+        assert_eq!(
+            error(&head(), &[number(1), number(2)], &[]),
+            "Runtime Error: No overload of head accepts (Number, Number)"
+        );
+    }
+
+    #[test]
+    fn test_a_keyword_of_the_wrong_type_is_closer_than_one_not_accepted() {
+        for reversed in [false, true] {
+            let function = foo(reversed);
+            let abc = [string("abc")];
+            assert_eq!(
+                error(&function, &abc, &[("n", string("x"))]),
+                "Runtime Error: Keyword argument n of foo expects Number, found String"
+            );
+            assert_eq!(
+                error(&function, &abc, &[("t", number(1))]),
+                "Runtime Error: Keyword argument t of foo expects String, found Number"
+            );
+            assert_eq!(
+                error(
+                    &function,
+                    &abc,
+                    &[("b", Value::Boolean(true)), ("t", number(1))]
+                ),
+                "Runtime Error: Keyword argument t of foo expects String, found Number"
+            );
+        }
+    }
+
+    #[test]
+    fn test_rest_keywords_accept_a_keyword_of_the_wrong_type() {
+        // opts(s: String, **kwargs: Number) and opts(s: String, flag: Boolean = false)
+        let function = echo(
+            FunctionDefinition::new("opts", Type::map(), vec![Argument::string("s")])
+                .rest_keywords(Type::number())
+                .add_overload(Type::map(), vec![Argument::string("s")])
+                .keyword("flag", Type::boolean(), Value::Boolean(false)),
+        );
+        assert_eq!(
+            error(&function, &[string("abc")], &[("x", string("y"))]),
+            "Runtime Error: Keyword argument x of opts expects Number, found String"
         );
     }
 
