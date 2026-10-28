@@ -56,7 +56,12 @@ A name that is neither a variable, a function nor a type is an error, e.g. `Foo`
 
 A function's type is written `fn(P1, P2) -> R`, listing its parameter types and its return type. A function that takes no parameters has the type `fn() -> R`. A [variadic](./native-functions-and-values.md#variadic-arguments) last parameter shows as `*T`, the type of each value it takes, so `fn(String, *Any) -> String` takes a string and then any number of values ([ADR 012](./adrs/012-variadic-notation.md)). Rest keywords show as `**T`.
 
-`->` groups before `|`, so a union return type needs brackets: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
+A union is bracketed wherever `|` would otherwise be read the wrong way:
+
+- After `*` or `**`, since `*` and `**` apply to the whole union: `fn(*(String | Symbol)) -> String` takes any number of strings and symbols, and `fn(**(String | Symbol)) -> Map` takes keywords whose values are strings or symbols.
+- Around a return type, since `->` groups before `|`: `fn(T) -> (T | None)` returns a `T` or `None`, while `fn(T) -> T | None` is either a function or `None`.
+
+A union parameter or keyword is left as it is, since the commas and the function's own brackets already separate it: `fn(String | Symbol, k: Number | None) -> String`.
 
 Functions are first-class values. With a host that registers a [native function](./native-functions-and-values.md#native-functions) `identity`, which returns its argument and has the type `fn(Any) -> Any`:
 

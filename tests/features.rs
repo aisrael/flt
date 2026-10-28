@@ -455,6 +455,31 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             ),
             |args| Ok(args.get::<&Value>("values")?.clone()),
         )),
+        // `join` and `tags` are only used for their types.
+        "join" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "join",
+                Type::string(),
+                vec![Argument::variadic(
+                    "parts",
+                    Type::union(Type::string(), Type::symbol()),
+                )],
+            ),
+            |_args| Ok(Value::String(String::new())),
+        )),
+        "tags" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "tags",
+                Type::union(Type::map(), Type::none()),
+                vec![Argument::new(
+                    "name",
+                    Type::union(Type::string(), Type::symbol()),
+                )],
+            )
+            .keyword("k", Type::union(Type::number(), Type::none()), Value::None)
+            .rest_keywords(Type::union(Type::string(), Type::symbol())),
+            |_args| Ok(Value::None),
+        )),
         _ => None,
     }
 }

@@ -8,6 +8,8 @@ Feature: Functions as values
 
   Background:
     Given the native function "identity(v: Any) -> Any"
+    And the native function "join(*parts: String | Symbol) -> String"
+    And the native function "tags(name: String | Symbol, k: Number | None = None, **kwargs: String | Symbol) -> Map | None"
 
   Scenario: A native function's name evaluates to a function value
     Given the input 'identity'
@@ -23,6 +25,16 @@ Feature: Functions as values
     Given the input 'typeof(identity)'
     When I evaluate the input
     Then the result should be "fn(Any) -> Any"
+
+  Scenario Outline: A function type brackets a union where | would be misread
+    Given the input '<input>'
+    When I evaluate the input
+    Then the result should be "<type>"
+
+    Examples:
+      | input        | type                                                                     |
+      | typeof(join) | fn(*(String \| Symbol)) -> String                                        |
+      | typeof(tags) | fn(String \| Symbol, k: Number \| None, **(String \| Symbol)) -> (Map \| None) |
 
   Scenario: Calling a function through another name
     Given the input 'let f = identity; f(42)'
