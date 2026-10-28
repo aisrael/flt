@@ -17,6 +17,22 @@
 - Each new ADR should only refer to previous ADRs
 - Forward-looking statements are ok, just not references to future ADRs
 
+# Releases
+
+Before bumping the version:
+
+- Mark every ADR in the release as Accepted.
+- Update `README.md` (feature summary, examples, Public API) and `docs/README.md` (contents and its "Scope" version) to match the release. The README is the crate's page on crates.io and docs.rs, and a published version can't be changed.
+- Run `cargo doc --no-deps` and check that the README renders as the crate's front page.
+
+Then, in a release PR:
+
+- Bump the version in `Cargo.toml`, `Cargo.lock`, the README's dependency snippet and `features/cli.feature`.
+- Rename the CHANGELOG's "Unreleased" section to `vX.Y.Z`.
+- Run `cargo +nightly fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `cargo publish --dry-run`.
+
+After merging: tag `main` with an annotated `vX.Y.Z` tag ("Release vX.Y.Z"), push the tag, run `cargo publish`, then tell dependents (e.g. datu) to switch to the published version.
+
 # Rust Code Guidelines
 
 - When writing imports, use one `use` statement per line. DO NOT use grouped `use` statements
