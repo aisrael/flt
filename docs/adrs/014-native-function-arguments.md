@@ -114,17 +114,20 @@ A value that doesn't convert raises the errors that converting it does now:
 that doesn't fit, like `1.5` or `-1` as a `usize`. Since calls are type-checked, the wrong type
 means the declared type is wider than the handler accepts, for example `Any` read as a `String`.
 
-### 4. A name the overload doesn't declare is an internal error
+### 4. A name the overload doesn't declare is a handler error
 
-`get` and `native` raise an internal error if the called overload declares no argument or keyword
+`get` and `native` raise a handler error if the called overload declares no argument or keyword
 of that name. Only the host can make that mistake, so it isn't a `RuntimeError`, which is for
-mistakes in the flt source. It's a new kind of error, `Error::InternalError`, for bugs in the host
-or the runtime rather than in the call, starting with one variant:
+mistakes in the flt source. It's a new kind of error, `Error::HandlerError`, for a host or handler
+using flt's API wrongly, starting with one variant:
 
 ```rust
-InternalError::UndeclaredArgument { name: "head".into(), argument: "plan".into() }
-// Internal Error: Function head has no argument plan
+HandlerError::UndeclaredArgument { name: "head".into(), argument: "plan".into() }
+// Handler Error: Function head has no argument plan
 ```
+
+It's not `Error::Native`, which wraps the host's own errors (I/O, datu's, and so on) and shows
+them unchanged. A `HandlerError` is raised at the interface between flt and the host's handlers.
 
 The statement fails with it, as with any other error, and the host keeps running.
 
@@ -156,6 +159,8 @@ and which overload it reaches are as in ADR 013, and the spec is unchanged.
   reached it.
 - **A `RuntimeError` for undeclared names.** Rejected: a misspelt name is a bug in the host, not
   in the flt source, and a `RuntimeError` would read as if the user's call were wrong.
+- **Calling it `InternalError` or `NativeError`.** Rejected: an internal error usually means a
+  bug in flt itself, and `NativeError` would be too easily confused with `Error::Native`.
 - **Using `TryFrom<&Value>` instead of a new trait.** Rejected: `Option<T>` can't implement it
   without overlapping the standard library's blanket `TryFrom`, and a trait of flt's own can be
   implemented for borrowed values like `&str`.
@@ -171,6 +176,6 @@ and which overload it reaches are as in ADR 013, and the spec is unchanged.
 - Hosts can drop helpers like datu's `string_arg`, and handlers stop indexing into their arguments.
 - A handler's argument names have to match its signature's, and a mismatch raises
   `UndeclaredArgument` on the first call that reaches it.
-- A new error kind, `Error::InternalError`, with the `InternalError` enum, for bugs in the host or
-  the runtime.
+- A new error kind, `Error::HandlerError`, with the `HandlerError` enum, for a host or handler
+  using flt's API wrongly.
 - `docs/native-functions-and-values.md`'s examples are rewritten for `Arguments`.
