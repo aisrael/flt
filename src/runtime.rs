@@ -789,6 +789,7 @@ mod tests {
 
     use super::*;
     use crate::ast::Identifier;
+    use crate::errors::ArgumentCount;
     use crate::parser::parse_statement;
     use crate::runtime::native::fixtures::Meters;
     use crate::runtime::native::NativeType;
@@ -1221,10 +1222,10 @@ mod tests {
         assert!(matches!(
             result,
             Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
-                expected: 1,
+                expected,
                 found: 0,
                 ..
-            }))
+            })) if expected.counts() == [ArgumentCount::Exactly(1)]
         ));
     }
 
@@ -1451,8 +1452,8 @@ mod tests {
         ));
         assert!(matches!(
             result,
-            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected: 1, found: 2 }))
-                if name == "identity"
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected, found: 2 }))
+                if name == "identity" && expected.counts() == [ArgumentCount::Exactly(1)]
         ));
     }
 
@@ -1671,8 +1672,8 @@ mod tests {
         let result = runtime.eval("1 |> typeof(2)");
         assert!(matches!(
             result,
-            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected: 1, found: 2 }))
-                if name == "typeof"
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected, found: 2 }))
+                if name == "typeof" && expected.counts() == [ArgumentCount::Exactly(1)]
         ));
     }
 

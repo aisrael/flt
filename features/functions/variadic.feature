@@ -34,11 +34,11 @@ Feature: Variadic arguments
 
     Examples:
       | input                    | variadic |
-      | sprintf("none")          | []       |
-      | sprintf("%d", 1)         | [1]      |
-      | sprintf("%d %s", 1, "a") | [1, "a"] |
-      | "%d" \|> sprintf(1)      | [1]      |
-      | "none" \|> sprintf       | []       |
+      | sprintf("none")          | "[]"     |
+      | sprintf("%d", 1)         | "[1]"    |
+      | sprintf("%d %s", 1, "a") | "[1, a]" |
+      | "%d" \|> sprintf(1)      | "[1]"    |
+      | "none" \|> sprintf       | "[]"     |
 
   Scenario: A fixed argument before the variadic one is required
     Given the input 'sprintf()'
