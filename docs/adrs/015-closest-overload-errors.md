@@ -73,8 +73,8 @@ on the order the overloads were declared in.
 
 ## Alternatives Considered
 
-- **Keeping `NoMatchingOverload` for every call that several overloads take by count** ([ADR
-  013](013-type-checked-function-calls.md)). Rejected: it hides the specific error whenever
+- **Keeping `NoMatchingOverload` for every call that several overloads take by count**
+  ([ADR 013](013-type-checked-function-calls.md)). Rejected: it hides the specific error whenever
   overloads share a count, which is when the caller most needs to know which one they meant.
 - **The overload that accepts the most arguments, wherever they are.** Rejected: with
   `f(a: Number, b: String)` and `f(a: String, b: Number)`, `f(1, 1)` would be a tie, though
