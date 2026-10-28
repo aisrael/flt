@@ -1,7 +1,7 @@
 # ADR 015: Errors Name the Closest Overload
 
 - **Date:** 2026-10-28
-- **Status:** Proposed.
+- **Status:** Accepted
 
 ## Context
 
