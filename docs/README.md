@@ -7,6 +7,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`spec.md`](spec.md) - One-page minimal language specification (grammar, types, operators, semantics).
 - [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL.
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
+- [`literals.md`](literals.md) - Numbers, strings and interpolation, booleans, `None`, symbols, arrays and maps.
 - [`types.md`](types.md) - Core flt types
   - [`types/none.md`](types/none.md) - `None`: the value, its type, and the result of `if` without `else`.
   - [`types/union_types.md`](types/union_types.md) - Union types (`A | B`) and the type of `if`.
@@ -34,4 +35,4 @@ This folder contains initial documentation for the `flt` language as it exists i
 
 ## Scope
 
-These docs describe the currently implemented parser and CLI evaluator for version `0.2.0`.
+These docs describe the currently implemented parser and CLI evaluator for version `0.3.0`.
