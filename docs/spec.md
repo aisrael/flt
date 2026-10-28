@@ -98,8 +98,8 @@ passes `1` positionally and `bar` by keyword, while `foo(1, { bar: true })` pass
 arguments. A function declares the keywords it accepts, each with a default that a call may leave
 out. A positional argument never fills a keyword. A function can also accept any other keywords,
 as rest keywords of a given type. A call's keywords help pick the signature it calls (see
-[Type-checked calls](#type-checked-calls)), and a keyword no signature declares raises
-`Function <name> got an unexpected keyword argument: <key>`. Positional arguments are evaluated
+[Type-checked calls](#type-checked-calls)), and a keyword no signature declares raises an
+`UnexpectedKeywordArgument` error. Positional arguments are evaluated
 left to right, then keyword values left to right. A function
 type lists its keywords after its positional parameters, e.g.
 `fn(String, greeting: String) -> String`.
@@ -151,8 +151,8 @@ e.g. `READ("input") |> SELECT(:id) |> WRITE("output")`. `|>` sits at level 9 abo
 
 The left side is evaluated first, then the right side's arguments. The right side must be a call or a
 bare name, resolved and checked like any call, with the piped value as its first argument:
-`1 |> typeof(2)` raises `Function typeof expected 1 argument(s), found 2`. Anything else raises
-`Cannot pipe into <expr>`. The piped value is positional: `x |> f(a, k: v)` passes `x` and `a`
+`1 |> typeof(2)` raises an `ArgumentCountMismatch` error. Anything else raises an
+`InvalidPipeTarget` error. The piped value is positional: `x |> f(a, k: v)` passes `x` and `a`
 positionally and `k` by keyword.
 So `f 1`, `f(1)`, `1 |> f` and `1 |> f()` are equivalent.
 
@@ -178,22 +178,18 @@ function can fail with the host's own error, which is reported unchanged.
 Identifiers and call names resolve in the order variables, then global functions, then built-in type
 names, then native type names. Calls raise:
 
-- `Undefined function: <name>` when the name isn't bound;
-- `<name> is not a function` when the name is bound to a value that isn't a function;
-- `Function <name> expected <counts> argument(s), found <found>` when no signature of the
-  function takes that many positional arguments. `<counts>` lists the counts its signatures take,
-  smallest first, with `at least <n>` for a variadic one, e.g. `1`, `at least 1`, `1 or 2` or
-  `1, 2 or at least 3`;
-- when one signature takes that many positional arguments but doesn't match, the first thing that
-  fails, checking positional arguments first, then keywords in call order:
-  - `Argument <argument> of <name> expects <type>, found <type>`;
-  - `Function <name> got an unexpected keyword argument: <key>`;
-  - `Keyword argument <key> of <name> expects <type>, found <type>`;
-- `No overload of <name> accepts (<type>, …, <key>: <type>, …)` when several signatures take that
-  many positional arguments and none matches, listing the call's positional argument types, then
-  its keywords;
-- `Function <name> returned <type>, expected <type>` when the result isn't of the called
-  signature's return type.
+- an `UndefinedFunction` error when the name isn't bound;
+- a `NotCallable` error when the name is bound to a value that isn't a function;
+- an `ArgumentCountMismatch` error when no signature of the function takes that many positional
+  arguments;
+- when one signature takes that many positional arguments but doesn't match, an error for the first
+  thing that fails, checking positional arguments first, then keywords in call order:
+  - an `ArgumentTypeMismatch` error for a positional argument of the wrong type;
+  - an `UnexpectedKeywordArgument` error for a keyword the signature doesn't accept;
+  - a `KeywordTypeMismatch` error for a keyword value of the wrong type;
+- a `NoMatchingOverload` error when several signatures take that many positional arguments and
+  none matches;
+- a `ReturnTypeMismatch` error when the result isn't of the called signature's return type.
 
 ## 7. Bindings
 
@@ -204,4 +200,4 @@ analysis (e.g. type inference). `let x = expr` and `x = expr` both bind `x`.
   Once scopes exist, a binding will be limited to its scope.
 - **Re-binding replaces the binding, including its type.** After `let x = 1` then `x = "a"`,
   `typeof(x)` is `String`.
-- Referencing an identifier with no binding raises `Unbound identifier: <name>`.
+- Referencing an identifier with no binding raises an `UnboundIdentifier` error.
