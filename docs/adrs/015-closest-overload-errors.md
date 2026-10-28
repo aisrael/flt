@@ -26,11 +26,11 @@ first overload.
 
 ### 1. The closest overload's error
 
-A call is checked against an overload in a fixed order: its positional arguments in order, then
-its keywords in call order ([ADR 013](013-type-checked-function-calls.md), decision 7). Among the overloads that take that many
-positional arguments, the closest is the one whose first failing check comes latest. If one
-overload is closest, the call raises the error for the first thing that fails against it, as it
-would if that overload were the only one:
+A call is checked against an overload in a fixed order: its positional arguments in order, then its
+keywords in call order ([ADR 013](013-type-checked-function-calls.md), decision 7). Among the
+overloads that take that many positional arguments, the closest is the one whose first failing check
+comes latest. If one overload is closest, the call raises the error for the first thing that fails
+against it, as it would if that overload were the only one:
 
 ```flt
 read("data.parquet") |> head("x")    # Argument n of head expects Number, found String
@@ -73,9 +73,9 @@ on the order the overloads were declared in.
 
 ## Alternatives Considered
 
-- **Keeping `NoMatchingOverload` for every call that several overloads take by count** ([ADR 013](013-type-checked-function-calls.md)).
-  Rejected: it hides the specific error whenever overloads share a count, which is when the
-  caller most needs to know which one they meant.
+- **Keeping `NoMatchingOverload` for every call that several overloads take by count** ([ADR
+  013](013-type-checked-function-calls.md)). Rejected: it hides the specific error whenever
+  overloads share a count, which is when the caller most needs to know which one they meant.
 - **The overload that accepts the most arguments, wherever they are.** Rejected: with
   `f(a: Number, b: String)` and `f(a: String, b: Number)`, `f(1, 1)` would be a tie, though
   `f(a: Number, b: String)` took its first argument. Counting from the left fits pipes, where the
