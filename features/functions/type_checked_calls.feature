@@ -134,7 +134,7 @@ Feature: Type-checked function calls
       | [1, 2, 3] \|> head(2) | [1, 2] |
       | "abc" \|> head(2)     | "ab"   |
 
-  Scenario Outline: The error names the overload whose first failure comes latest
+  Scenario Outline: The error names the overload that passes the most checks
     Given the native function "head(items: Array, n: Number) -> Array"
     And the native function "head(s: String, n: Number) -> String"
     And the input '<input>'

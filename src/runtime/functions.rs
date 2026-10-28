@@ -381,7 +381,7 @@ impl FunctionDefinition {
     ///
     /// If no overload takes that many positional arguments, the error lists the counts they
     /// take. If some do, the error is the first way the call doesn't match the closest of them,
-    /// the one whose first failing check comes latest, and if several are equally close,
+    /// the one that passes the most checks before one fails, and if several are equally close,
     /// `No overload of <name> accepts (…)`.
     pub fn resolve(&self, args: &[Value], keywords: &Map) -> Result<&FunctionSignature, Error> {
         let mut candidates: Vec<&FunctionSignature> = self
@@ -1331,7 +1331,7 @@ mod tests {
     }
 
     #[test]
-    fn test_the_error_names_the_overload_whose_first_failure_comes_latest() {
+    fn test_the_error_names_the_overload_that_passes_the_most_checks() {
         assert_eq!(
             error(&head(), &[Value::Array(vec![]), string("x")], &[]),
             "Runtime Error: Argument n of head expects Number, found String"

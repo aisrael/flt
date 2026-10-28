@@ -28,15 +28,22 @@ first overload.
 
 A call is checked against an overload in a fixed order: its positional arguments in order, then its
 keywords in call order ([ADR 013](013-type-checked-function-calls.md), decision 7). Among the
-overloads that take that many positional arguments, the closest is the one whose first failing check
-comes latest. If one overload is closest, the call raises the error for the first thing that fails
-against it, as it would if that overload were the only one:
+overloads that take that many positional arguments, the closest is the one that passes the most
+checks before one fails. If one overload is closest, the call raises the error for the first thing
+that fails against it, as it would if that overload were the only one:
 
 ```flt
 read("data.parquet") |> head("x")    # Argument n of head expects Number, found String
 ```
 
-`head(plan, n)` fails at its second argument, and `head(path, n)` at its first.
+`read("data.parquet") |> head("x")` is `head(read("data.parquet"), "x")`:
+
+| Overload                          | Check 1: the plan  | Check 2: `"x"`     | Passes |
+| --------------------------------- | ------------------ | ------------------ | ------ |
+| `head(plan: DatuPlan, n: Number)` | is a `DatuPlan` ✓  | isn't a `Number` ✗ | 1      |
+| `head(path: String, n: Number)`   | isn't a `String` ✗ | not checked        | 0      |
+
+`head(plan, n)` passes more checks, so its error is the one raised.
 
 ### 2. A keyword of the wrong type is closer than one that isn't accepted
 

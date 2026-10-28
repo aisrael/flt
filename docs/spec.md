@@ -188,8 +188,8 @@ names, then native type names. Calls raise:
   - an `UnexpectedKeywordArgument` error for a keyword the signature doesn't accept;
   - a `KeywordTypeMismatch` error for a keyword value of the wrong type;
 - when several signatures take that many positional arguments and none matches, the error for the
-  closest one, as if it were the only one. The closest is the signature whose first failing check
-  comes latest, in the order above; if several first fail at the same keyword, one that accepts the
+  closest one, as if it were the only one. The closest is the signature that passes the most
+  checks, in the order above, before one fails; if several first fail at the same keyword, one that accepts the
   keyword but not its value is closer than one that doesn't accept it;
 - a `NoMatchingOverload` error when several signatures are equally close;
 - a `ReturnTypeMismatch` error when the result isn't of the called signature's return type.
