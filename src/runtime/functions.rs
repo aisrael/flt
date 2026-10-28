@@ -1,7 +1,10 @@
 //! Functions in the runtime
 
+use std::cmp::Reverse;
 use std::fmt;
 
+use crate::errors::ArgumentCount;
+use crate::errors::ArgumentCounts;
 use crate::errors::RuntimeError;
 use crate::runtime::types::Type;
 use crate::runtime::Map;
@@ -70,12 +73,21 @@ impl NativeFunction {
     }
 
     /// Invoke the function with evaluated positional and keyword arguments. The overload is
-    /// picked by the number of positional arguments, then the keywords are checked against
-    /// that overload's.
+    /// picked by the arguments' count and types and by the keywords
+    /// ([`FunctionDefinition::resolve`]), and the result is checked against its return type.
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
-        let signature = self.definition.resolve(args.len())?;
+        let signature = self.definition.resolve(args, &keywords)?;
         let keywords = signature.bind_keywords(&self.definition.name, keywords)?;
-        (self.handler)(args, &keywords)
+        let result = (self.handler)(args, &keywords)?;
+        if signature.return_type.accepts(&result) {
+            Ok(result)
+        } else {
+            Err(Error::RuntimeError(RuntimeError::ReturnTypeMismatch {
+                name: self.definition.name.clone(),
+                expected: signature.return_type.to_string(),
+                found: type_name(&result),
+            }))
+        }
     }
 }
 
@@ -132,7 +144,8 @@ impl FunctionDefinition {
     ///
     /// # Panics
     ///
-    /// If that overload already declares a keyword with this name.
+    /// If that overload already declares a keyword with this name, or if the default isn't of
+    /// the keyword's type.
     pub fn keyword<S: Into<String>>(
         mut self,
         name: S,
@@ -151,10 +164,16 @@ impl FunctionDefinition {
             "Function {} declares the keyword argument {name} twice",
             self.name
         );
+        let default = default.into();
+        assert!(
+            r#type.accepts(&default),
+            "Function {} declares the keyword argument {name} with a default of the wrong type",
+            self.name
+        );
         self.last_overload().keywords.push(KeywordArgument {
             name,
             r#type,
-            default: default.into(),
+            default,
         });
         self
     }
@@ -202,33 +221,69 @@ impl FunctionDefinition {
             .unwrap_or_else(|| Type::Union(Vec::new()))
     }
 
-    /// The first overload that takes `found` positional arguments. If none does, the error
-    /// is about the first overload: how many arguments it needs at least, if it's variadic,
-    /// or else exactly.
-    pub fn resolve(&self, found: usize) -> Result<&FunctionSignature, Error> {
-        self.overloads
+    /// The overload that accepts these positional arguments and keywords, by count and by
+    /// type. Overloads are tried by arity, longest first; among overloads of the same arity
+    /// that all accept the call, the one declared first wins.
+    ///
+    /// If no overload takes that many positional arguments, the error lists the counts they
+    /// take. If one does, the error is the first way the call doesn't match it, and if several
+    /// do, `No overload of <name> accepts (…)`.
+    pub fn resolve(&self, args: &[Value], keywords: &Map) -> Result<&FunctionSignature, Error> {
+        let mut candidates: Vec<&FunctionSignature> = self
+            .overloads
             .iter()
-            .find(|overload| overload.accepts_count(found))
-            .ok_or_else(|| {
-                let name = self.name.clone();
-                Error::RuntimeError(match self.overloads.first() {
-                    Some(first) if first.is_variadic() => RuntimeError::TooFewArguments {
-                        name,
-                        minimum: first.minimum_arguments(),
-                        found,
-                    },
-                    first => RuntimeError::ArgumentCountMismatch {
-                        name,
-                        expected: first.map_or(0, |overload| overload.arguments.len()),
-                        found,
-                    },
-                })
-            })
+            .filter(|overload| overload.accepts_count(args.len()))
+            .collect();
+        // A stable sort, so overloads of the same arity stay in declaration order
+        candidates.sort_by_key(|overload| Reverse(overload.minimum_arguments()));
+        let mut mismatches = candidates
+            .iter()
+            .map(|overload| (*overload, overload.mismatch(&self.name, args, keywords)));
+        if let Some((overload, _)) = mismatches.find(|(_, mismatch)| mismatch.is_none()) {
+            return Ok(overload);
+        }
+        Err(Error::RuntimeError(match candidates.as_slice() {
+            [] => self.count_mismatch(args.len()),
+            [only] => only
+                .mismatch(&self.name, args, keywords)
+                .expect("the only candidate doesn't match"),
+            _ => RuntimeError::NoMatchingOverload {
+                name: self.name.clone(),
+                found: args
+                    .iter()
+                    .map(type_name)
+                    .chain(
+                        keywords
+                            .iter()
+                            .map(|(key, value)| format!("{}: {}", key_name(key), type_name(value))),
+                    )
+                    .collect(),
+            },
+        }))
     }
 
     /// Check that some overload takes `found` positional arguments.
     pub fn check_arity(&self, found: usize) -> Result<(), Error> {
-        self.resolve(found).map(|_| ())
+        if self
+            .overloads
+            .iter()
+            .any(|overload| overload.accepts_count(found))
+        {
+            Ok(())
+        } else {
+            Err(Error::RuntimeError(self.count_mismatch(found)))
+        }
+    }
+
+    /// The error for a call with `found` positional arguments, which no overload takes
+    fn count_mismatch(&self, found: usize) -> RuntimeError {
+        RuntimeError::ArgumentCountMismatch {
+            name: self.name.clone(),
+            expected: ArgumentCounts::new(
+                self.overloads.iter().map(FunctionSignature::argument_count),
+            ),
+            found,
+        }
     }
 }
 
@@ -266,6 +321,60 @@ impl FunctionSignature {
         self.arguments.len() - usize::from(self.is_variadic())
     }
 
+    /// How many positional arguments the signature takes
+    fn argument_count(&self) -> ArgumentCount {
+        if self.is_variadic() {
+            ArgumentCount::AtLeast(self.minimum_arguments())
+        } else {
+            ArgumentCount::Exactly(self.arguments.len())
+        }
+    }
+
+    /// The first way a call that this signature takes by count doesn't match it, checking the
+    /// positional arguments in order, then the keywords in call order, or `None` if it matches
+    fn mismatch(
+        &self,
+        function_name: &str,
+        args: &[Value],
+        keywords: &Map,
+    ) -> Option<RuntimeError> {
+        for (i, value) in args.iter().enumerate() {
+            // Values past the last argument belong to the variadic one
+            let argument = self.arguments.get(i).or(self.arguments.last())?;
+            if !argument.r#type.accepts(value) {
+                return Some(RuntimeError::ArgumentTypeMismatch {
+                    name: function_name.to_string(),
+                    argument: argument.name.clone(),
+                    expected: argument.r#type.to_string(),
+                    found: type_name(value),
+                });
+            }
+        }
+        for (key, value) in keywords {
+            let key = key_name(key);
+            let declared = self.keywords.iter().find(|keyword| keyword.name == key);
+            let r#type = match (declared, &self.rest_keywords) {
+                (Some(keyword), _) => &keyword.r#type,
+                (None, Some(rest)) => rest,
+                (None, None) => {
+                    return Some(RuntimeError::UnexpectedKeywordArgument {
+                        name: function_name.to_string(),
+                        key: key.to_string(),
+                    })
+                }
+            };
+            if !r#type.accepts(value) {
+                return Some(RuntimeError::KeywordTypeMismatch {
+                    name: function_name.to_string(),
+                    key: key.to_string(),
+                    expected: r#type.to_string(),
+                    found: type_name(value),
+                });
+            }
+        }
+        None
+    }
+
     /// Whether a call with `found` positional arguments fits this signature
     fn accepts_count(&self, found: usize) -> bool {
         if self.is_variadic() {
@@ -300,6 +409,19 @@ impl FunctionSignature {
         bound.extend(keywords);
         Ok(bound)
     }
+}
+
+/// The name of a value's type, for error messages
+fn type_name(value: &Value) -> String {
+    value
+        .type_of()
+        .map_or_else(|error| error.to_string(), |r#type| r#type.to_string())
+}
+
+/// A keyword's name, without the `:` of its symbol key
+fn key_name(key: &MapKey) -> &str {
+    let (MapKey::Symbol(name) | MapKey::String(name)) = key;
+    name
 }
 
 /// Panics if an argument other than the last is variadic, which is a mistake in host code.
@@ -413,8 +535,8 @@ mod tests {
         let result = identity().call(&[Value::None, Value::None]);
         assert!(matches!(
             result,
-            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected: 1, found: 2 }))
-                if name == "identity"
+            Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected, found: 2 }))
+                if name == "identity" && expected.counts() == [ArgumentCount::Exactly(1)]
         ));
     }
 
@@ -642,8 +764,10 @@ mod tests {
                 assert!(
                     matches!(
                         &result,
-                        Err(Error::RuntimeError(RuntimeError::TooFewArguments { name, minimum, found: f }))
-                            if name == "f" && *minimum == fixed && *f == found
+                        Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch { name, expected, found: f }))
+                            if name == "f"
+                                && expected.counts() == [ArgumentCount::AtLeast(fixed)]
+                                && *f == found
                     ),
                     "{fixed} fixed argument(s), {found} found: {result:?}"
                 );
@@ -700,8 +824,7 @@ mod tests {
         );
     }
 
-    /// Overloads are tried in order, so a variadic overload takes any count that an earlier
-    /// overload doesn't
+    /// A variadic overload takes the counts that a fixed one doesn't
     #[test]
     fn test_fixed_and_variadic_overloads() {
         let definition = FunctionDefinition::new("f", Type::number(), vec![Argument::number("n")])
@@ -713,16 +836,18 @@ mod tests {
                     Argument::variadic("rest", Type::any()),
                 ],
             );
-        assert_eq!(definition.resolve(1).unwrap().return_type, Type::number());
-        assert_eq!(definition.resolve(2).unwrap().return_type, Type::string());
-        assert_eq!(definition.resolve(5).unwrap().return_type, Type::string());
+        let numbers = |found: u64| (0..found).map(number).collect::<Vec<Value>>();
+        let resolve = |found: u64| definition.resolve(&numbers(found), &Map::new());
+        assert_eq!(resolve(1).unwrap().return_type, Type::number());
+        assert_eq!(resolve(2).unwrap().return_type, Type::string());
+        assert_eq!(resolve(5).unwrap().return_type, Type::string());
         assert!(matches!(
-            definition.resolve(0),
+            resolve(0),
             Err(Error::RuntimeError(RuntimeError::ArgumentCountMismatch {
-                expected: 1,
+                expected,
                 found: 0,
                 ..
-            }))
+            })) if expected.counts() == [ArgumentCount::Exactly(1), ArgumentCount::AtLeast(2)]
         ));
     }
 
@@ -797,6 +922,376 @@ mod tests {
         assert_eq!(
             definition.r#type().to_string(),
             "fn(String, greeting: String) -> String"
+        );
+    }
+
+    fn string(s: &str) -> Value {
+        Value::String(s.into())
+    }
+
+    fn symbol(s: &str) -> Value {
+        Value::Symbol(s.into())
+    }
+
+    /// The `which` keyword's value: each overload of a function under test declares `which`
+    /// with a default that names the overload, so the call shows which one matched.
+    fn which(function: &NativeFunction, args: &[Value], call_keywords: &[(&str, Value)]) -> String {
+        match function.call_with_keywords(args, keywords(call_keywords)) {
+            Ok(Value::Map(map)) => match &map[&MapKey::symbol("which")] {
+                Value::String(name) => name.clone(),
+                other => panic!("which is {other}"),
+            },
+            other => panic!("{} returned {other:?}", function.name()),
+        }
+    }
+
+    /// The error a call raises, as it's displayed
+    fn error(function: &NativeFunction, args: &[Value], call_keywords: &[(&str, Value)]) -> String {
+        function
+            .call_with_keywords(args, keywords(call_keywords))
+            .expect_err("the call should fail")
+            .to_string()
+    }
+
+    /// pick(*args: Any, which = "arity 0") and pick(a: Number, *args: Any, which = "arity 1"),
+    /// declared in that order, or reversed
+    fn pick(reversed: bool) -> NativeFunction {
+        let arity_0 = (vec![Argument::variadic("args", Type::any())], "arity 0");
+        let arity_1 = (
+            vec![
+                Argument::number("a"),
+                Argument::variadic("args", Type::any()),
+            ],
+            "arity 1",
+        );
+        let overloads = if reversed {
+            [arity_1, arity_0]
+        } else {
+            [arity_0, arity_1]
+        };
+        let [(first, first_which), (second, second_which)] = overloads;
+        echo(
+            FunctionDefinition::new("pick", Type::map(), first)
+                .keyword("which", Type::string(), string(first_which))
+                .add_overload(Type::map(), second)
+                .keyword("which", Type::string(), string(second_which)),
+        )
+    }
+
+    #[test]
+    fn test_overloads_are_tried_by_arity_longest_first() {
+        for reversed in [false, true] {
+            let function = pick(reversed);
+            assert_eq!(which(&function, &[number(1), symbol("b")], &[]), "arity 1");
+            assert_eq!(which(&function, &[number(1)], &[]), "arity 1");
+            assert_eq!(which(&function, &[symbol("b")], &[]), "arity 0");
+            assert_eq!(which(&function, &[], &[]), "arity 0");
+        }
+    }
+
+    #[test]
+    fn test_fixed_arity_beats_a_variadic_overload_with_fewer_fixed_arguments() {
+        for reversed in [false, true] {
+            let fixed = (vec![Argument::number("a"), Argument::number("b")], "fixed");
+            let variadic = (
+                vec![
+                    Argument::number("a"),
+                    Argument::variadic("rest", Type::any()),
+                ],
+                "variadic",
+            );
+            let overloads = if reversed {
+                [variadic, fixed]
+            } else {
+                [fixed, variadic]
+            };
+            let [(first, first_which), (second, second_which)] = overloads;
+            let function = echo(
+                FunctionDefinition::new("f", Type::map(), first)
+                    .keyword("which", Type::string(), string(first_which))
+                    .add_overload(Type::map(), second)
+                    .keyword("which", Type::string(), string(second_which)),
+            );
+            assert_eq!(which(&function, &[number(1), number(2)], &[]), "fixed");
+            assert_eq!(which(&function, &[number(1)], &[]), "variadic");
+            assert_eq!(which(&function, &[number(1), string("b")], &[]), "variadic");
+            assert_eq!(
+                which(&function, &[number(1), number(2), number(3)], &[]),
+                "variadic"
+            );
+        }
+    }
+
+    /// describe(n: Number, which = "number") and describe(s: String | Symbol, which = "text")
+    fn describe() -> NativeFunction {
+        echo(
+            FunctionDefinition::new("describe", Type::map(), vec![Argument::number("n")])
+                .keyword("which", Type::string(), string("number"))
+                .add_overload(
+                    Type::map(),
+                    vec![Argument::new(
+                        "s",
+                        Type::union(Type::string(), Type::symbol()),
+                    )],
+                )
+                .keyword("which", Type::string(), string("text")),
+        )
+    }
+
+    #[test]
+    fn test_types_pick_among_overloads_of_the_same_arity() {
+        let function = describe();
+        assert_eq!(which(&function, &[number(1)], &[]), "number");
+        assert_eq!(which(&function, &[string("a")], &[]), "text");
+        assert_eq!(which(&function, &[symbol("a")], &[]), "text");
+    }
+
+    #[test]
+    fn test_no_overload_accepts_the_arguments() {
+        assert_eq!(
+            error(&describe(), &[Value::Boolean(true)], &[]),
+            "Runtime Error: No overload of describe accepts (Boolean)"
+        );
+    }
+
+    /// foo(s: String, n: Number = 0, b: Boolean = false) and
+    /// foo(s: String, t: String = "", b: Boolean = false), declared in that order, or reversed.
+    /// Each also declares `which`, naming the keyword only it declares.
+    fn foo(reversed: bool) -> NativeFunction {
+        let with_n = |definition: FunctionDefinition| {
+            definition
+                .keyword("n", Type::number(), number(0))
+                .keyword("b", Type::boolean(), Value::Boolean(false))
+                .keyword("which", Type::string(), string("n"))
+        };
+        let with_t = |definition: FunctionDefinition| {
+            definition
+                .keyword("t", Type::string(), string(""))
+                .keyword("b", Type::boolean(), Value::Boolean(false))
+                .keyword("which", Type::string(), string("t"))
+        };
+        let (first, second): (
+            &dyn Fn(FunctionDefinition) -> FunctionDefinition,
+            &dyn Fn(FunctionDefinition) -> FunctionDefinition,
+        ) = if reversed {
+            (&with_t, &with_n)
+        } else {
+            (&with_n, &with_t)
+        };
+        let definition = first(FunctionDefinition::new(
+            "foo",
+            Type::map(),
+            vec![Argument::string("s")],
+        ));
+        echo(second(
+            definition.add_overload(Type::map(), vec![Argument::string("s")]),
+        ))
+    }
+
+    #[test]
+    fn test_keywords_pick_among_overloads_of_the_same_arity() {
+        for reversed in [false, true] {
+            let function = foo(reversed);
+            let abc = [string("abc")];
+            assert_eq!(which(&function, &abc, &[("n", number(1))]), "n");
+            assert_eq!(
+                which(
+                    &function,
+                    &abc,
+                    &[("b", Value::Boolean(true)), ("n", number(1))]
+                ),
+                "n"
+            );
+            assert_eq!(which(&function, &abc, &[("t", string("x"))]), "t");
+        }
+    }
+
+    #[test]
+    fn test_a_tie_goes_to_the_overload_declared_first() {
+        let tied = [("b", Value::Boolean(true))];
+        assert_eq!(which(&foo(false), &[string("abc")], &tied), "n");
+        assert_eq!(which(&foo(true), &[string("abc")], &tied), "t");
+    }
+
+    #[test]
+    fn test_no_overload_accepts_the_keywords() {
+        assert_eq!(
+            error(&foo(false), &[string("abc")], &[("n", string("x"))]),
+            "Runtime Error: No overload of foo accepts (String, n: String)"
+        );
+        assert_eq!(
+            error(&foo(false), &[string("abc")], &[("z", number(1))]),
+            "Runtime Error: No overload of foo accepts (String, z: Number)"
+        );
+    }
+
+    #[test]
+    fn test_an_argument_of_the_wrong_type_is_named() {
+        let pad = NativeFunction::new(
+            FunctionDefinition::new(
+                "pad",
+                Type::string(),
+                vec![Argument::string("s"), Argument::number("width")],
+            ),
+            |args| Ok(args[0].clone()),
+        );
+        assert_eq!(
+            error(&pad, &[number(1), number(2)], &[]),
+            "Runtime Error: Argument s of pad expects String, found Number"
+        );
+        assert_eq!(
+            error(&pad, &[string("x"), string("2")], &[]),
+            "Runtime Error: Argument width of pad expects Number, found String"
+        );
+    }
+
+    #[test]
+    fn test_each_variadic_value_is_checked() {
+        let total = NativeFunction::new(
+            FunctionDefinition::new(
+                "total",
+                Type::number(),
+                vec![Argument::variadic("values", Type::number())],
+            ),
+            |_args| Ok(number(0)),
+        );
+        assert!(total.call(&[number(1), number(2)]).is_ok());
+        assert_eq!(
+            error(&total, &[number(1), string("a")], &[]),
+            "Runtime Error: Argument values of total expects Number, found String"
+        );
+    }
+
+    #[test]
+    fn test_native_arguments_are_checked() {
+        use crate::runtime::native::fixtures::Meters;
+        use crate::runtime::native::fixtures::Seconds;
+
+        let length = NativeFunction::new(
+            FunctionDefinition::new(
+                "length",
+                Type::number(),
+                vec![Argument::new("m", Type::native::<Meters>())],
+            ),
+            |_args| Ok(number(0)),
+        );
+        assert!(length.call(&[Value::native(Meters(1))]).is_ok());
+        assert_eq!(
+            error(&length, &[Value::native(Seconds(1))], &[]),
+            "Runtime Error: Argument m of length expects Meters, found Seconds"
+        );
+    }
+
+    #[test]
+    fn test_keyword_values_are_checked() {
+        let greet =
+            echo(
+                FunctionDefinition::new("greet", Type::map(), vec![Argument::string("name")])
+                    .keyword("greeting", Type::string(), string("Hello")),
+            );
+        assert_eq!(
+            error(&greet, &[string("Ann")], &[("greeting", number(1))]),
+            "Runtime Error: Keyword argument greeting of greet expects String, found Number"
+        );
+        assert_eq!(
+            unexpected_keyword(
+                greet.call_with_keywords(&[string("Ann")], keywords(&[("tone", string("warm"))]))
+            ),
+            Some(("greet".to_string(), "tone".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_rest_keywords_are_checked_against_their_type() {
+        let scores = echo(
+            FunctionDefinition::new("scores", Type::map(), vec![]).rest_keywords(Type::number()),
+        );
+        assert!(scores
+            .call_with_keywords(&[], keywords(&[("a", number(1))]))
+            .is_ok());
+        assert_eq!(
+            error(&scores, &[], &[("a", string("x"))]),
+            "Runtime Error: Keyword argument a of scores expects Number, found String"
+        );
+    }
+
+    #[test]
+    fn test_the_return_value_is_checked() {
+        let liar = NativeFunction::new(
+            FunctionDefinition::new("liar", Type::number(), vec![]),
+            |_args| Ok(string("not a number")),
+        );
+        assert_eq!(
+            error(&liar, &[], &[]),
+            "Runtime Error: Function liar returned String, expected Number"
+        );
+    }
+
+    #[test]
+    fn test_the_return_value_is_checked_against_the_overload_that_matched() {
+        let function = NativeFunction::new(
+            FunctionDefinition::new("f", Type::number(), vec![Argument::number("n")])
+                .add_overload(Type::string(), vec![Argument::string("s")]),
+            |args| Ok(args[0].clone()),
+        );
+        assert_eq!(function.call(&[number(1)]).unwrap(), number(1));
+        assert_eq!(function.call(&[string("a")]).unwrap(), string("a"));
+    }
+
+    /// A function `f` with an overload for each list of argument names, each argument `Any`;
+    /// a name starting with `*` is variadic
+    fn counts(overloads: &[&[&str]]) -> NativeFunction {
+        let arguments = |names: &[&str]| -> Vec<Argument> {
+            names
+                .iter()
+                .map(|name| match name.strip_prefix('*') {
+                    Some(name) => Argument::variadic(name, Type::any()),
+                    None => Argument::new(*name, Type::any()),
+                })
+                .collect()
+        };
+        let mut definition = FunctionDefinition::new("f", Type::any(), arguments(overloads[0]));
+        for overload in &overloads[1..] {
+            definition = definition.add_overload(Type::any(), arguments(overload));
+        }
+        NativeFunction::new(definition, |_args| Ok(Value::None))
+    }
+
+    #[test]
+    fn test_count_errors_list_every_accepted_count() {
+        let cases: &[(&[&[&str]], usize, &str)] = &[
+            (&[&["a"]], 0, "1"),
+            (&[&["a", "*rest"]], 0, "at least 1"),
+            (&[&["a"], &["a", "b"]], 3, "1 or 2"),
+            (&[&["a", "b"], &["a"]], 3, "1 or 2"),
+            (&[&["a"], &["a", "b", "*rest"]], 0, "1 or at least 2"),
+            (&[&["a", "b", "*rest"], &["a"]], 0, "1 or at least 2"),
+            (
+                &[&["a"], &["a", "b"], &["a", "b", "c", "*rest"]],
+                0,
+                "1, 2 or at least 3",
+            ),
+            (&[&["a", "*rest"], &["a", "b"]], 0, "at least 1"),
+        ];
+        for (overloads, found, expected) in cases {
+            let args = vec![Value::None; *found];
+            assert_eq!(
+                error(&counts(overloads), &args, &[]),
+                format!("Runtime Error: Function f expected {expected} argument(s), found {found}"),
+                "overloads {overloads:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Function f declares the keyword argument k with a default of the wrong type"
+    )]
+    fn test_a_keyword_default_of_the_wrong_type_panics() {
+        let _ = FunctionDefinition::new("f", Type::any(), vec![]).keyword(
+            "k",
+            Type::number(),
+            string("one"),
         );
     }
 }

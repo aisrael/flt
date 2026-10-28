@@ -53,20 +53,40 @@ pub enum RuntimeError {
     UndefinedFunction(String),
     #[error("{0} is not a function")]
     NotCallable(String),
+    /// No signature of the function takes that many positional arguments
     #[error("Function {name} expected {expected} argument(s), found {found}")]
     ArgumentCountMismatch {
         name: String,
-        expected: usize,
+        expected: ArgumentCounts,
         found: usize,
     },
-    #[error("Function {name} expected at least {minimum} argument(s), found {found}")]
-    TooFewArguments {
+    /// The one signature that takes that many positional arguments doesn't accept this one
+    #[error("Argument {argument} of {name} expects {expected}, found {found}")]
+    ArgumentTypeMismatch {
         name: String,
-        minimum: usize,
-        found: usize,
+        argument: String,
+        expected: String,
+        found: String,
     },
+    /// Several signatures take that many positional arguments, and none accepts the call
+    #[error("No overload of {name} accepts ({})", .found.join(", "))]
+    NoMatchingOverload { name: String, found: Vec<String> },
     #[error("Function {name} got an unexpected keyword argument: {key}")]
     UnexpectedKeywordArgument { name: String, key: String },
+    #[error("Keyword argument {key} of {name} expects {expected}, found {found}")]
+    KeywordTypeMismatch {
+        name: String,
+        key: String,
+        expected: String,
+        found: String,
+    },
+    /// A function's result isn't of its signature's return type
+    #[error("Function {name} returned {found}, expected {expected}")]
+    ReturnTypeMismatch {
+        name: String,
+        expected: String,
+        found: String,
+    },
     #[error("Cannot bind {name}: it's {reason}")]
     CannotBind { name: String, reason: ProtectedName },
     /// A host registered a function or a native type (`kind`) under a name that's in use
@@ -85,6 +105,76 @@ pub enum RuntimeError {
         number: String,
         target: &'static str,
     },
+}
+
+/// How many positional arguments a signature takes
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ArgumentCount {
+    Exactly(usize),
+    /// A signature with a variadic argument takes at least this many
+    AtLeast(usize),
+}
+
+impl ArgumentCount {
+    fn count(self) -> usize {
+        match self {
+            ArgumentCount::Exactly(n) | ArgumentCount::AtLeast(n) => n,
+        }
+    }
+
+    fn covers(self, other: ArgumentCount) -> bool {
+        match self {
+            ArgumentCount::Exactly(n) => other == ArgumentCount::Exactly(n),
+            ArgumentCount::AtLeast(n) => other.count() >= n,
+        }
+    }
+}
+
+impl std::fmt::Display for ArgumentCount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArgumentCount::Exactly(n) => write!(f, "{n}"),
+            ArgumentCount::AtLeast(n) => write!(f, "at least {n}"),
+        }
+    }
+}
+
+/// Every count of positional arguments a function's signatures take, smallest first, e.g.
+/// `1, 2 or at least 3`. A count another one already covers is left out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArgumentCounts(Vec<ArgumentCount>);
+
+impl ArgumentCounts {
+    pub fn new(counts: impl IntoIterator<Item = ArgumentCount>) -> Self {
+        let mut counts: Vec<ArgumentCount> = counts.into_iter().collect();
+        // A minimum sorts before the same exact count, which it covers
+        counts.sort_by_key(|count| (count.count(), matches!(count, ArgumentCount::Exactly(_))));
+        let mut kept: Vec<ArgumentCount> = Vec::new();
+        for count in counts {
+            if !kept.iter().any(|earlier| earlier.covers(count)) {
+                kept.push(count);
+            }
+        }
+        Self(kept)
+    }
+
+    /// The counts, smallest first
+    pub fn counts(&self) -> &[ArgumentCount] {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ArgumentCounts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, count) in self.0.iter().enumerate() {
+            if i > 0 {
+                let separator = if i == self.0.len() - 1 { " or " } else { ", " };
+                write!(f, "{separator}")?;
+            }
+            write!(f, "{count}")?;
+        }
+        Ok(())
+    }
 }
 
 /// What a name already is, which stops it from being bound as a variable or registered

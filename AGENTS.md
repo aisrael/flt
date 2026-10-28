@@ -9,6 +9,7 @@
 
 - Whenever planning or implementing a new language feature, start by writing the documentation under `docs/`, with examples. Then write Cucumber features (under `features/`) and unit tests that match those examples. Only then write the implementation.
 - In general, keep `docs/spec.md` as broad as possible, and not runtime-specific. Describe what any flt runtime does, and leave details of the reference implementation (`SimpleRuntime`), such as its built-ins, to the other docs.
+- In `docs/spec.md`, don't quote error messages. Name the `RuntimeError` variant instead, e.g. "raises an `UnexpectedKeywordArgument` error" rather than "raises `Function <name> got an unexpected keyword argument: <key>`". Leave the message text to the other docs.
 
 # ADRs
 

@@ -4,6 +4,10 @@
 
 ### Breaking Changes
 
+- **Function calls are type-checked**: Every call checks its positional arguments, variadic values and keyword values against the declared types, and the function's result against its return type, so `pad(1, 2)` raises `Argument s of pad expects String, found Number` before `pad` runs. `Any` accepts every value, so functions declared with `Any` behave as before. Hosts need declared types that match what their handlers accept and return. New errors: `Argument … expects …`, `Keyword argument … expects …`, `No overload of … accepts (…)` and `Function … returned …, expected …` ([ADR 013](https://github.com/aisrael/flt/blob/main/docs/adrs/013-type-checked-function-calls.md)).
+- **Overloads are picked by arity, types and keywords**: Overloads are tried by arity, longest first, and the first whose types and keywords match is called, so declaration order no longer decides which one runs. Among matching overloads of the same arity, `SimpleRuntime` calls the one declared first.
+- **One error for the wrong number of arguments**: `RuntimeError::ArgumentCountMismatch`'s `expected` is an `ArgumentCounts`, listing every count the function's overloads take, e.g. `Function f expected 1 or at least 3 argument(s), found 2`, and `RuntimeError::TooFewArguments` is gone. A function with one signature prints the same messages as before.
+- **`FunctionDefinition::resolve` takes the call's values and keywords** instead of a count, and `FunctionDefinition::keyword` panics on a default of the wrong type.
 - **Variadic parameters print as `*T`**: Function types show a variadic parameter as `*T` instead of `...T`, matching `**T` for rest keywords, so `typeof(sprintf)` prints `fn(String, *Any) -> String` ([ADR 012](https://github.com/aisrael/flt/blob/main/docs/adrs/012-variadic-notation.md)).
 
 ### New Features

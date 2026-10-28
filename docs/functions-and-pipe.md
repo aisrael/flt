@@ -37,7 +37,7 @@ typeof(greet)                  # fn(String, greeting: String) -> String
 - **A keyword can't be repeated.** `greet("Ann", greeting: "Hi", greeting: "Yo")` is a parse error, `Duplicate keyword argument greeting in the call to greet`, and so is `greet("Ann", greeting: "Hi", "greeting": "Yo")`, since both keys are `:greeting`.
 - **A keyword is never filled by position.** `greet("Ann", "Hi")` passes two positional arguments, and raises `Function greet expected 1 argument(s), found 2`.
 - **A map is a positional argument.** `f(k: 1)` passes the keyword `k`, and `f({k: 1})` passes one map.
-- **Keyword values aren't type-checked yet**, like positional arguments ([Calls](#calls)).
+- **Keyword values are type-checked**, like positional arguments ([Calls](#calls)): `greet("Ann", greeting: 1)` raises `Keyword argument greeting of greet expects String, found Number`.
 
 Positional arguments are evaluated first, left to right, then keyword values, left to right.
 
@@ -166,13 +166,36 @@ f(42)                 # 42
 
 ## Calls
 
-Before a function runs, the runtime checks the number of positional arguments against the function's signature, then checks its [keyword arguments](#keyword-arguments) against the keywords that signature declares. A signature whose last positional argument is [variadic](./native-functions-and-values.md#variadic-arguments) takes any number of positional arguments after the ones before it ([ADR 011](./adrs/011-variadic-arguments.md)). Argument types aren't checked yet; that is left to the function itself (see [native types](./native-functions-and-values.md#native-values-in-flt)).
+Every call is type-checked before the function runs ([ADR 013](./adrs/013-type-checked-function-calls.md)). A function's signature declares the type of each positional argument, each [variadic](./native-functions-and-values.md#variadic-arguments) value, each [keyword argument](#keyword-arguments) and its result, and the call has to match:
 
+- **The number of positional arguments.** A signature whose last positional argument is variadic takes any number of positional arguments after the ones before it ([ADR 011](./adrs/011-variadic-arguments.md)).
+- **Each argument's type.** `Any` accepts every value. A union accepts a value of any of its members, and a [native type](./native-functions-and-values.md#native-types-and-values) only values of that same type.
+- **Each keyword.** It has to be one the signature declares, with a value of its type, or one its rest keywords accept.
+- **The result.** It has to be of the signature's return type.
+
+With `pad(s: String, width: Number) -> String`, `sprintf(format: String, *args: Any) -> String` and `identity(v: Any) -> Any`:
+
+- `pad(1, 2)` raises `Argument s of pad expects String, found Number`.
 - `identity(1, 2)` raises `Function identity expected 1 argument(s), found 2`.
-- `sprintf()`, where `sprintf` has type `fn(String, *Any) -> String`, raises `Function sprintf expected at least 1 argument(s), found 0`.
+- `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
 - `identity(1, k: 2)` raises `Function identity got an unexpected keyword argument: k`.
 - `let x = 1; x(2)` raises `x is not a function`.
 - `nope(1)`, where `nope` isn't bound, raises `Undefined function: nope`.
+
+### Overloads
+
+A function can have several signatures, or overloads. A call runs the one that matches it:
+
+- **Overloads are tried by arity, longest first.** An overload's arity is the number of its positional arguments before any variadic one, so a call reaches the overload that matches the most of its arguments one for one, whatever order the overloads were declared in.
+- **Types and keywords tell overloads of the same arity apart.** With `count(plan: Plan) -> Number` and `count(column: Symbol | String) -> Aggregate`, `count(:id)` runs the second. With `foo(s: String, n: Number = 0)` and `foo(s: String, t: String = "")`, `foo("abc", n: 1)` runs the first.
+- **A tie isn't specified.** If several overloads of the same arity match, flt doesn't say which one runs, so flt source shouldn't depend on it. `SimpleRuntime` runs the one declared first.
+
+When no overload matches:
+
+- **No overload takes that many positional arguments:** the error lists the counts they take, e.g. `Function g expected 1 or 2 argument(s), found 3`, or `Function f expected 1 or at least 3 argument(s), found 2`.
+- **Several take that many, but none matches:** `No overload of count accepts (Number)`, listing the call's argument types, then its keywords, e.g. `No overload of foo accepts (String, n: String)`.
+
+A function's type shows every overload: `typeof(count)` is `fn(Plan) -> Number | fn(Symbol | String) -> Aggregate`.
 
 ## Current Semantics Note
 

@@ -59,9 +59,9 @@ Feature: Native types and values
     Then the result should be "<type>"
 
     Examples:
-      | input                 | type                               |
-      | typeof(date)          | fn(Number, Number, Number) -> Date |
-      | typeof(days_between)  | fn(Date, Date) -> Number           |
+      | input                | type                               |
+      | typeof(date)         | fn(Number, Number, Number) -> Date |
+      | typeof(days_between) | fn(Date, Date) -> Number           |
 
   Scenario Outline: Native values compare with the host's equality
     Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
@@ -70,13 +70,13 @@ Feature: Native types and values
     Then the result should be "<result>"
 
     Examples:
-      | input                                         | result |
-      | let d = date(2026, 10, 25); d == d            | true   |
-      | date(2026, 10, 25) == date(2026, 10, 25)      | true   |
-      | date(2026, 10, 25) == date(2026, 10, 26)      | false  |
-      | date(2026, 10, 25) != date(2026, 10, 26)      | true   |
-      | date(2026, 10, 25) == time(12, 0, 0)          | false  |
-      | date(2026, 10, 25) == "2026-10-25"            | false  |
+      | input                                    | result |
+      | let d = date(2026, 10, 25); d == d       | true   |
+      | date(2026, 10, 25) == date(2026, 10, 25) | true   |
+      | date(2026, 10, 25) == date(2026, 10, 26) | false  |
+      | date(2026, 10, 25) != date(2026, 10, 26) | true   |
+      | date(2026, 10, 25) == time(12, 0, 0)     | false  |
+      | date(2026, 10, 25) == "2026-10-25"       | false  |
 
   Scenario: Native values can't be ordered
     Given the input 'date(2026, 10, 25) < date(2026, 10, 26)'
@@ -86,13 +86,13 @@ Feature: Native types and values
   Scenario: A native function rejects a value of the wrong type
     Given the input 'days_between(1, date(2026, 10, 25))'
     When I evaluate the input
-    Then the evaluation should fail with "Expected Date, found Number"
+    Then the evaluation should fail with "Argument from of days_between expects Date, found Number"
 
   Scenario: A native function rejects a value of another native type
     Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
     And the input 'days_between(time(12, 0, 0), date(2026, 10, 25))'
     When I evaluate the input
-    Then the evaluation should fail with "Expected Date, found Time"
+    Then the evaluation should fail with "Argument from of days_between expects Date, found Time"
 
   Scenario: flt source can't create a native value
     Given the input 'Date(2026, 10, 25)'
@@ -132,10 +132,10 @@ Feature: Native types and values
     Then the evaluation should fail with "<error>"
 
     Examples:
-      | input                 | error                         |
-      | date("2026", 10, 25)  | Expected Number, found String |
-      | date(2026.5, 10, 25)  | Cannot convert 2026.5 to i32  |
-      | date(2026, -10, 25)   | Cannot convert -10 to u32     |
+      | input                | error                                              |
+      | date("2026", 10, 25) | Argument yyyy of date expects Number, found String |
+      | date(2026.5, 10, 25) | Cannot convert 2026.5 to i32                       |
+      | date(2026, -10, 25)  | Cannot convert -10 to u32                          |
 
   Scenario: A host error is shown unchanged
     Given the input 'date(2026, 2, 30)'
