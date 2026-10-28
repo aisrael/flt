@@ -91,8 +91,9 @@ use the same name for the same thing.
 ### 3. Typed access
 
 - `get::<T>(name)` converts the argument to `T`, which implements the new `FromValue` trait.
-  flt implements it for `String`, `&str`, `bool`, `&Value`, the integer types and `f64` (as their
-  `TryFrom<&Value>` does now), and `Option<T>`, which gives `None` for `None`.
+  flt implements it for `&Value`, `String`, `&str`, `bool`, `&Map`, `&[Value]` (an array's
+  elements), the integer types and `f64` (as their `TryFrom<&Value>` does now), and `Option<T>`,
+  which gives `None` for `None`.
 - `native::<T>(name)` borrows a native value, as `Value::downcast_native` does
   ([ADR 007](007-native-types-and-values.md)).
 - `value(name)` gives the `&Value`, or `None` if the called overload has no argument or keyword of
@@ -119,12 +120,14 @@ means the declared type is wider than the handler accepts, for example `Any` rea
 `get` and `native` raise a handler error if the called overload declares no argument or keyword
 of that name. Only the host can make that mistake, so it isn't a `RuntimeError`, which is for
 mistakes in the flt source. It's a new kind of error, `Error::HandlerError`, for a host or handler
-using flt's API wrongly, starting with one variant:
+using flt's API wrongly:
 
 ```rust
 HandlerError::UndeclaredArgument { name: "head".into(), argument: "plan".into() }
 // Handler Error: Function head has no argument plan
 ```
+
+A variadic argument gets its own variant (decision 5).
 
 It's not `Error::Native`, which wraps the host's own errors (I/O, datu's, and so on) and shows
 them unchanged. A `HandlerError` is raised at the interface between flt and the host's handlers.
@@ -135,7 +138,10 @@ The statement fails with it, as with any other error, and the host keeps running
 
 - `rest()` gives the values of a variadic last argument
   ([ADR 011](011-variadic-arguments.md)) as a slice, empty if there are none. `get` and `native`
-  take one value, so they raise `UndeclaredArgument` for the variadic argument's name too.
+  take one value, so for the variadic argument's name they raise
+  `HandlerError::VariadicArgument { name, argument }`:
+  `Handler Error: Argument values of total is variadic; read it with Arguments::rest`.
+  `UndeclaredArgument` would say the function has no such argument, when it does.
 - `keywords()` gives the bound keywords as a `Map`, for handlers that take rest keywords, like
   datu's `select(plan, *columns, **aliases)`.
 - `positional()` gives every positional value as a slice, as handlers get now, and

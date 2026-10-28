@@ -100,9 +100,10 @@ The evaluator currently supports:
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 - `Cannot bind <name>: it's a native type` - binding the name of a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host
 - `Cannot register function <name>: it's …` and `Cannot register native type <name>: it's …` - a host registering a function or a native type under a name that's in use, e.g. `Cannot register function Date: it's a native type`
-- `Expected <type>, found <type>` - a native function reading a value as a type it isn't, with `downcast_native` or a number conversion, e.g. a handler declared with `Any` that reads its argument as a `Date`
+- `Expected <type>, found <type>` - a native function reading a value as a type it isn't, with [`Arguments::get`](./native-functions-and-values.md#reading-arguments), `Arguments::native`, `downcast_native` or a number conversion, e.g. a handler declared with `Any` that reads its argument as a `Date`
 - `Cannot convert <number> to <type>` - a native function reading a number argument as a Rust number type that can't hold it, e.g. `-1` as a `u32`, or `2.5` as any integer type
 - Host errors - a native function can fail with the host's own error, which is shown as the host displays it, without the `Runtime Error:` prefix
+- [Handler errors](./native-functions-and-values.md#handler-errors) - a handler using flt's API wrongly, a bug in the host rather than the flt source, shown with a `Handler Error:` prefix: `Function <name> has no argument <argument>` for a name the matching overload doesn't declare, and `Argument <argument> of <name> is variadic; read it with Arguments::rest` for reading a variadic argument as one value
 
 ## Parsed but Not Yet Evaluated
 
