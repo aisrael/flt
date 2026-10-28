@@ -19,7 +19,7 @@ The runtime currently evaluates a subset of that syntax.
 
 ```toml
 [dependencies]
-flt = "0.2.0"
+flt = "0.3.0"
 ```
 
 ## Quick start
