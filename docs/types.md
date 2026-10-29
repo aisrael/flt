@@ -8,7 +8,8 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 | --------- | --------------------- | ------------------------------------------------------------------ |
 | `None`    | `None`                | The `None` type (and value); see [None](./types/none.md)           |
 | `Boolean` | `true`, `false`       |                                                                    |
-| `Number`  | `42`, `3.14`          | Arbitrary-precision decimal                                        |
+| `Integer` | `42`, `-7`            | Arbitrary-precision whole number; see [Integers and Numbers](#integers-and-numbers) |
+| `Number`  | `3.14`, `42.0`        | Arbitrary-precision decimal; also accepts an `Integer`, converting it |
 | `String`  | `"hi"`                |                                                                    |
 | `Symbol`  | `:id`                 |                                                                    |
 | `Array`   | `[1, 2, 3]`           |                                                                    |
@@ -21,6 +22,59 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 - [Union Types](./types/union_types.md): `A | B`, a value of one of several types, and the type of an `if`.
 - [Native Types](./native-functions-and-values.md#native-types-and-values): types a host defines for its own values, which only its native functions create and read.
 
+## Integers and Numbers
+
+flt has two numeric types ([ADR 017](./adrs/017-integers.md)). An `Integer` is a whole number, and a `Number` a decimal. Both are arbitrary-precision. A numeric [literal](./literals.md#numbers) without a `.` is an `Integer`, and one with a `.` is a `Number`:
+
+```flt
+typeof(1)          # Integer
+typeof(1.5)        # Number
+typeof(42.)        # Number
+```
+
+Arithmetic on two integers gives an `Integer`, and on a `Number` and anything else a `Number`. That includes `/`, which floors on integers, so `7 / 2` is `3`. Write `7.0 / 2` to get `3.5`. See [Integer and Number arithmetic](./operators.md#integer-and-number-arithmetic).
+
+A `Number` with no digits after the decimal point prints with `.0`, so it never looks like an `Integer`:
+
+```flt
+4.0 / 2            # 2.0
+42.                # 42.0
+```
+
+An `Integer` and a `Number` with the same value are equal, but `typeof` tells them apart:
+
+```flt
+1 == 1.0                   # true
+typeof(1) == typeof(1.0)   # false
+```
+
+### `Number` Accepts an `Integer`
+
+Anything that takes a `Number` also takes an `Integer`, and converts it to a `Number`. This applies to a function's arguments and result, and to a variable declared `Number`:
+
+```flt
+let n: Number = 1
+n                  # 1.0
+typeof(n)          # Number
+```
+
+It's the only conversion flt makes without being asked. An `Integer` never accepts a `Number`, not even a whole one:
+
+```flt
+let i: Integer = 1.0     # error: Variable i expects Integer, found Number
+```
+
+A union converts an `Integer` only if none of its members accepts it as it is:
+
+| Declared type         | `1` becomes | `1.0` becomes |
+| --------------------- | ----------- | ------------- |
+| `Integer`             | `1`         | an error      |
+| `Number`              | `1.0`       | `1.0`         |
+| `Integer \| Number`   | `1`         | `1.0`         |
+| `Number \| String`    | `1.0`       | `1.0`         |
+| `Number \| None`      | `1.0`       | `1.0`         |
+| `Any`                 | `1`         | `1.0`         |
+
 ## Type Annotations
 
 A `let` binding can declare its variable's type after a `:` ([ADR 016](./adrs/016-typed-let-bindings.md)):
@@ -32,7 +86,7 @@ let t: Type = Number
 let a: Any = 1
 ```
 
-The value must be of that type, by the same rules as a function's arguments, or the binding raises `Variable <name> expects <type>, found <type>`. A later assignment, `n = …`, is checked against the declared type too, until the variable is declared again with `let`. See [Statements](./syntax.md#statements).
+The value must be of that type, by the same rules as a function's arguments, or the binding raises `Variable <name> expects <type>, found <type>`. It's converted by the same rules too, so `let n: Number = 1` binds `1.0` ([`Number` Accepts an `Integer`](#number-accepts-an-integer)). A later assignment, `n = …`, is checked against the declared type too, until the variable is declared again with `let`. See [Statements](./syntax.md#statements).
 
 A type is a built-in type name, including `Any` and `None`, a [native type](./native-functions-and-values.md#native-types-and-values)'s name, a union `A | B`, or a type in parentheses. Function types and `Option<T>` can't be written yet; write `T | None` for `Option<T>`. Any other name raises `Unknown type: <name>`, before the value is evaluated:
 
@@ -44,8 +98,8 @@ let y: typeof = 1    # error: Unknown type: typeof
 `typeof` reports a value's own type, not its variable's declared type:
 
 ```flt
-let x: Number | String = 1
-typeof(x)            # Number
+let x: Integer | String = 1
+typeof(x)            # Integer
 ```
 
 ## Types as Values

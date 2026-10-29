@@ -40,7 +40,8 @@ key        = ident | string ;
 
 | Kind      | Examples                                   | Notes                                              |
 | --------- | ------------------------------------------ | -------------------------------------------------- |
-| Number    | `42` `3.14` `-0.5` `42.`                   | Arbitrary-precision decimal                        |
+| Integer   | `42` `-7` `+7` `1_000`                     | Arbitrary-precision whole number; no `.`           |
+| Number    | `3.14` `-0.5` `42.0` `42.`                 | Arbitrary-precision decimal; has a `.`             |
 | String    | `"hi"` `"say \"hi\""` `"Answer: {1 + 2}"` | `{expr}` interpolates; `\{` is a literal `{`       |
 | Boolean   | `true` `false`                             |                                                    |
 | None      | `None`                                     | No value; also its own type                        |
@@ -50,9 +51,16 @@ key        = ident | string ;
 
 ## 4. Types
 
-`None`, `Boolean`, `Number`, `String`, `Symbol`, `Array`, `Map`, and `Type`. `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
+`None`, `Boolean`, `Integer`, `Number`, `String`, `Symbol`, `Array`, `Map`, and `Type`. `Any` is a placeholder used only in signatures (e.g. `typeof` is `fn(Any) -> Type`); no
 expression evaluates to `Any`, and `Any` is not a value. Types are first-class values: a built-in type name evaluates to that type, so
-`typeof(1) == Number` is `true`. The `None` value equals the `None` type.
+`typeof(1) == Integer` is `true`. The `None` value equals the `None` type.
+
+`Integer` and `Number` are both arbitrary-precision. An `Integer` is a whole number, and a `Number`
+a decimal. A `Number` with no digits after its decimal point prints with a trailing `.0`, e.g.
+`2.0`, so a printed `Number` never looks like an `Integer`. Wherever a value is checked against a
+type (§6, §7), `Number` accepts an `Integer` too, and the `Integer` is converted to a `Number`.
+This is the only implicit conversion between types. `Integer` doesn't accept a `Number`, even a
+whole one such as `1.0`.
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
 `else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
@@ -79,12 +87,34 @@ are never equal, and native values can't be ordered.
 | 6–8   | `\|`, `^`, `&`                             | bitwise or / xor / and      |
 | 9     | `\|>`                                      | pipe                        |
 | 10    | `+` `-` `<>`                               | add, subtract, concatenate  |
-| 11    | `*` `/`                                    | multiply, divide            |
+| 11    | `*` `/` `//`                               | multiply, divide, floor-divide |
 | —     | unary `!` `+` `-`, then postfix `.field`   | bind tightest               |
 
 Comparisons bind looser than arithmetic, `<>` and bitwise operators, so `1 + 2 == 3` is `true` and
 `x & 1 == 0` is `(x & 1) == 0`. As in Elixir, `|>` binds looser than `+` `-` `<>` and tighter than
 everything else, so `x |> f == 3` is `(x |> f) == 3` and `a || b |> f` is `a || (b |> f)`.
+
+### Arithmetic
+
+| Operation      | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number` |
+| -------------- | -------------------- | ---------------------------------------- | ------------------ |
+| `+` `-` `*`    | `Integer`            | `Number`                                 | `Number`           |
+| `/`            | `Integer`, floored   | `Number`                                 | `Number`           |
+| `//`           | `Integer`, floored   | `InvalidOperandType` error               | `InvalidOperandType` error |
+| unary `+` `-`  | `Integer`            |                                          | `Number`           |
+
+- **Floored:** `/` and `//` on two integers round the quotient toward negative infinity, so `7 / 2`
+  is `3`, `-7 / 2` is `-4` and `7 // -2` is `-4`. Unary `-` binds tighter, so `-7 / 2` is
+  `(-7) / 2`. `7.0 / 2` is `3.5`.
+- **`//` takes only integers.** Any other operand raises an `InvalidOperandType` error.
+- **Dividing by zero** raises a `DivisionByZero` error, for `/` with a divisor of `0` or `0.0`,
+  and for `//` with a divisor of `0` once its operands' types are checked.
+- **Comparisons are by value.** `==`, `!=`, `<`, `>`, `<=` and `>=` compare an `Integer` with a
+  `Number` by value, so `1 == 1.0` and `1 < 1.5` are `true`. Equality compares the elements of
+  arrays and the values of maps the same way, so `[1] == [1.0]` is `true`.
+- **Integers don't overflow.** `9223372036854775807 + 1` is `9223372036854775808`.
+- Any other operand to an arithmetic operator, such as `1 + true`, raises an `InvalidOperandType`
+  error.
 
 ## 6. Functions
 
@@ -130,10 +160,16 @@ type. A signature **matches** a call if:
   or is accepted by the signature's rest keywords, with a value of their type. A keyword the call
   leaves out takes its default.
 
-A value is of type `Any` always; of a built-in type if it has that type; of `A | B` if it's of
-either; of `Option<T>` if it's `None` or of `T`; of a native type only if it's a value of that same
-native type, whatever its name; and of a function type if the function's type, or one of its
-signatures' types, is exactly that type.
+A value is of type `Any` always; of a built-in type if it has that type; of `Number` if it's a
+`Number` or an `Integer`; of `A | B` if it's of either; of `Option<T>` if it's `None` or of `T`; of
+a native type only if it's a value of that same native type, whatever its name; and of a function
+type if the function's type, or one of its signatures' types, is exactly that type.
+
+An `Integer` that's of a type only because `Number` accepts it is converted to a `Number`: an
+argument or keyword value before the function is called, and a result before it's returned. A union
+or `Option` converts it only if none of its members accepts it as it is, so `Integer | Number` and
+`Any` leave it an `Integer`, while `Number | String` converts it. The signature that's called is
+chosen first, and its types decide the conversion.
 
 A signature's **arity** is the number of its positional parameters before any variadic one. The
 signatures are tried in order of arity, longest first, and the first that matches is called, so the
@@ -209,12 +245,14 @@ analysis (e.g. type inference).
 
 - **`let` declares a variable.** `let x = expr` declares `x` without a type, and
   `let x: T = expr` declares it with the type `T`. The value must be of type `T`, by the same rules
-  as a function argument (§6), or the declaration raises a `VariableTypeMismatch` error. A
-  declaration replaces any earlier declaration of `x`, including its type.
+  as a function argument (§6), or the declaration raises a `VariableTypeMismatch` error. It's
+  converted the same way too, so `let n: Number = 1` binds `1.0`. A declaration replaces any
+  earlier declaration of `x`, including its type.
 - **`x = expr` assigns.** If `x` was declared with a type, the value must be of that type, or the
-  assignment raises a `VariableTypeMismatch` error and `x` keeps its value. Otherwise the value
-  replaces the binding, including its type: after `let x = 1` then `x = "a"`, `typeof(x)` is
-  `String`. Assigning to a name with no binding declares it without a type.
+  assignment raises a `VariableTypeMismatch` error and `x` keeps its value, and it's converted as
+  in a declaration. Otherwise the value replaces the binding, including its type: after
+  `let x = 1` then `x = "a"`, `typeof(x)` is `String`. Assigning to a name with no binding declares
+  it without a type.
 - **The name and the type are checked before the value is evaluated.** A type name the runtime
   doesn't know raises an `UnknownType` error.
 - **A binding evaluates to the bound value.** `typeof` reports the value's type, not the declared
@@ -224,9 +262,10 @@ analysis (e.g. type inference).
 - Referencing an identifier with no binding raises an `UnboundIdentifier` error.
 
 ```flt
-let n: Number = 1
-n = 2                     # ok
+let n: Number = 1         # n is 1.0
+n = 2                     # ok: n is 2.0
 n = "two"                 # VariableTypeMismatch
+let i: Integer = 1.0      # VariableTypeMismatch
 let n = "two"             # ok: declares n again, without a type
 let x: Number | None = None
 let y: Foo = 1            # UnknownType

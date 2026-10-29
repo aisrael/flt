@@ -2,17 +2,27 @@
 
 ### Numbers
 
-Numbers are parsed as arbitrary-precision decimals.
+A numeric literal is an optional `+` or `-`, digits, then optionally a `.` and more digits. `_` can separate groups of digits, e.g. `1_000`. Both kinds are arbitrary-precision ([ADR 017](./adrs/017-integers.md)):
 
-Examples:
+- **Without a `.`, it's an `Integer`**, a whole number:
 
-```flt
-42
-3.14
-+7
--0.5
-42.
-```
+  ```flt
+  42
+  +7
+  -7
+  1_000
+  ```
+
+- **With a `.`, it's a `Number`**, a decimal, even with no digits after the `.`:
+
+  ```flt
+  3.14
+  -0.5
+  42.0
+  42.
+  ```
+
+A `Number` with no digits after the `.` prints with `.0`, so `42.` prints `42.0`. See [Integers and Numbers](./types.md#integers-and-numbers).
 
 ### Strings
 
