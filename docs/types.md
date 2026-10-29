@@ -21,6 +21,33 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 - [Union Types](./types/union_types.md): `A | B`, a value of one of several types, and the type of an `if`.
 - [Native Types](./native-functions-and-values.md#native-types-and-values): types a host defines for its own values, which only its native functions create and read.
 
+## Type Annotations
+
+A `let` binding can declare its variable's type after a `:` ([ADR 016](./adrs/016-typed-let-bindings.md)):
+
+```flt
+let n: Number = 1
+let x: Number | String | None = None
+let t: Type = Number
+let a: Any = 1
+```
+
+The value must be of that type, by the same rules as a function's arguments, or the binding raises `Variable <name> expects <type>, found <type>`. A later assignment, `n = …`, is checked against the declared type too, until the variable is declared again with `let`. See [Statements](./syntax.md#statements).
+
+A type is a built-in type name, including `Any` and `None`, a [native type](./native-functions-and-values.md#native-types-and-values)'s name, a union `A | B`, or a type in parentheses. Function types and `Option<T>` can't be written yet; write `T | None` for `Option<T>`. Any other name raises `Unknown type: <name>`, before the value is evaluated:
+
+```flt
+let x: Foo = 1       # error: Unknown type: Foo
+let y: typeof = 1    # error: Unknown type: typeof
+```
+
+`typeof` reports a value's own type, not its variable's declared type:
+
+```flt
+let x: Number | String = 1
+typeof(x)            # Number
+```
+
 ## Types as Values
 
 Types are first-class values. The name of a built-in type evaluates to that type, and types print without quotes:

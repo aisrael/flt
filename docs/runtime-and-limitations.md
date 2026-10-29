@@ -23,9 +23,9 @@ runtime.eval("x * 2")?;          // 6
 | `register_native_type::<T>()`     | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails |
 | `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                   |
 | `get_native_type(name)`           | a registered native type                                               |
-| `set_variable(name, value)`       | binds a global variable, or fails                                      |
+| `set_variable(name, value)`       | assigns a global variable, as `name = value` does, or fails            |
 | `get_variable(name)`              | a global variable's value                                              |
-| `remove_variable(name)`           | unbinds a global variable, returning its value                         |
+| `remove_variable(name)`           | unbinds a global variable and its declared type, returning its value   |
 | `check_bindable(name)`            | whether `name` can be bound, and if not, why                           |
 | `get_function(name)`              | a global function                                                      |
 
@@ -72,7 +72,7 @@ The evaluator currently supports:
 - Parenthesized expressions
 - Unary numeric `+` and `-`
 - `if`/`else` expressions; an `if` without `else` evaluates to `None` when its condition is `false`
-- `let` bindings (`let x = expr`) and plain assignment (`x = expr`), stored in the global scope; evaluation returns the bound value (what the REPL prints)
+- `let` bindings (`let x = expr`), optionally [typed](./types.md#type-annotations) (`let x: Number = expr`), and plain assignment (`x = expr`), checked against the variable's declared type, stored in the global scope; evaluation returns the bound value (what the REPL prints)
 - Identifier lookup against the global scope: variables, then [native functions](./native-functions-and-values.md#native-functions) (e.g. `typeof` evaluates to `<fn typeof>`), then [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type), then [native type names](./native-functions-and-values.md#native-types-and-values) registered by the host
 - [Pipes](./functions-and-pipe.md#pipe-operator): `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`
 - Calls to [native functions](./native-functions-and-values.md#native-functions), both [built-ins](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and host-registered ones, including through any name a function value is bound to
@@ -99,6 +99,8 @@ The evaluator currently supports:
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 - `Cannot bind <name>: it's a native type` - binding the name of a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host
+- `Variable <name> expects <type>, found <type>` - binding a value of the wrong type to a variable declared with a [type](./types.md#type-annotations), e.g. `let n: Number = "one"`, or `n = "two"` after `let n: Number = 1`
+- `Unknown type: <name>` - a type annotation naming something that isn't a built-in or native type, e.g. `let x: Foo = 1`
 - `Cannot register function <name>: it's …` and `Cannot register native type <name>: it's …` - a host registering a function or a native type under a name that's in use, e.g. `Cannot register function Date: it's a native type`
 - `Expected <type>, found <type>` - a native function reading a value as a type it isn't, with [`Arguments::get`](./native-functions-and-values.md#reading-arguments), `Arguments::native`, `downcast_native` or a number conversion, e.g. a handler declared with `Any` that reads its argument as a `Date`
 - `Cannot convert <number> to <type>` - a native function reading a number argument as a Rust number type that can't hold it, e.g. `-1` as a `u32`, or `2.5` as any integer type

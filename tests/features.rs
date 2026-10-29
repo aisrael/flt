@@ -12,7 +12,6 @@ use cucumber::World;
 
 use flt::ast::BinaryOp;
 use flt::ast::Expr;
-use flt::ast::Identifier;
 use flt::ast::Literal;
 use flt::ast::Statement;
 use flt::parser::parse_expr;
@@ -760,27 +759,56 @@ fn then_parsing_should_fail(world: &mut AstWorld) {
     );
 }
 
-#[then(
-    regex = r#"^the output should be a `Statement::Let\(Identifier\("([^"]*)"\), Expr::Literal\(Literal::Number\((\d+)\)\)\)`$"#
-)]
-fn then_output_should_be_let_statement_number(
-    world: &mut AstWorld,
-    ident: String,
-    expected_num: i64,
-) {
-    let output = world
+/// The statement "I parse the input" parsed, which must have parsed completely.
+fn parsed_statement(world: &AstWorld) -> &Statement {
+    world
         .output_statement
-        .take()
-        .expect("output_statement should be set (input was parsed as statement)");
-    let stmt = output.expect("statement parse should succeed");
-    let expected = Statement::Let(
-        Identifier(ident.clone()),
-        Expr::literal_number(expected_num),
-    );
-    assert_eq!(
-        stmt, expected,
-        "expected Statement::Let(Identifier({ident:?}), Literal::Number({expected_num}))"
-    );
+        .as_ref()
+        .expect("output_statement should be set (input was parsed as statement)")
+        .as_ref()
+        .expect("statement parse should succeed")
+}
+
+#[then(expr = r#"the statement should be a declaration of {string} with type {string}"#)]
+fn then_statement_should_be_typed_declaration(
+    world: &mut AstWorld,
+    expected_name: String,
+    expected_type: String,
+) {
+    match parsed_statement(world) {
+        Statement::Let {
+            name,
+            r#type: Some(r#type),
+            ..
+        } => {
+            assert_eq!(name.0, expected_name);
+            assert_eq!(r#type.to_string(), expected_type);
+        }
+        other => panic!("expected a declaration with a type, got {other:?}"),
+    }
+}
+
+#[then(expr = r#"the statement should be a declaration of {string} without a type"#)]
+fn then_statement_should_be_untyped_declaration(world: &mut AstWorld, expected_name: String) {
+    match parsed_statement(world) {
+        Statement::Let {
+            name, r#type: None, ..
+        } => assert_eq!(name.0, expected_name),
+        other => panic!("expected a declaration without a type, got {other:?}"),
+    }
+}
+
+#[then(expr = r#"the statement should be an assignment to {string}"#)]
+fn then_statement_should_be_assignment(world: &mut AstWorld, expected_name: String) {
+    match parsed_statement(world) {
+        Statement::Assign(name, _) => assert_eq!(name.0, expected_name),
+        other => panic!("expected an assignment, got {other:?}"),
+    }
+}
+
+#[then(expr = r#"the statement should print as {string}"#)]
+fn then_statement_should_print_as(world: &mut AstWorld, expected: String) {
+    assert_eq!(parsed_statement(world).to_string(), expected);
 }
 
 #[then(expr = r"the output should parse to interpolated string {string} {word} {string}")]

@@ -33,6 +33,14 @@ flt keeps union types in a simple, canonical form:
 - **Nested unions are flattened.** `(Number | String) | None` is `Number | String | None`.
 - **Order is kept.** Members print in the order they first appear, e.g. the then-branch's type before the else-branch's.
 
-## Not Yet Supported
+## Writing a Union Type
 
-flt source code can't yet contain type annotations, so you can't write a union type in a program yet.
+A union type can be written in a [type annotation](../types.md#type-annotations) on a `let` binding:
+
+```flt
+let x: Number | None = None
+x = 1                    # ok
+x = "a"                  # error: Variable x expects Number | None, found String
+```
+
+Parentheses group a union, e.g. `(Number | String) | None`, which simplifies to `Number | String | None`.
