@@ -68,7 +68,7 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the call against the function's signature, by the number of arguments and by type, including [native types](#native-types-and-values) ([Calls](./functions-and-pipe.md#calls), [ADR 013](./adrs/013-type-checked-function-calls.md)). A handler only ever sees arguments of the types it declares, and a function with several signatures runs its handler with the arguments of whichever one matched ([Overloads](#overloads)). After the handler returns, the runtime checks its result against the signature's return type: a handler for `-> Number` that returns a string raises `Function <name> returned String, expected Number`. Declare `Any` for an argument or result the function checks itself.
 
-`Number` accepts an `Integer`, and converts it to a `Number` ([ADR 017](./adrs/017-integers.md)). So a handler always gets a `Value::Number` for an argument declared `Number`, even when the call passed `1`. A handler declared `-> Number` may return a `Value::Integer`, which is converted the same way, so it prints as `1.0`. Declare `Integer` for an argument or result that must be a whole number.
+`Number` accepts an `Integer`, and converts it to a `Number` ([ADR 017](./adrs/017-integers.md)). So a handler always gets a `Value::Number` for an argument declared `Number`, even when the call passed `1`. The same goes for a keyword declared `Number`, including its default when the call leaves it out. A handler declared `-> Number` may return a `Value::Integer`, which is converted the same way, so it prints as `1.0`. Declare `Integer` for an argument or result that must be a whole number.
 
 ### Reading Arguments
 

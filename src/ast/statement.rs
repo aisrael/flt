@@ -69,20 +69,20 @@ mod tests {
 
     #[test]
     fn test_display_declaration() {
-        let statement = Statement::declare("x", Expr::literal_number(1));
+        let statement = Statement::declare("x", Expr::literal_integer(1));
         assert_eq!(statement.to_string(), "let x = 1");
     }
 
     #[test]
     fn test_display_typed_declaration() {
         let statement =
-            Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_number(1));
+            Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_integer(1));
         assert_eq!(statement.to_string(), "let x: Number = 1");
     }
 
     #[test]
     fn test_display_assignment() {
-        let statement = Statement::assign("x", Expr::literal_number(1));
+        let statement = Statement::assign("x", Expr::literal_integer(1));
         assert_eq!(statement.to_string(), "x = 1");
     }
 }

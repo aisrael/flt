@@ -8,15 +8,15 @@ Feature: Native types and values
   docs/native-functions-and-values.md#native-types-and-values.
 
   The fixtures register chrono's `NaiveDate` as the native type `Date`, with
-  `date(yyyy, mm, dd) -> Date` and `days_between(from: Date, to: Date) -> Number`.
+  `date(yyyy, mm, dd) -> Date` and `days_between(from: Date, to: Date) -> Integer`.
   `date` reads its arguments with `args.get::<i32>` and `args.get::<u32>`, and
   `days_between` with `args.native::<Date>`.
   `time(hh, mm, ss) -> Time` makes a value of a second native type, `NaiveTime`,
   which the fixtures never register.
 
   Background:
-    Given the native function "date(yyyy: Number, mm: Number, dd: Number) -> Date"
-    And the native function "days_between(from: Date, to: Date) -> Number"
+    Given the native function "date(yyyy: Integer, mm: Integer, dd: Integer) -> Date"
+    And the native function "days_between(from: Date, to: Date) -> Integer"
 
   Scenario: A native value prints as the host displays it
     Given the input 'date(2026, 10, 25)'
@@ -61,11 +61,11 @@ Feature: Native types and values
 
     Examples:
       | input                | type                               |
-      | typeof(date)         | fn(Number, Number, Number) -> Date |
-      | typeof(days_between) | fn(Date, Date) -> Number           |
+      | typeof(date)         | fn(Integer, Integer, Integer) -> Date |
+      | typeof(days_between) | fn(Date, Date) -> Integer             |
 
   Scenario Outline: Native values compare with the host's equality
-    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
+    Given the native function "time(hh: Integer, mm: Integer, ss: Integer) -> Time"
     And the input '<input>'
     When I evaluate the input
     Then the result should be "<result>"
@@ -87,10 +87,10 @@ Feature: Native types and values
   Scenario: A native function rejects a value of the wrong type
     Given the input 'days_between(1, date(2026, 10, 25))'
     When I evaluate the input
-    Then the evaluation should fail with "Argument from of days_between expects Date, found Number"
+    Then the evaluation should fail with "Argument from of days_between expects Date, found Integer"
 
   Scenario: A native function rejects a value of another native type
-    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
+    Given the native function "time(hh: Integer, mm: Integer, ss: Integer) -> Time"
     And the input 'days_between(time(12, 0, 0), date(2026, 10, 25))'
     When I evaluate the input
     Then the evaluation should fail with "Argument from of days_between expects Date, found Time"
@@ -116,27 +116,28 @@ Feature: Native types and values
     Then the evaluation should fail with "Cannot bind Date: it's a native type"
 
   Scenario: A value of an unregistered native type still has its type
-    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
+    Given the native function "time(hh: Integer, mm: Integer, ss: Integer) -> Time"
     And the input 'typeof(time(12, 0, 0))'
     When I evaluate the input
     Then the result should be "Time"
 
   Scenario: An unregistered native type's name is unbound
-    Given the native function "time(hh: Number, mm: Number, ss: Number) -> Time"
+    Given the native function "time(hh: Integer, mm: Integer, ss: Integer) -> Time"
     And the input 'Time'
     When I evaluate the input
     Then the evaluation should fail with "Unbound identifier: Time"
 
-  Scenario Outline: A native function's number arguments convert to Rust integers
+  Scenario Outline: A native function's integer arguments convert to Rust integers
     Given the input '<input>'
     When I evaluate the input
     Then the evaluation should fail with "<error>"
 
     Examples:
-      | input                | error                                              |
-      | date("2026", 10, 25) | Argument yyyy of date expects Number, found String |
-      | date(2026.5, 10, 25) | Cannot convert 2026.5 to i32                       |
-      | date(2026, -10, 25)  | Cannot convert -10 to u32                          |
+      | input                | error                                                |
+      | date("2026", 10, 25) | Argument yyyy of date expects Integer, found String  |
+      | date(2026.5, 10, 25) | Argument yyyy of date expects Integer, found Number  |
+      | date(2026.0, 10, 25) | Argument yyyy of date expects Integer, found Number  |
+      | date(2026, -10, 25)  | Cannot convert -10 to u32                            |
 
   Scenario: A host error is shown unchanged
     Given the input 'date(2026, 2, 30)'

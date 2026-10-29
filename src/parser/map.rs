@@ -118,7 +118,7 @@ mod tests {
             parse_map("{ abc123: 456 }"),
             Ok((
                 "",
-                Expr::map_literal(vec![("abc123", Expr::literal_number(456))])
+                Expr::map_literal(vec![("abc123", Expr::literal_integer(456))])
             ))
         );
     }
@@ -132,9 +132,9 @@ mod tests {
                 Expr::map_literal(vec![(
                     "spaced out",
                     Expr::parenthesized(Expr::binary_expr(
-                        Expr::literal_number(1),
+                        Expr::literal_integer(1),
                         BinaryOp::Add,
-                        Expr::literal_number(1)
+                        Expr::literal_integer(1)
                     ))
                 )])
             ))
@@ -149,7 +149,7 @@ mod tests {
                 "",
                 Expr::map_literal(vec![
                     ("name", Expr::literal_string("Alice")),
-                    ("age", Expr::literal_number(30)),
+                    ("age", Expr::literal_integer(30)),
                 ])
             ))
         );
@@ -161,7 +161,7 @@ mod tests {
             parse_map(r#"{ foo: 1, }"#),
             Ok((
                 "",
-                Expr::map_literal(vec![("foo", Expr::literal_number(1))])
+                Expr::map_literal(vec![("foo", Expr::literal_integer(1))])
             ))
         );
     }

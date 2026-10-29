@@ -12,6 +12,7 @@ Feature: Types as values
 
     Examples:
       | input                 | result  |
+      | Integer               | Integer |
       | Number                | Number  |
       | Boolean               | Boolean |
       | String                | String  |
@@ -19,10 +20,14 @@ Feature: Types as values
       | Array                 | Array   |
       | Map                   | Map     |
       | Type                  | Type    |
-      | typeof(1)             | Number  |
-      | typeof(1) == Number   | true    |
+      | typeof(1)             | Integer |
+      | typeof(1.5)           | Number  |
+      | typeof(1) == Integer  | true    |
+      | typeof(1) == Number   | false   |
+      | Integer == Number     | false   |
       | typeof("a") == Number | false   |
       | typeof(Number)        | Type    |
+      | typeof(Integer)       | Type    |
       | typeof(typeof(1))     | Type    |
       | typeof(Type)          | Type    |
 
@@ -35,6 +40,7 @@ Feature: Types as values
       | input              | error                                    |
       | let None = 1       | Cannot bind None: it's a built-in type   |
       | let Number = false | Cannot bind Number: it's a built-in type |
+      | let Integer = 1    | Cannot bind Integer: it's a built-in type |
       | Number = 1         | Cannot bind Number: it's a built-in type |
       | let Any = 1        | Cannot bind Any: it's a built-in type    |
 

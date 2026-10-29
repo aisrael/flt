@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
+use std::str::FromStr;
 
-use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use chrono::NaiveTime;
 use cucumber::gherkin::Step;
@@ -27,6 +27,8 @@ use flt::runtime::Map;
 use flt::runtime::Runtime;
 use flt::runtime::SimpleRuntime;
 use flt::runtime::Value;
+use flt::BigDecimal;
+use flt::BigInt;
 use flt::Error;
 
 #[derive(Debug, Default, World)]
@@ -181,7 +183,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
         "count_args" => Some(NativeFunction::new(
             FunctionDefinition::new(
                 "count_args",
-                Type::number(),
+                Type::integer(),
                 vec![Argument::variadic("args", Type::any())],
             ),
             |args| Ok(Value::from(args.rest().len())),
@@ -215,9 +217,9 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 "date",
                 Type::native::<Date>(),
                 vec![
-                    Argument::number("yyyy"),
-                    Argument::number("mm"),
-                    Argument::number("dd"),
+                    Argument::integer("yyyy"),
+                    Argument::integer("mm"),
+                    Argument::integer("dd"),
                 ],
             ),
             |args| {
@@ -235,7 +237,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
         "days_between" => Some(NativeFunction::new(
             FunctionDefinition::new(
                 "days_between",
-                Type::number(),
+                Type::integer(),
                 vec![
                     Argument::new("from", Type::native::<Date>()),
                     Argument::new("to", Type::native::<Date>()),
@@ -252,9 +254,9 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 "time",
                 Type::native::<Time>(),
                 vec![
-                    Argument::number("hh"),
-                    Argument::number("mm"),
-                    Argument::number("ss"),
+                    Argument::integer("hh"),
+                    Argument::integer("mm"),
+                    Argument::integer("ss"),
                 ],
             ),
             |args| {
@@ -284,7 +286,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             FunctionDefinition::new(
                 "pad",
                 Type::string(),
-                vec![Argument::string("s"), Argument::number("width")],
+                vec![Argument::string("s"), Argument::integer("width")],
             ),
             pad,
         )),
@@ -374,10 +376,10 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             FunctionDefinition::new(
                 "repeat",
                 Type::string(),
-                vec![Argument::string("s"), Argument::number("n")],
+                vec![Argument::string("s"), Argument::integer("n")],
             )
             .add_overload(Type::string(), vec![Argument::string("s")])
-            .keyword("n", Type::number(), Value::from(2u64)),
+            .keyword("n", Type::integer(), Value::from(2u64)),
             |args| {
                 let s: &str = args.get("s")?;
                 let n: usize = args.get("n")?;
@@ -387,8 +389,8 @@ fn native_function(name: &str) -> Option<NativeFunction> {
         "twice" => Some(NativeFunction::new(
             FunctionDefinition::new(
                 "twice",
-                Type::option(Type::number()),
-                vec![Argument::new("n", Type::option(Type::number()))],
+                Type::option(Type::integer()),
+                vec![Argument::new("n", Type::option(Type::integer()))],
             ),
             |args| match args.get::<Option<i64>>("n")? {
                 Some(n) => Ok(Value::from(n * 2)),
@@ -410,7 +412,7 @@ fn native_function(name: &str) -> Option<NativeFunction> {
         "size" => Some(NativeFunction::new(
             FunctionDefinition::new(
                 "size",
-                Type::number(),
+                Type::integer(),
                 vec![Argument::new("items", Type::array())],
             ),
             |args| Ok(Value::from(args.get::<&[Value]>("items")?.len())),
@@ -420,11 +422,14 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             FunctionDefinition::new(
                 "head",
                 Type::array(),
-                vec![Argument::new("items", Type::array()), Argument::number("n")],
+                vec![
+                    Argument::new("items", Type::array()),
+                    Argument::integer("n"),
+                ],
             )
             .add_overload(
                 Type::string(),
-                vec![Argument::string("s"), Argument::number("n")],
+                vec![Argument::string("s"), Argument::integer("n")],
             ),
             |args| {
                 let n: usize = args.get("n")?;
@@ -478,6 +483,109 @@ fn native_function(name: &str) -> Option<NativeFunction> {
             .keyword("k", Type::union(Type::number(), Type::none()), Value::None)
             .rest_keywords(Type::union(Type::string(), Type::symbol())),
             |_args| Ok(Value::None),
+        )),
+        // `f`, `show`, `g` and `kw` have overloads that both accept some calls, to show which one
+        // SimpleRuntime picks. Each returns the overload that ran and the values it got.
+        "f" => Some(NativeFunction::new(
+            FunctionDefinition::new("f", Type::string(), vec![Argument::number("n")])
+                .add_overload(Type::string(), vec![Argument::integer("i")]),
+            overload_and_values,
+        )),
+        "show" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "show",
+                Type::string(),
+                vec![Argument::new("x", Type::any())],
+            )
+            .add_overload(Type::string(), vec![Argument::number("x")]),
+            overload_and_values,
+        )),
+        "g" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "g",
+                Type::string(),
+                vec![Argument::integer("a"), Argument::number("b")],
+            )
+            .add_overload(
+                Type::string(),
+                vec![Argument::number("a"), Argument::integer("b")],
+            ),
+            overload_and_values,
+        )),
+        "kw" => Some(NativeFunction::new(
+            FunctionDefinition::new("kw", Type::string(), vec![])
+                .keyword("n", Type::number(), Value::from(0u64))
+                .add_overload(Type::string(), vec![])
+                .keyword("n", Type::integer(), Value::from(0u64)),
+            overload_and_values,
+        )),
+        // Returns its argument, as the handler got it.
+        "scale" => Some(NativeFunction::new(
+            FunctionDefinition::new("scale", Type::number(), vec![Argument::number("x")]),
+            |args| Ok(args.get::<&Value>("x")?.clone()),
+        )),
+        "either" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "either",
+                Type::any(),
+                vec![Argument::new(
+                    "x",
+                    Type::union(Type::integer(), Type::number()),
+                )],
+            ),
+            |args| Ok(args.get::<&Value>("x")?.clone()),
+        )),
+        "num_or_str" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "num_or_str",
+                Type::any(),
+                vec![Argument::new(
+                    "x",
+                    Type::union(Type::number(), Type::string()),
+                )],
+            ),
+            |args| Ok(args.get::<&Value>("x")?.clone()),
+        )),
+        "maybe" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "maybe",
+                Type::any(),
+                vec![Argument::new("x", Type::option(Type::number()))],
+            ),
+            |args| Ok(args.get::<&Value>("x")?.clone()),
+        )),
+        // Returns its keyword `by`, which defaults to the Integer 1.
+        "step" => Some(NativeFunction::new(
+            FunctionDefinition::new("step", Type::number(), vec![]).keyword(
+                "by",
+                Type::number(),
+                Value::from(1u64),
+            ),
+            |args| Ok(args.get::<&Value>("by")?.clone()),
+        )),
+        // Declares a `Number`, but returns an `Integer`, as datu's `count` did.
+        "rows" => Some(NativeFunction::new(
+            FunctionDefinition::new("rows", Type::number(), vec![]),
+            |_args| Ok(Value::from(5usize)),
+        )),
+        // Declares a `Number`, but reads it as a `usize`, as datu's `head` did.
+        "take" => Some(NativeFunction::new(
+            FunctionDefinition::new("take", Type::integer(), vec![Argument::number("n")]),
+            |args| Ok(Value::from(args.get::<usize>("n")?)),
+        )),
+        // Reads its argument as a `BigInt`, and doubles it.
+        "double" => Some(NativeFunction::new(
+            FunctionDefinition::new("double", Type::integer(), vec![Argument::integer("n")]),
+            |args| Ok(Value::from(args.get::<BigInt>("n")? * BigInt::from(2))),
+        )),
+        // Reads its argument as a `BigDecimal`, and halves it.
+        "halve" => Some(NativeFunction::new(
+            FunctionDefinition::new("halve", Type::number(), vec![Argument::number("x")]),
+            |args| {
+                Ok(Value::from(
+                    args.get::<BigDecimal>("x")? / BigDecimal::from(2),
+                ))
+            },
         )),
         _ => None,
     }
@@ -554,6 +662,41 @@ fn arity_1() -> Vec<Argument> {
         Argument::number("a"),
         Argument::variadic("args", Type::any()),
     ]
+}
+
+/// Returns the types of the overload that matched and the values it got, e.g.
+/// `(Integer) 1` or `(n: Number) 1.0`
+fn overload_and_values(args: &Arguments) -> Result<Value, Error> {
+    let signature = args.signature();
+    let types: Vec<String> = signature
+        .arguments
+        .iter()
+        .map(|argument| argument.r#type.to_string())
+        .chain(
+            signature
+                .keywords
+                .iter()
+                .map(|keyword| format!("{}: {}", keyword.name, keyword.r#type)),
+        )
+        .collect();
+    let names = signature
+        .arguments
+        .iter()
+        .map(|argument| argument.name.as_str())
+        .chain(
+            signature
+                .keywords
+                .iter()
+                .map(|keyword| keyword.name.as_str()),
+        );
+    let values = names
+        .map(|name| args.get::<&Value>(name).map(ToString::to_string))
+        .collect::<Result<Vec<String>, Error>>()?;
+    Ok(Value::String(format!(
+        "({}) {}",
+        types.join(", "),
+        values.join(", ")
+    )))
 }
 
 /// Returns the `which` keyword, which names the overload that matched
@@ -657,16 +800,28 @@ fn then_the_evaluation_should_fail_with(world: &mut AstWorld, expected: String) 
     );
 }
 
-#[then(expr = r"the output should be a `Literal::Number\({int}\)`")]
-fn then_output_should_be_number(world: &mut AstWorld, expected: i64) {
+#[then(expr = r"the output should be a `Literal::Integer\({int}\)`")]
+fn then_output_should_be_integer(world: &mut AstWorld, expected: i64) {
     let output = world.output.take().expect("output should be set");
     let expr = output.expect("parse should succeed");
     match &expr {
-        Expr::Literal(Literal::Number(n)) => {
-            let expected_bd = BigDecimal::from(expected);
-            assert_eq!(n.as_ref(), &expected_bd, "expected number {}", expected);
+        Expr::Literal(Literal::Integer(n)) => {
+            assert_eq!(n, &BigInt::from(expected), "expected integer {expected}");
         }
-        _ => panic!("expected number literal, got {:?}", expr),
+        _ => panic!("expected integer literal, got {expr:?}"),
+    }
+}
+
+#[then(regex = r"^the output should be a `Literal::Number\(([-+]?[0-9.]+)\)`$")]
+fn then_output_should_be_number(world: &mut AstWorld, expected: String) {
+    let output = world.output.take().expect("output should be set");
+    let expr = output.expect("parse should succeed");
+    let expected_bd = BigDecimal::from_str(&expected).expect("expected a decimal");
+    match &expr {
+        Expr::Literal(Literal::Number(n)) => {
+            assert_eq!(n.as_ref(), &expected_bd, "expected number {expected}");
+        }
+        _ => panic!("expected number literal, got {expr:?}"),
     }
 }
 
@@ -884,7 +1039,7 @@ fn then_output_should_be_map_with_key_string_value(
     }
 }
 
-#[then(regex = r#"^the output should be a map with key "([^"]*)" and number value (\d+)$"#)]
+#[then(regex = r#"^the output should be a map with key "([^"]*)" and integer value (\d+)$"#)]
 fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: String, value: i64) {
     let output = world.output.take().expect("output should be set");
     let expr = output.expect("parse should succeed");
@@ -895,8 +1050,8 @@ fn then_output_should_be_map_with_key_number_value(world: &mut AstWorld, key: St
             assert_eq!(kv.key, key, "expected key {key:?}");
             assert_eq!(
                 kv.value,
-                Expr::literal_number(value),
-                "expected number value {value}"
+                Expr::literal_integer(value),
+                "expected integer value {value}"
             );
         }
         _ => panic!("expected map literal, got {expr:?}"),
@@ -979,7 +1134,7 @@ fn then_output_should_be_array_with_n_elements(world: &mut AstWorld, count: usiz
     }
 }
 
-#[then(regex = r"^the first element should be the number (\d+)$")]
+#[then(regex = r"^the first element should be the integer (\d+)$")]
 fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
@@ -991,8 +1146,8 @@ fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
                 .first()
                 .expect("array should have at least one element");
             match first {
-                Expr::Literal(Literal::Number(n)) => {
-                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                Expr::Literal(Literal::Integer(n)) => {
+                    assert_eq!(n, &BigInt::from(expected));
                 }
                 _ => panic!("expected first element to be number, got {first:?}"),
             }
@@ -1001,7 +1156,7 @@ fn then_first_element_should_be_number(world: &mut AstWorld, expected: i64) {
     }
 }
 
-#[then(regex = r"^the second element should be the number (\d+)$")]
+#[then(regex = r"^the second element should be the integer (\d+)$")]
 fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
@@ -1013,8 +1168,8 @@ fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
                 .get(1)
                 .expect("array should have at least two elements");
             match second {
-                Expr::Literal(Literal::Number(n)) => {
-                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                Expr::Literal(Literal::Integer(n)) => {
+                    assert_eq!(n, &BigInt::from(expected));
                 }
                 _ => panic!("expected second element to be number, got {second:?}"),
             }
@@ -1023,7 +1178,7 @@ fn then_second_element_should_be_number(world: &mut AstWorld, expected: i64) {
     }
 }
 
-#[then(regex = r"^the third element should be the number (\d+)$")]
+#[then(regex = r"^the third element should be the integer (\d+)$")]
 fn then_third_element_should_be_number(world: &mut AstWorld, expected: i64) {
     let expr = world
         .last_parsed_expr
@@ -1035,8 +1190,8 @@ fn then_third_element_should_be_number(world: &mut AstWorld, expected: i64) {
                 .get(2)
                 .expect("array should have at least three elements");
             match third {
-                Expr::Literal(Literal::Number(n)) => {
-                    assert_eq!(n.as_ref(), &BigDecimal::from(expected));
+                Expr::Literal(Literal::Integer(n)) => {
+                    assert_eq!(n, &BigInt::from(expected));
                 }
                 _ => panic!("expected third element to be number, got {third:?}"),
             }

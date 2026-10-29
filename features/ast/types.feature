@@ -51,12 +51,12 @@ Feature: Types
   Scenario: Map literal as a collection-typed value
     Given the input '{ value: 42 }'
     When I parse the input
-    Then the output should be a map with key "value" and number value 42
+    Then the output should be a map with key "value" and integer value 42
 
   Scenario: Array literal with mixed built-in types
     Given the input '[ 1, "two", true ]'
     When I parse the input
     Then the output should be an array with 3 elements
-    And the first element should be the number 1
+    And the first element should be the integer 1
     And the second element should be the string "two"
     And the third element should be the boolean true

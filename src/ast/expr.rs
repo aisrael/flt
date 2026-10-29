@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
 
 use super::function::FunctionCall;
@@ -116,7 +117,12 @@ impl Expr {
         Expr::Literal(Literal::string(s))
     }
 
-    /// Constructs a number literal expression from a string (e.g. `"3.14"`).
+    /// Constructs an integer literal expression (e.g. `42`).
+    pub fn literal_integer(n: impl Into<BigInt>) -> Self {
+        Expr::Literal(Literal::integer(n))
+    }
+
+    /// Constructs a number literal expression (e.g. `3.14`).
     pub fn literal_number(n: impl Into<BigDecimal>) -> Self {
         Expr::Literal(Literal::number(n))
     }
@@ -236,9 +242,34 @@ mod tests {
     }
 
     #[test]
+    fn test_display_literal_integer() {
+        assert_eq!(Expr::literal_integer(42).to_string(), "42");
+        assert_eq!(Expr::literal_integer(-7).to_string(), "-7");
+    }
+
+    #[test]
     fn test_display_literal_number() {
-        assert_eq!(Expr::literal_number(n("42")).to_string(), "42");
         assert_eq!(Expr::literal_number(n("3.14")).to_string(), "3.14");
+        assert_eq!(Expr::literal_number(n("2.50")).to_string(), "2.50");
+    }
+
+    #[test]
+    fn test_display_whole_literal_number_with_a_decimal_point() {
+        assert_eq!(Expr::literal_number(n("42")).to_string(), "42.0");
+        assert_eq!(Expr::literal_number(n("42.0")).to_string(), "42.0");
+    }
+
+    #[test]
+    fn test_display_floor_division() {
+        assert_eq!(
+            Expr::binary_expr(
+                Expr::literal_integer(7),
+                BinaryOp::FloorDiv,
+                Expr::literal_integer(2)
+            )
+            .to_string(),
+            "7 // 2"
+        );
     }
 
     #[test]
@@ -267,7 +298,7 @@ mod tests {
         let kv = |key: &str| {
             KeyValue {
                 key: key.to_string(),
-                value: Expr::literal_number(1),
+                value: Expr::literal_integer(1),
             }
             .to_string()
         };
@@ -291,11 +322,11 @@ mod tests {
             "!true"
         );
         assert_eq!(
-            Expr::unary_expr(UnaryOp::Minus, Expr::literal_number(n("42"))).to_string(),
+            Expr::unary_expr(UnaryOp::Minus, Expr::literal_integer(42)).to_string(),
             "-42"
         );
         assert_eq!(
-            Expr::unary_expr(UnaryOp::Plus, Expr::literal_number(n("1"))).to_string(),
+            Expr::unary_expr(UnaryOp::Plus, Expr::literal_integer(1)).to_string(),
             "+1"
         );
     }
@@ -304,9 +335,9 @@ mod tests {
     fn test_display_binary_expr() {
         assert_eq!(
             Expr::binary_expr(
-                Expr::literal_number(n("1")),
+                Expr::literal_integer(1),
                 BinaryOp::Add,
-                Expr::literal_number(n("2"))
+                Expr::literal_integer(2)
             )
             .to_string(),
             "1 + 2"
@@ -332,7 +363,7 @@ mod tests {
         assert_eq!(
             Expr::function_call(
                 "add",
-                vec![Expr::literal_number(n("1")), Expr::literal_number(n("2"))]
+                vec![Expr::literal_integer(1), Expr::literal_integer(2)]
             )
             .to_string(),
             "add(1, 2)"
@@ -354,14 +385,14 @@ mod tests {
     #[test]
     fn test_display_parenthesized() {
         assert_eq!(
-            Expr::parenthesized(Expr::literal_number(n("42"))).to_string(),
+            Expr::parenthesized(Expr::literal_integer(42)).to_string(),
             "(42)"
         );
         assert_eq!(
             Expr::parenthesized(Expr::binary_expr(
-                Expr::literal_number(n("1")),
+                Expr::literal_integer(1),
                 BinaryOp::Add,
-                Expr::literal_number(n("2"))
+                Expr::literal_integer(2)
             ))
             .to_string(),
             "(1 + 2)"
@@ -396,29 +427,25 @@ mod tests {
     fn test_display_nested() {
         let expr = Expr::binary_expr(
             Expr::parenthesized(Expr::binary_expr(
-                Expr::literal_number(n("1")),
+                Expr::literal_integer(1),
                 BinaryOp::Add,
-                Expr::literal_number(n("2")),
+                Expr::literal_integer(2),
             )),
             BinaryOp::Mul,
-            Expr::literal_number(n("3")),
+            Expr::literal_integer(3),
         );
         assert_eq!(expr.to_string(), "(1 + 2) * 3");
     }
 
     #[test]
     fn test_display_if_expr() {
-        let expr = Expr::if_expr(
-            Expr::literal_boolean(true),
-            Expr::literal_number(n("1")),
-            None,
-        );
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_integer(1), None);
         assert_eq!(expr.to_string(), "if true 1");
 
         let expr = Expr::if_expr(
             Expr::literal_boolean(false),
-            Expr::literal_number(n("1")),
-            Some(Expr::literal_number(n("2"))),
+            Expr::literal_integer(1),
+            Some(Expr::literal_integer(2)),
         );
         assert_eq!(expr.to_string(), "if false 1 else 2");
     }

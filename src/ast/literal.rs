@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt::Display;
 
+use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use nom::bytes::complete::tag;
@@ -10,12 +11,16 @@ use crate::errors::Error;
 use crate::parser::IResult;
 use crate::utils::escape_string;
 use crate::utils::write_name;
+use crate::utils::write_number;
 
 use super::number::Numeric;
 
-/// A literal value: number, string, boolean, symbol, or the `None` sentinel.
+/// A literal value: integer, number, string, boolean, symbol, or the `None` sentinel.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
+    /// A whole number, written without a `.`, e.g. `42`
+    Integer(BigInt),
+    /// A decimal, written with a `.`, e.g. `3.14` or `42.`
     Number(Numeric),
     String(String),
     Boolean(bool),
@@ -24,6 +29,11 @@ pub enum Literal {
 }
 
 impl Literal {
+    /// Construct an integer literal, e.g. `Literal::integer(42)`
+    pub fn integer(n: impl Into<BigInt>) -> Self {
+        Literal::Integer(n.into())
+    }
+
     /// Construct a number literal from a BigDecimal
     pub fn number(n: impl Into<BigDecimal>) -> Self {
         Literal::Number(Numeric(n.into()))
@@ -61,9 +71,10 @@ impl From<bool> for Literal {
     }
 }
 
+/// A Rust integer is an integer literal
 impl From<i64> for Literal {
     fn from(value: i64) -> Self {
-        Literal::Number(Numeric(value.into()))
+        Literal::Integer(value.into())
     }
 }
 
@@ -86,7 +97,8 @@ impl From<String> for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Number(n) => write!(f, "{}", n),
+            Literal::Integer(n) => write!(f, "{n}"),
+            Literal::Number(n) => write_number(f, n.as_ref()),
             Literal::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::Symbol(s) => {
@@ -101,6 +113,8 @@ impl Display for Literal {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr as _;
+
+    use bigdecimal::num_bigint::BigInt;
 
     use super::*;
 
@@ -126,10 +140,38 @@ mod tests {
     }
 
     #[test]
-    fn test_literal_from_i64() {
+    fn test_literal_from_i64_is_an_integer() {
+        assert_eq!(Literal::from(42), Literal::Integer(BigInt::from(42)));
+        assert_eq!(Literal::from(42), Literal::integer(42));
+    }
+
+    #[test]
+    fn test_literal_from_f64_is_a_number() {
         assert_eq!(
-            Literal::from(42),
-            Literal::Number(Numeric(BigDecimal::from_str("42").unwrap()))
+            Literal::try_from(2.5).unwrap(),
+            Literal::Number(Numeric(BigDecimal::from_str("2.5").unwrap()))
+        );
+    }
+
+    #[test]
+    fn test_display_integer_literal() {
+        assert_eq!(Literal::integer(42).to_string(), "42");
+        assert_eq!(Literal::integer(-7).to_string(), "-7");
+    }
+
+    #[test]
+    fn test_display_number_literal() {
+        assert_eq!(
+            Literal::number(BigDecimal::from_str("3.14").unwrap()).to_string(),
+            "3.14"
+        );
+        assert_eq!(
+            Literal::number(BigDecimal::from_str("42").unwrap()).to_string(),
+            "42.0"
+        );
+        assert_eq!(
+            Literal::number(BigDecimal::from_str("-0.0").unwrap()).to_string(),
+            "0.0"
         );
     }
 

@@ -4,15 +4,18 @@ pub mod functions;
 pub mod native;
 pub mod types;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
+use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
 use bigdecimal::Zero;
 use indexmap::IndexMap;
+use num_integer::Integer as _;
 
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
@@ -34,6 +37,7 @@ use crate::runtime::native::NativeValue;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::utils::write_name;
+use crate::utils::write_number;
 use crate::Error;
 
 /// A map key. Keys written in flt source are symbols; only a host can create string keys. A
@@ -69,13 +73,16 @@ impl From<MapKey> for Value {
 /// A map of keys to values, in insertion order. Equality ignores order.
 pub type Map = IndexMap<MapKey, Value>;
 
-/// A value in the runtime
-#[derive(Clone, Debug, PartialEq)]
+/// A value in the runtime. An `Integer` and a `Number` with the same value are equal, at any
+/// depth, e.g. `[1] == [1.0]`.
+#[derive(Clone, Debug)]
 pub enum Value {
     /// The `None` value: the empty `Option`, and the result of an `if` with no `else`
     /// whose condition is `false`. Its type is the built-in `None` type.
     None,
-    /// A number value
+    /// A whole number, with arbitrary precision
+    Integer(BigInt),
+    /// A decimal number, with arbitrary precision
     Number(BigDecimal),
     /// A string value
     String(String),
@@ -99,7 +106,8 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::None => write!(f, "None"),
-            Value::Number(n) => write!(f, "{}", n),
+            Value::Integer(n) => write!(f, "{n}"),
+            Value::Number(n) => write_number(f, n),
             Value::String(s) => write!(f, "\"{}\"", escape_string(s)),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Symbol(s) => {
@@ -146,6 +154,7 @@ impl Value {
     pub fn type_of(&self) -> Result<Type, Error> {
         match self {
             Value::None => Ok(Type::none()),
+            Value::Integer(_) => Ok(Type::integer()),
             Value::Number(_) => Ok(Type::number()),
             Value::String(_) => Ok(Type::string()),
             Value::Boolean(_) => Ok(Type::boolean()),
@@ -178,11 +187,49 @@ impl Value {
             .ok_or_else(|| unexpected_type(T::NAME, self))
     }
 
-    /// The number inside, or `Expected Number, found <type>`.
-    fn expect_number(&self) -> Result<&BigDecimal, Error> {
+    /// The whole number inside an `Integer`, or inside a `Number` with no fraction, to convert
+    /// to the integer type `target`. Any other value raises `Expected <expected>, found <type>`,
+    /// and a fraction `Cannot convert <number> to <target>`.
+    pub(crate) fn to_big_int(&self, expected: &str, target: &'static str) -> Result<BigInt, Error> {
         match self {
-            Value::Number(n) => Ok(n),
-            other => Err(unexpected_type(&Type::number().to_string(), other)),
+            Value::Integer(n) => Ok(n.clone()),
+            Value::Number(n) if n.is_integer() => Ok(n.with_scale(0).into_bigint_and_exponent().0),
+            Value::Number(n) => Err(cannot_convert(n, target)),
+            other => Err(unexpected_type(expected, other)),
+        }
+    }
+
+    /// The value of an `Integer` or a `Number` as a `BigDecimal`, or `None` for any other value
+    pub(crate) fn to_big_decimal(&self) -> Option<BigDecimal> {
+        match self {
+            Value::Integer(n) => Some(BigDecimal::from(n.clone())),
+            Value::Number(n) => Some(n.clone()),
+            _ => None,
+        }
+    }
+}
+
+/// Values of the same kind are equal as their contents are, and an `Integer` equals a `Number`
+/// with the same value. The `None` value doesn't equal the `None` type here; `==` in flt
+/// source adds that.
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::None, Value::None) => true,
+            (Value::Integer(a), Value::Integer(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Integer(a), Value::Number(b)) | (Value::Number(b), Value::Integer(a)) => {
+                BigDecimal::from(a.clone()) == *b
+            }
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
+            (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Array(a), Value::Array(b)) => a == b,
+            (Value::Type(a), Value::Type(b)) => a == b,
+            (Value::Function(a), Value::Function(b)) => a == b,
+            (Value::Native(a), Value::Native(b)) => a == b,
+            _ => false,
         }
     }
 }
@@ -198,39 +245,54 @@ pub(crate) fn unexpected_type(expected: &str, value: &Value) -> Error {
     }
 }
 
+/// A Rust integer is an `Integer`
 impl From<u64> for Value {
     fn from(n: u64) -> Self {
-        Value::Number(BigDecimal::from(n))
+        Value::Integer(BigInt::from(n))
     }
 }
 
+/// A Rust integer is an `Integer`
 impl From<i64> for Value {
     fn from(n: i64) -> Self {
-        Value::Number(BigDecimal::from(n))
+        Value::Integer(BigInt::from(n))
     }
 }
 
-/// `BigDecimal` has no `From<usize>`, so this goes through `u64`.
+/// A Rust integer is an `Integer`
 impl From<usize> for Value {
     fn from(n: usize) -> Self {
-        Value::from(n as u64)
+        Value::Integer(BigInt::from(n))
     }
 }
 
-/// Implements `TryFrom<&Value>` for Rust integer types: the value must be a whole `Number` that
-/// fits the type, or it raises `Expected Number, found <type>` or `Cannot convert <n> to <type>`.
+impl From<BigInt> for Value {
+    fn from(n: BigInt) -> Self {
+        Value::Integer(n)
+    }
+}
+
+impl From<BigDecimal> for Value {
+    fn from(n: BigDecimal) -> Self {
+        Value::Number(n)
+    }
+}
+
+/// Implements `TryFrom<&Value>` for Rust integer types: the value must be an `Integer`, or a
+/// whole `Number`, that fits the type, or it raises `Expected Number, found <type>` or
+/// `Cannot convert <n> to <type>`.
 macro_rules! try_from_value_for_integers {
     ($($t:ty),*) => {$(
         impl TryFrom<&Value> for $t {
             type Error = Error;
 
             fn try_from(value: &Value) -> Result<Self, Error> {
-                let n = value.expect_number()?;
-                Some(n)
-                    .filter(|n| n.is_integer())
-                    .and_then(|n| n.to_i128())
+                let target = stringify!($t);
+                value
+                    .to_big_int(&Type::number().to_string(), target)?
+                    .to_i128()
                     .and_then(|n| <$t>::try_from(n).ok())
-                    .ok_or_else(|| cannot_convert(n, stringify!($t)))
+                    .ok_or_else(|| cannot_convert(&number_text(value), target))
             }
         }
     )*};
@@ -238,18 +300,31 @@ macro_rules! try_from_value_for_integers {
 
 try_from_value_for_integers!(i32, i64, u32, u64, usize);
 
-/// Any `Number` converts to an `f64`, possibly losing precision.
+/// Any `Integer` or `Number` converts to an `f64`, possibly losing precision.
 impl TryFrom<&Value> for f64 {
     type Error = Error;
 
     fn try_from(value: &Value) -> Result<Self, Error> {
-        let n = value.expect_number()?;
-        n.to_f64().ok_or_else(|| cannot_convert(n, "f64"))
+        let converted = match value {
+            Value::Integer(n) => n.to_f64(),
+            Value::Number(n) => n.to_f64(),
+            other => return Err(unexpected_type(&Type::number().to_string(), other)),
+        };
+        converted.ok_or_else(|| cannot_convert(&number_text(value), "f64"))
+    }
+}
+
+/// A number as an error message shows it, e.g. `2.5` or `-1`, without the `.0` that flt prints
+/// on a whole `Number`
+fn number_text(value: &Value) -> String {
+    match value {
+        Value::Number(n) => n.to_string(),
+        other => other.to_string(),
     }
 }
 
 /// The error for a number that doesn't fit the Rust number type `target`.
-fn cannot_convert(n: &BigDecimal, target: &'static str) -> Error {
+fn cannot_convert(n: &impl fmt::Display, target: &'static str) -> Error {
     Error::RuntimeError(RuntimeError::CannotConvert {
         number: n.to_string(),
         target,
@@ -386,15 +461,12 @@ impl Runtime for SimpleRuntime {
                     .map(|r#type| self.resolve_type(r#type))
                     .transpose()?;
                 let value = self.eval_expr(expr)?;
-                self.global_scope
-                    .declare_variable(name, r#type, value.clone())?;
-                Ok(value)
+                self.global_scope.declare_variable(name, r#type, value)
             }
             Statement::Assign(name, expr) => {
                 self.global_scope.check_bindable(name)?;
                 let value = self.eval_expr(expr)?;
-                self.global_scope.set_variable(name, value.clone())?;
-                Ok(value)
+                self.global_scope.set_variable(name, value)
             }
         }
     }
@@ -426,7 +498,7 @@ impl Runtime for SimpleRuntime {
     }
 
     fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
-        self.global_scope.set_variable(name, value)
+        self.global_scope.set_variable(name, value).map(|_| ())
     }
 
     fn get_variable(&self, name: &str) -> Option<Value> {
@@ -597,6 +669,7 @@ impl SimpleRuntime {
 
     fn literal_to_value(lit: &Literal) -> Value {
         match lit {
+            Literal::Integer(n) => Value::Integer(n.clone()),
             Literal::Number(n) => Value::Number(n.as_ref().clone()),
             Literal::String(s) => Value::String(s.clone()),
             Literal::Boolean(b) => Value::Boolean(*b),
@@ -612,10 +685,11 @@ impl SimpleRuntime {
                 _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
             },
             UnaryOp::Plus => match inner {
-                Value::Number(n) => Ok(Value::Number(n.clone())),
+                Value::Integer(_) | Value::Number(_) => Ok(inner.clone()),
                 _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
             },
             UnaryOp::Minus => match inner {
+                Value::Integer(n) => Ok(Value::Integer(-n.clone())),
                 Value::Number(n) => Ok(Value::Number(-n.clone())),
                 _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
             },
@@ -624,17 +698,21 @@ impl SimpleRuntime {
 
     fn eval_binary(l: &Value, op: BinaryOp, r: &Value) -> Result<Value, Error> {
         match op {
-            BinaryOp::Add => Self::binary_number(l, r, |a, b| a + b),
-            BinaryOp::Sub => Self::binary_number(l, r, |a, b| a - b),
-            BinaryOp::Mul => Self::binary_number(l, r, |a, b| a * b),
-            BinaryOp::Div => {
-                let (a, b) = (Self::as_bigdecimal(l)?, Self::as_bigdecimal(r)?);
-                if b.is_zero() {
+            BinaryOp::Add => Self::arithmetic(l, r, |a, b| a + b, |a, b| a + b),
+            BinaryOp::Sub => Self::arithmetic(l, r, |a, b| a - b, |a, b| a - b),
+            BinaryOp::Mul => Self::arithmetic(l, r, |a, b| a * b, |a, b| a * b),
+            BinaryOp::Div => match Operands::of(l, r)? {
+                Operands::Integers(a, b) => Self::floor_div(&a, &b),
+                Operands::Numbers(_, b) if b.is_zero() => {
                     Err(Error::RuntimeError(RuntimeError::DivisionByZero))
-                } else {
-                    Ok(Value::Number(a / b))
                 }
-            }
+                Operands::Numbers(a, b) => Ok(Value::Number(a / b)),
+            },
+            // `//` takes only integers, for now
+            BinaryOp::FloorDiv => match (l, r) {
+                (Value::Integer(a), Value::Integer(b)) => Self::floor_div(a, b),
+                _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+            },
             BinaryOp::And => Self::binary_bool(l, r, |a, b| a && b),
             BinaryOp::Or => Self::binary_bool(l, r, |a, b| a || b),
             BinaryOp::Xor => Self::binary_bool(l, r, |a, b| a ^ b),
@@ -644,10 +722,10 @@ impl SimpleRuntime {
             BinaryOp::Concat => Self::binary_string(l, r),
             BinaryOp::Eq => Ok(Value::Boolean(Self::values_equal(l, r))),
             BinaryOp::Ne => Ok(Value::Boolean(!Self::values_equal(l, r))),
-            BinaryOp::Lt => Self::binary_compare(l, r, |a, b| a < b),
-            BinaryOp::Gt => Self::binary_compare(l, r, |a, b| a > b),
-            BinaryOp::Lte => Self::binary_compare(l, r, |a, b| a <= b),
-            BinaryOp::Gte => Self::binary_compare(l, r, |a, b| a >= b),
+            BinaryOp::Lt => Self::binary_compare(l, r, Ordering::is_lt),
+            BinaryOp::Gt => Self::binary_compare(l, r, Ordering::is_gt),
+            BinaryOp::Lte => Self::binary_compare(l, r, Ordering::is_le),
+            BinaryOp::Gte => Self::binary_compare(l, r, Ordering::is_ge),
             BinaryOp::Pipe => unreachable!("pipes are evaluated by eval_expr"),
         }
     }
@@ -661,20 +739,26 @@ impl SimpleRuntime {
         }
     }
 
-    fn as_bigdecimal(v: &Value) -> Result<BigDecimal, Error> {
-        match v {
-            Value::Number(n) => Ok(n.clone()),
-            _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
-        }
+    /// `+`, `-` or `*`: `integers` on two integers, and `numbers` otherwise
+    fn arithmetic(
+        l: &Value,
+        r: &Value,
+        integers: impl FnOnce(BigInt, BigInt) -> BigInt,
+        numbers: impl FnOnce(BigDecimal, BigDecimal) -> BigDecimal,
+    ) -> Result<Value, Error> {
+        Ok(match Operands::of(l, r)? {
+            Operands::Integers(a, b) => Value::Integer(integers(a, b)),
+            Operands::Numbers(a, b) => Value::Number(numbers(a, b)),
+        })
     }
 
-    fn binary_number<F>(l: &Value, r: &Value, f: F) -> Result<Value, Error>
-    where
-        F: FnOnce(BigDecimal, BigDecimal) -> BigDecimal,
-    {
-        let a = Self::as_bigdecimal(l)?;
-        let b = Self::as_bigdecimal(r)?;
-        Ok(Value::Number(f(a, b)))
+    /// `a / b` rounded toward negative infinity, as `/` and `//` divide two integers
+    fn floor_div(a: &BigInt, b: &BigInt) -> Result<Value, Error> {
+        if b.is_zero() {
+            Err(Error::RuntimeError(RuntimeError::DivisionByZero))
+        } else {
+            Ok(Value::Integer(a.div_floor(b)))
+        }
     }
 
     fn binary_bool<F>(l: &Value, r: &Value, f: F) -> Result<Value, Error>
@@ -689,16 +773,18 @@ impl SimpleRuntime {
 
     fn binary_compare<F>(l: &Value, r: &Value, f: F) -> Result<Value, Error>
     where
-        F: FnOnce(&BigDecimal, &BigDecimal) -> bool,
+        F: FnOnce(Ordering) -> bool,
     {
-        let a = Self::as_bigdecimal(l)?;
-        let b = Self::as_bigdecimal(r)?;
-        Ok(Value::Boolean(f(&a, &b)))
+        let ordering = match Operands::of(l, r)? {
+            Operands::Integers(a, b) => a.cmp(&b),
+            Operands::Numbers(a, b) => a.cmp(&b),
+        };
+        Ok(Value::Boolean(f(ordering)))
     }
 
     fn value_to_concat_str(v: &Value) -> String {
         match v {
-            Value::Number(n) => n.to_string(),
+            Value::Integer(_) | Value::Number(_) => v.to_string(),
             Value::String(s) => s.clone(),
             Value::Boolean(b) => b.to_string(),
             Value::Symbol(s) => s.clone(),
@@ -713,6 +799,26 @@ impl SimpleRuntime {
     }
 }
 
+/// The operands of an arithmetic operator or a comparison: two integers, or else two numbers,
+/// with an integer operand converted to a number
+enum Operands {
+    Integers(BigInt, BigInt),
+    Numbers(BigDecimal, BigDecimal),
+}
+
+impl Operands {
+    /// The operands, or `Invalid Operand Type` if either isn't an `Integer` or a `Number`
+    fn of(l: &Value, r: &Value) -> Result<Self, Error> {
+        if let (Value::Integer(a), Value::Integer(b)) = (l, r) {
+            return Ok(Operands::Integers(a.clone(), b.clone()));
+        }
+        match (l.to_big_decimal(), r.to_big_decimal()) {
+            (Some(a), Some(b)) => Ok(Operands::Numbers(a, b)),
+            _ => Err(Error::RuntimeError(RuntimeError::InvalidOperandType)),
+        }
+    }
+}
+
 /// The error for registering a `kind` of thing, a function or a native type, under `name`,
 /// which is already `reason`.
 fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Error {
@@ -723,11 +829,11 @@ fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Err
     })
 }
 
-/// The error for binding `value` to the variable `name`, declared with `type`, if `type` doesn't
-/// accept it.
-fn check_variable_type(name: &str, r#type: &Type, value: &Value) -> Result<(), Error> {
-    if r#type.accepts(value) {
-        return Ok(());
+/// `value` as it's bound to the variable `name`, declared with `type`: converted for the type,
+/// e.g. an `Integer` to a `Number`, or the error if `type` doesn't accept it.
+fn check_variable_type(name: &str, r#type: &Type, value: Value) -> Result<Value, Error> {
+    if r#type.accepts(&value) {
+        return Ok(r#type.coerce(value));
     }
     Err(Error::RuntimeError(RuntimeError::VariableTypeMismatch {
         name: name.to_string(),
@@ -810,38 +916,42 @@ impl GlobalScope {
 
     /// Assign a variable in the global scope by name, as `name = value` does, unless the name is
     /// a built-in type name, a function's name or a native type's name, or the variable was
-    /// declared with a type that doesn't accept `value`.
-    pub(crate) fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
+    /// declared with a type that doesn't accept `value`. Returns the value as it was bound,
+    /// converted for the declared type.
+    pub(crate) fn set_variable(&mut self, name: &str, value: Value) -> Result<Value, Error> {
         self.check_bindable(name)?;
-        if let Some(r#type) = self.declared_types.get(name) {
-            check_variable_type(name, r#type, &value)?;
-        }
-        self.variables.insert(name.to_string(), value);
-        Ok(())
+        let value = match self.declared_types.get(name) {
+            Some(r#type) => check_variable_type(name, r#type, value)?,
+            None => value,
+        };
+        self.variables.insert(name.to_string(), value.clone());
+        Ok(value)
     }
 
     /// Declare a variable in the global scope, as `let name = value` or
     /// `let name: type = value` does, replacing any earlier declaration and its type, unless the
     /// name is a built-in type name, a function's name or a native type's name, or `type`
-    /// doesn't accept `value`.
+    /// doesn't accept `value`. Returns the value as it was bound, converted for `type`.
     pub(crate) fn declare_variable(
         &mut self,
         name: &str,
         r#type: Option<Type>,
         value: Value,
-    ) -> Result<(), Error> {
+    ) -> Result<Value, Error> {
         self.check_bindable(name)?;
-        match r#type {
+        let value = match r#type {
             Some(r#type) => {
-                check_variable_type(name, &r#type, &value)?;
+                let value = check_variable_type(name, &r#type, value)?;
                 self.declared_types.insert(name.to_string(), r#type);
+                value
             }
             None => {
                 self.declared_types.remove(name);
+                value
             }
-        }
-        self.variables.insert(name.to_string(), value);
-        Ok(())
+        };
+        self.variables.insert(name.to_string(), value.clone());
+        Ok(value)
     }
 
     /// Remove a variable and its declared type from the global scope by name, returning its
@@ -864,6 +974,8 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use std::str::FromStr;
+
+    use bigdecimal::num_bigint::BigInt;
 
     use super::*;
     use crate::errors::ArgumentCount;
@@ -891,13 +1003,13 @@ mod tests {
 
     #[test]
     fn test_if_without_else_evaluates_to_then_branch_when_true() {
-        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_number(1), None);
+        let expr = Expr::if_expr(Expr::literal_boolean(true), Expr::literal_integer(1), None);
         assert_eq!(eval(expr), Value::Number(BigDecimal::from(1)));
     }
 
     #[test]
     fn test_if_without_else_evaluates_to_none_when_false() {
-        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_number(1), None);
+        let expr = Expr::if_expr(Expr::literal_boolean(false), Expr::literal_integer(1), None);
         assert_eq!(eval(expr), Value::None);
     }
 
@@ -907,7 +1019,7 @@ mod tests {
             "typeof",
             vec![Expr::if_expr(
                 Expr::literal_boolean(false),
-                Expr::literal_number(1),
+                Expr::literal_integer(1),
                 None,
             )],
         );
@@ -929,6 +1041,60 @@ mod tests {
         assert_eq!(
             Value::Number(BigDecimal::from(42)).type_of().unwrap(),
             Type::number()
+        );
+    }
+
+    #[test]
+    fn test_type_of_integer() {
+        assert_eq!(
+            Value::Integer(BigInt::from(42)).type_of().unwrap(),
+            Type::integer()
+        );
+    }
+
+    #[test]
+    fn test_integer_literal_evaluates_to_an_integer() {
+        assert!(matches!(
+            eval(Expr::literal_integer(42)),
+            Value::Integer(n) if n == BigInt::from(42)
+        ));
+    }
+
+    #[test]
+    fn test_integer_display() {
+        assert_eq!(Value::Integer(BigInt::from(42)).to_string(), "42");
+        assert_eq!(Value::Integer(BigInt::from(-7)).to_string(), "-7");
+    }
+
+    #[test]
+    fn test_whole_number_displays_with_a_decimal_point() {
+        let number = |s: &str| Value::Number(BigDecimal::from_str(s).unwrap());
+        assert_eq!(number("2").to_string(), "2.0");
+        assert_eq!(number("2.0").to_string(), "2.0");
+        assert_eq!(number("-0.0").to_string(), "0.0");
+        assert_eq!(number("2.5").to_string(), "2.5");
+        assert_eq!(number("2.50").to_string(), "2.50");
+        assert_eq!(
+            Value::Array(vec![number("1"), Value::Integer(BigInt::from(1))]).to_string(),
+            "[1.0, 1]"
+        );
+    }
+
+    #[test]
+    fn test_integers_and_numbers_are_equal_by_value() {
+        let one = Value::Integer(BigInt::from(1));
+        let one_point_oh = Value::Number(BigDecimal::from_str("1.0").unwrap());
+        assert_eq!(one, one_point_oh);
+        assert_eq!(one_point_oh, one);
+        assert_ne!(one, Value::Number(BigDecimal::from_str("1.5").unwrap()));
+        assert_ne!(one, Value::String("1".into()));
+        assert_eq!(
+            Value::Array(vec![one.clone()]),
+            Value::Array(vec![one_point_oh.clone()])
+        );
+        assert_eq!(
+            Value::Map(Map::from([(MapKey::symbol("a"), one)])),
+            Value::Map(Map::from([(MapKey::symbol("a"), one_point_oh)]))
         );
     }
 
@@ -1003,8 +1169,8 @@ mod tests {
     #[test]
     fn test_symbol_and_string_keys_differ() {
         let map = Map::from([
-            (MapKey::symbol("b"), number(1)),
-            (MapKey::string("b"), number(2)),
+            (MapKey::symbol("b"), integer(1)),
+            (MapKey::string("b"), integer(2)),
         ]);
         assert_eq!(map.len(), 2);
         assert_eq!(Value::Map(map).to_string(), r#"{b: 1, "b" => 2}"#);
@@ -1041,11 +1207,11 @@ mod tests {
     #[test]
     fn test_field_access_reads_symbol_key() {
         let mut runtime = SimpleRuntime::default();
-        assert_eq!(runtime.eval(r#"{"b": 1}.b"#).unwrap(), number(1));
+        assert_eq!(runtime.eval(r#"{"b": 1}.b"#).unwrap(), integer(1));
         runtime
             .set_variable(
                 "m",
-                Value::Map(Map::from([(MapKey::string("b"), number(1))])),
+                Value::Map(Map::from([(MapKey::string("b"), integer(1))])),
             )
             .unwrap();
         assert!(matches!(
@@ -1057,8 +1223,8 @@ mod tests {
     #[test]
     fn test_map_displays_in_insertion_order() {
         let map = Map::from([
-            (MapKey::symbol("b"), number(1)),
-            (MapKey::symbol("a"), number(2)),
+            (MapKey::symbol("b"), integer(1)),
+            (MapKey::symbol("a"), integer(2)),
         ]);
         assert_eq!(Value::Map(map).to_string(), "{b: 1, a: 2}");
     }
@@ -1066,12 +1232,12 @@ mod tests {
     #[test]
     fn test_map_equality_ignores_order() {
         let ab = Map::from([
-            (MapKey::symbol("a"), number(1)),
-            (MapKey::symbol("b"), number(2)),
+            (MapKey::symbol("a"), integer(1)),
+            (MapKey::symbol("b"), integer(2)),
         ]);
         let ba = Map::from([
-            (MapKey::symbol("b"), number(2)),
-            (MapKey::symbol("a"), number(1)),
+            (MapKey::symbol("b"), integer(2)),
+            (MapKey::symbol("a"), integer(1)),
         ]);
         assert_eq!(Value::Map(ab), Value::Map(ba));
     }
@@ -1128,8 +1294,8 @@ mod tests {
 
     #[test]
     fn test_typeof_equals_builtin_type_name() {
-        let typeof_one = Expr::function_call("typeof", vec![Expr::literal_number(1)]);
-        let expr = Expr::binary_expr(typeof_one, BinaryOp::Eq, Expr::ident("Number"));
+        let typeof_one = Expr::function_call("typeof", vec![Expr::literal_integer(1)]);
+        let expr = Expr::binary_expr(typeof_one, BinaryOp::Eq, Expr::ident("Integer"));
         assert_eq!(eval(expr), Value::Boolean(true));
     }
 
@@ -1163,7 +1329,8 @@ mod tests {
         for name in [
             "None", "Boolean", "Number", "String", "Symbol", "Array", "Map", "Type", "Any",
         ] {
-            let result = runtime.eval_statement(&Statement::declare(name, Expr::literal_number(5)));
+            let result =
+                runtime.eval_statement(&Statement::declare(name, Expr::literal_integer(5)));
             assert_cannot_bind(result, name, ProtectedName::BuiltinType);
         }
         // The refused binding leaves the type in place
@@ -1177,14 +1344,14 @@ mod tests {
     fn test_cannot_bind_error_message() {
         let mut runtime = runtime_with_identity();
         let error = runtime
-            .eval_statement(&let_statement("Number", Expr::literal_number(5)))
+            .eval_statement(&let_statement("Number", Expr::literal_integer(5)))
             .unwrap_err();
         assert_eq!(
             error.to_string(),
             "Runtime Error: Cannot bind Number: it's a built-in type"
         );
         let error = runtime
-            .eval_statement(&let_statement("identity", Expr::literal_number(5)))
+            .eval_statement(&let_statement("identity", Expr::literal_integer(5)))
             .unwrap_err();
         assert_eq!(
             error.to_string(),
@@ -1338,9 +1505,9 @@ mod tests {
             .eval_statement(&let_statement("t", Expr::ident("typeof")))
             .unwrap();
         let value = runtime
-            .eval_statement(&call("t", vec![Expr::literal_number(42)]))
+            .eval_statement(&call("t", vec![Expr::literal_integer(42)]))
             .unwrap();
-        assert_eq!(value, Value::Type(Type::number()));
+        assert_eq!(value, Value::Type(Type::integer()));
     }
 
     #[test]
@@ -1357,13 +1524,13 @@ mod tests {
             ))
             .unwrap();
         let value = runtime
-            .eval_statement(&call("typeof", vec![Expr::literal_number(1)]))
+            .eval_statement(&call("typeof", vec![Expr::literal_integer(1)]))
             .unwrap();
         assert_eq!(value, Value::String("mine".to_string()));
         let function = runtime.get_function("typeof").unwrap();
         assert_eq!(function.r#type().to_string(), "fn(Any) -> String");
         // The replacement is a function too, so its name is still protected
-        let result = runtime.eval_statement(&let_statement("typeof", Expr::literal_number(1)));
+        let result = runtime.eval_statement(&let_statement("typeof", Expr::literal_integer(1)));
         assert_cannot_bind(result, "typeof", ProtectedName::Function);
     }
 
@@ -1406,7 +1573,7 @@ mod tests {
     fn test_call_registered_function() {
         let mut runtime = runtime_with_identity();
         let value = runtime
-            .eval_statement(&call("identity", vec![Expr::literal_number(42)]))
+            .eval_statement(&call("identity", vec![Expr::literal_integer(42)]))
             .unwrap();
         assert_eq!(value, Value::Number(BigDecimal::from(42)));
     }
@@ -1438,7 +1605,7 @@ mod tests {
     #[test]
     fn test_let_cannot_bind_host_function() {
         let mut runtime = runtime_with_identity();
-        let result = runtime.eval_statement(&let_statement("identity", Expr::literal_number(1)));
+        let result = runtime.eval_statement(&let_statement("identity", Expr::literal_integer(1)));
         assert_cannot_bind(result, "identity", ProtectedName::Function);
         let value = runtime
             .eval_statement(&Statement::Expr(Expr::ident("identity")))
@@ -1498,7 +1665,7 @@ mod tests {
             "x",
             ProtectedName::Variable,
         );
-        assert_eq!(runtime.get_variable("x"), Some(number(1)));
+        assert_eq!(runtime.get_variable("x"), Some(integer(1)));
     }
 
     #[test]
@@ -1530,7 +1697,7 @@ mod tests {
         let mut runtime = runtime_with_identity();
         let result = runtime.eval_statement(&call(
             "identity",
-            vec![Expr::literal_number(1), Expr::literal_number(2)],
+            vec![Expr::literal_integer(1), Expr::literal_integer(2)],
         ));
         assert!(matches!(
             result,
@@ -1543,9 +1710,9 @@ mod tests {
     fn test_call_non_function_is_not_callable() {
         let mut runtime = SimpleRuntime::default();
         runtime
-            .eval_statement(&let_statement("x", Expr::literal_number(1)))
+            .eval_statement(&let_statement("x", Expr::literal_integer(1)))
             .unwrap();
-        let result = runtime.eval_statement(&call("x", vec![Expr::literal_number(2)]));
+        let result = runtime.eval_statement(&call("x", vec![Expr::literal_integer(2)]));
         assert!(matches!(
             result,
             Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "x"
@@ -1579,10 +1746,17 @@ mod tests {
             .register_function(NativeFunction::new(
                 FunctionDefinition::new(
                     "sub",
-                    Type::number(),
-                    vec![Argument::number("a"), Argument::number("b")],
+                    Type::integer(),
+                    vec![Argument::integer("a"), Argument::integer("b")],
                 ),
-                |args| SimpleRuntime::binary_number(args.get("a")?, args.get("b")?, |a, b| a - b),
+                |args| {
+                    SimpleRuntime::arithmetic(
+                        args.get("a")?,
+                        args.get("b")?,
+                        |a, b| a - b,
+                        |a, b| a - b,
+                    )
+                },
             ))
             .unwrap();
         runtime
@@ -1621,19 +1795,11 @@ mod tests {
         let calls = Arc::new(AtomicU64::new(0));
         runtime
             .register_function(NativeFunction::new(
-                FunctionDefinition::new("next", Type::number(), vec![]),
-                move |_args| {
-                    Ok(Value::Number(BigDecimal::from(
-                        calls.fetch_add(1, Ordering::SeqCst) + 1,
-                    )))
-                },
+                FunctionDefinition::new("next", Type::integer(), vec![]),
+                move |_args| Ok(Value::from(calls.fetch_add(1, Ordering::SeqCst) + 1)),
             ))
             .unwrap();
         runtime
-    }
-
-    fn number(n: i64) -> Value {
-        Value::Number(BigDecimal::from(n))
     }
 
     /// `f 1`, `f(1)`, `1 |> f` and `1 |> f()` all evaluate as `f(1)`, for native and
@@ -1641,8 +1807,8 @@ mod tests {
     #[test]
     fn test_call_and_pipe_forms_are_equivalent() {
         for (name, expected) in [
-            ("identity", number(1)),
-            ("typeof", Value::Type(Type::number())),
+            ("identity", integer(1)),
+            ("typeof", Value::Type(Type::integer())),
         ] {
             for form in [
                 format!("{name} 1"),
@@ -1661,18 +1827,18 @@ mod tests {
         // with more arguments, and through another name
         let mut runtime = runtime_for_pipes();
         for form in ["sub 10, 3", "sub(10, 3)", "10 |> sub(3)"] {
-            assert_eq!(runtime.eval(form).unwrap(), number(7));
+            assert_eq!(runtime.eval(form).unwrap(), integer(7));
         }
         runtime.eval("let g = identity").unwrap();
         for form in ["g 1", "g(1)", "1 |> g", "1 |> g()"] {
-            assert_eq!(runtime.eval(form).unwrap(), number(1));
+            assert_eq!(runtime.eval(form).unwrap(), integer(1));
         }
     }
 
     #[test]
     fn test_pipe_passes_left_side_as_first_argument() {
         let mut runtime = runtime_for_pipes();
-        assert_eq!(runtime.eval("10 |> sub(3)").unwrap(), number(7));
+        assert_eq!(runtime.eval("10 |> sub(3)").unwrap(), integer(7));
     }
 
     #[test]
@@ -1680,11 +1846,11 @@ mod tests {
         let mut runtime = runtime_for_pipes();
         assert_eq!(
             runtime.eval("1 |> typeof").unwrap(),
-            Value::Type(Type::number())
+            Value::Type(Type::integer())
         );
         assert_eq!(
             runtime.eval("let g = identity; 42 |> g").unwrap(),
-            number(42)
+            integer(42)
         );
     }
 
@@ -1695,9 +1861,9 @@ mod tests {
         assert_eq!(
             value,
             Value::Array(vec![
-                number(1),
-                number(2),
-                Value::Map(Map::from([(MapKey::symbol("k"), number(3))])),
+                integer(1),
+                integer(2),
+                Value::Map(Map::from([(MapKey::symbol("k"), integer(3))])),
             ])
         );
     }
@@ -1712,11 +1878,11 @@ mod tests {
         assert_eq!(
             value,
             Value::Array(vec![
-                number(1),
-                number(2),
+                integer(1),
+                integer(2),
                 Value::Map(Map::from([
-                    (MapKey::symbol("b"), number(3)),
-                    (MapKey::symbol("a"), number(4)),
+                    (MapKey::symbol("b"), integer(3)),
+                    (MapKey::symbol("a"), integer(4)),
                 ])),
             ])
         );
@@ -1726,16 +1892,19 @@ mod tests {
     fn test_pipe_chain_passes_previous_result_first() {
         let mut runtime = runtime_for_pipes();
         // sub(sub(10, 3), 2)
-        assert_eq!(runtime.eval("10 |> sub(3) |> sub(2)").unwrap(), number(5));
+        assert_eq!(runtime.eval("10 |> sub(3) |> sub(2)").unwrap(), integer(5));
         // sub(identity(10), 1)
-        assert_eq!(runtime.eval("10 |> identity |> sub(1)").unwrap(), number(9));
+        assert_eq!(
+            runtime.eval("10 |> identity |> sub(1)").unwrap(),
+            integer(9)
+        );
     }
 
     #[test]
     fn test_pipe_evaluates_left_side_first() {
         let mut runtime = runtime_for_pipes();
         // sub(1, 2), not sub(2, 1)
-        assert_eq!(runtime.eval("next() |> sub(next())").unwrap(), number(-1));
+        assert_eq!(runtime.eval("next() |> sub(next())").unwrap(), integer(-1));
     }
 
     #[test]
@@ -1744,7 +1913,7 @@ mod tests {
         assert!(runtime.eval("typeof()").is_err());
         assert_eq!(
             runtime.eval("1 |> typeof()").unwrap(),
-            Value::Type(Type::number())
+            Value::Type(Type::integer())
         );
     }
 
@@ -1798,10 +1967,10 @@ mod tests {
     fn test_pipe_groups_with_other_operators() {
         let mut runtime = runtime_for_pipes();
         assert_eq!(
-            runtime.eval("1 |> typeof == Number").unwrap(),
+            runtime.eval("1 |> typeof == Integer").unwrap(),
             Value::Boolean(true)
         );
-        assert_eq!(runtime.eval("1 + 1 |> sub(2)").unwrap(), number(0));
+        assert_eq!(runtime.eval("1 + 1 |> sub(2)").unwrap(), integer(0));
         assert_eq!(runtime.eval("1 + 2 == 3").unwrap(), Value::Boolean(true));
         assert_eq!(
             runtime.eval(r#""a" <> "b" == "ab""#).unwrap(),
@@ -1812,12 +1981,12 @@ mod tests {
     #[test]
     fn test_let_cannot_bind_builtin_function() {
         let mut runtime = SimpleRuntime::default();
-        let result = runtime.eval_statement(&let_statement("typeof", Expr::literal_number(1)));
+        let result = runtime.eval_statement(&let_statement("typeof", Expr::literal_integer(1)));
         assert_cannot_bind(result, "typeof", ProtectedName::Function);
         let value = runtime
-            .eval_statement(&call("typeof", vec![Expr::literal_number(2)]))
+            .eval_statement(&call("typeof", vec![Expr::literal_integer(2)]))
             .unwrap();
-        assert_eq!(value, Value::Type(Type::number()));
+        assert_eq!(value, Value::Type(Type::integer()));
     }
 
     /// A fresh runtime with the native type `Meters` registered, and a native
@@ -1924,7 +2093,7 @@ mod tests {
     #[test]
     fn test_native_type_name_is_not_callable() {
         let result =
-            runtime_with_meters().eval_statement(&call("Meters", vec![Expr::literal_number(5)]));
+            runtime_with_meters().eval_statement(&call("Meters", vec![Expr::literal_integer(5)]));
         assert!(matches!(
             result,
             Err(Error::RuntimeError(RuntimeError::NotCallable(name))) if name == "Meters"
@@ -1944,7 +2113,7 @@ mod tests {
     #[test]
     fn test_native_type_name_cannot_be_bound() {
         let mut runtime = runtime_with_meters();
-        let result = runtime.eval_statement(&let_statement("Meters", Expr::literal_number(1)));
+        let result = runtime.eval_statement(&let_statement("Meters", Expr::literal_integer(1)));
         assert_cannot_bind(result, "Meters", ProtectedName::NativeType);
         assert_cannot_bind(
             runtime.set_variable("Meters", Value::None),
@@ -1952,7 +2121,7 @@ mod tests {
             ProtectedName::NativeType,
         );
         let error = runtime
-            .eval_statement(&let_statement("Meters", Expr::literal_number(1)))
+            .eval_statement(&let_statement("Meters", Expr::literal_integer(1)))
             .unwrap_err();
         assert_eq!(
             error.to_string(),
@@ -2066,29 +2235,73 @@ mod tests {
     }
 
     #[test]
-    fn test_value_from_rust_integers() {
-        assert_eq!(Value::from(3usize), number(3));
-        assert_eq!(Value::from(3u64), number(3));
-        assert_eq!(Value::from(-3i64), number(-3));
+    fn test_value_from_rust_integers_is_an_integer() {
+        assert!(matches!(Value::from(3usize), Value::Integer(n) if n == BigInt::from(3)));
+        assert!(matches!(Value::from(3u64), Value::Integer(n) if n == BigInt::from(3)));
+        assert!(matches!(Value::from(-3i64), Value::Integer(n) if n == BigInt::from(-3)));
         assert_eq!(Value::from(u64::MAX).to_string(), u64::MAX.to_string());
+        assert!(matches!(
+            Value::from(BigInt::from(7)),
+            Value::Integer(n) if n == BigInt::from(7)
+        ));
+    }
+
+    #[test]
+    fn test_value_from_big_decimal_is_a_number() {
+        assert!(matches!(
+            Value::from(BigDecimal::from_str("2.5").unwrap()),
+            Value::Number(_)
+        ));
     }
 
     fn decimal(s: &str) -> Value {
         Value::Number(BigDecimal::from_str(s).unwrap())
     }
 
+    fn integer(n: i64) -> Value {
+        Value::Integer(BigInt::from(n))
+    }
+
+    #[test]
+    fn test_try_from_value_for_rust_numbers_from_integers() {
+        assert_eq!(i32::try_from(&integer(-5)).unwrap(), -5);
+        assert_eq!(i64::try_from(&integer(-5)).unwrap(), -5);
+        assert_eq!(u32::try_from(&integer(5)).unwrap(), 5);
+        assert_eq!(u64::try_from(&Value::from(u64::MAX)).unwrap(), u64::MAX);
+        assert_eq!(usize::try_from(&integer(5)).unwrap(), 5);
+        assert_eq!(f64::try_from(&integer(5)).unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_try_from_value_rejects_integers_that_dont_fit() {
+        assert_cannot_convert(u32::try_from(&integer(-1)), "-1", "u32");
+        assert_cannot_convert(usize::try_from(&integer(-1)), "-1", "usize");
+        assert_cannot_convert(u32::try_from(&integer(5_000_000_000)), "5000000000", "u32");
+        let huge =
+            Value::Integer(BigInt::from_str("340282366920938463463374607431768211456").unwrap());
+        assert_cannot_convert(
+            u64::try_from(&huge),
+            "340282366920938463463374607431768211456",
+            "u64",
+        );
+        assert_eq!(
+            usize::try_from(&integer(-1)).unwrap_err().to_string(),
+            "Runtime Error: Cannot convert -1 to usize"
+        );
+    }
+
     #[test]
     fn test_try_from_value_for_rust_numbers() {
-        assert_eq!(i32::try_from(&number(-5)).unwrap(), -5);
-        assert_eq!(i64::try_from(&number(-5)).unwrap(), -5);
-        assert_eq!(u32::try_from(&number(5)).unwrap(), 5);
+        assert_eq!(i32::try_from(&integer(-5)).unwrap(), -5);
+        assert_eq!(i64::try_from(&integer(-5)).unwrap(), -5);
+        assert_eq!(u32::try_from(&integer(5)).unwrap(), 5);
         assert_eq!(
             u64::try_from(&decimal("18446744073709551615")).unwrap(),
             u64::MAX
         );
-        assert_eq!(usize::try_from(&number(5)).unwrap(), 5);
+        assert_eq!(usize::try_from(&integer(5)).unwrap(), 5);
         assert_eq!(f64::try_from(&decimal("2.5")).unwrap(), 2.5);
-        assert_eq!(f64::try_from(&number(5)).unwrap(), 5.0);
+        assert_eq!(f64::try_from(&integer(5)).unwrap(), 5.0);
     }
 
     /// Asserts that `result` is the error for converting `number` to the Rust type `target`.
@@ -2113,17 +2326,17 @@ mod tests {
     fn test_try_from_value_rejects_numbers_that_dont_fit() {
         assert_cannot_convert(i32::try_from(&decimal("2.5")), "2.5", "i32");
         assert_cannot_convert(i64::try_from(&decimal("2.5")), "2.5", "i64");
-        assert_cannot_convert(u32::try_from(&number(-1)), "-1", "u32");
-        assert_cannot_convert(u64::try_from(&number(-1)), "-1", "u64");
-        assert_cannot_convert(usize::try_from(&number(-1)), "-1", "usize");
-        assert_cannot_convert(i32::try_from(&number(3_000_000_000)), "3000000000", "i32");
+        assert_cannot_convert(u32::try_from(&integer(-1)), "-1", "u32");
+        assert_cannot_convert(u64::try_from(&integer(-1)), "-1", "u64");
+        assert_cannot_convert(usize::try_from(&integer(-1)), "-1", "usize");
+        assert_cannot_convert(i32::try_from(&integer(3_000_000_000)), "3000000000", "i32");
         assert_cannot_convert(
             i64::try_from(&decimal("1e30")),
             &decimal("1e30").to_string(),
             "i64",
         );
         assert_eq!(
-            u32::try_from(&number(-1)).unwrap_err().to_string(),
+            u32::try_from(&integer(-1)).unwrap_err().to_string(),
             "Runtime Error: Cannot convert -1 to u32"
         );
     }
@@ -2160,14 +2373,14 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         assert_eq!(
             runtime.eval("let a = 1; let b = a + 1; b").unwrap(),
-            number(2)
+            integer(2)
         );
         assert_eq!(
             runtime.eval("let c = 3\nlet d = c * 2\nd").unwrap(),
-            number(6)
+            integer(6)
         );
         // Bindings persist from one call to the next
-        assert_eq!(runtime.eval("a + d").unwrap(), number(7));
+        assert_eq!(runtime.eval("a + d").unwrap(), integer(7));
     }
 
     #[test]
@@ -2192,7 +2405,7 @@ mod tests {
         let result = runtime.eval("let x = 1 let y = 2");
         assert!(matches!(result, Err(Error::ParserError(_))), "{result:?}");
         assert_eq!(runtime.get_variable("x"), None);
-        assert_eq!(runtime.eval("let x = 1\nlet y = 2").unwrap(), number(2));
+        assert_eq!(runtime.eval("let x = 1\nlet y = 2").unwrap(), integer(2));
     }
 
     #[test]
@@ -2200,7 +2413,7 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         let (rest, statement) = parse_statement("1 + 2").unwrap();
         assert_eq!(rest, "");
-        assert_eq!(runtime.eval_statement(&statement).unwrap(), number(3));
+        assert_eq!(runtime.eval_statement(&statement).unwrap(), integer(3));
     }
 
     #[test]
@@ -2208,12 +2421,12 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         let runtime: &mut dyn Runtime = &mut runtime;
         assert_eq!(runtime.get_variable("x"), None);
-        runtime.set_variable("x", number(42)).unwrap();
-        assert_eq!(runtime.get_variable("x"), Some(number(42)));
-        assert_eq!(runtime.eval("x + 1").unwrap(), number(43));
+        runtime.set_variable("x", integer(42)).unwrap();
+        assert_eq!(runtime.get_variable("x"), Some(integer(42)));
+        assert_eq!(runtime.eval("x + 1").unwrap(), integer(43));
         // flt source sees the host's binding, and the host sees flt's
         runtime.eval("let y = x * 2").unwrap();
-        assert_eq!(runtime.get_variable("y"), Some(number(84)));
+        assert_eq!(runtime.get_variable("y"), Some(integer(84)));
     }
 
     #[test]
@@ -2221,7 +2434,7 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         let runtime: &mut dyn Runtime = &mut runtime;
         runtime.eval("let x = 1").unwrap();
-        assert_eq!(runtime.remove_variable("x"), Some(number(1)));
+        assert_eq!(runtime.remove_variable("x"), Some(integer(1)));
         assert_eq!(runtime.remove_variable("x"), None);
         assert_eq!(runtime.get_variable("x"), None);
         assert!(matches!(
@@ -2256,8 +2469,8 @@ mod tests {
     #[test]
     fn test_typed_let_binds_a_value_of_its_type() {
         let mut runtime = SimpleRuntime::default();
-        assert_eq!(runtime.eval("let n: Number = 1").unwrap(), number(1));
-        assert_eq!(runtime.get_variable("n"), Some(number(1)));
+        assert_eq!(runtime.eval("let n: Number = 1").unwrap(), integer(1));
+        assert_eq!(runtime.get_variable("n"), Some(integer(1)));
         assert_eq!(
             runtime.eval("let x: Number | None = None").unwrap(),
             Value::None
@@ -2278,8 +2491,8 @@ mod tests {
         runtime.eval("let n: Number = 1").unwrap();
         let result = runtime.eval(r#"n = "two""#);
         assert_variable_type_mismatch(result, "n", "Number", "String");
-        assert_eq!(runtime.get_variable("n"), Some(number(1)));
-        assert_eq!(runtime.eval("n = 2").unwrap(), number(2));
+        assert_eq!(runtime.get_variable("n"), Some(integer(1)));
+        assert_eq!(runtime.eval("n = 2").unwrap(), integer(2));
     }
 
     #[test]
@@ -2287,8 +2500,8 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         runtime.eval("let n = 1").unwrap();
         let result = runtime.eval("let n: String = 2");
-        assert_variable_type_mismatch(result, "n", "String", "Number");
-        assert_eq!(runtime.get_variable("n"), Some(number(1)));
+        assert_variable_type_mismatch(result, "n", "String", "Integer");
+        assert_eq!(runtime.get_variable("n"), Some(integer(1)));
         // n is still declared without a type
         assert_eq!(
             runtime.eval("n = :two").unwrap(),
@@ -2332,7 +2545,7 @@ mod tests {
         runtime.eval("let d: Meters = meters(5)").unwrap();
         assert_eq!(runtime.get_variable("d"), Some(Value::native(Meters(5))));
         let result = runtime.eval("d = 5");
-        assert_variable_type_mismatch(result, "d", "Meters", "Number");
+        assert_variable_type_mismatch(result, "d", "Meters", "Integer");
     }
 
     #[test]
@@ -2340,12 +2553,12 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         let runtime: &mut dyn Runtime = &mut runtime;
         runtime.eval("let n: Number = 1").unwrap();
-        runtime.set_variable("n", number(2)).unwrap();
+        runtime.set_variable("n", integer(2)).unwrap();
         let result = runtime
             .set_variable("n", Value::String("two".into()))
             .map(|()| Value::None);
         assert_variable_type_mismatch(result, "n", "Number", "String");
-        assert_eq!(runtime.get_variable("n"), Some(number(2)));
+        assert_eq!(runtime.get_variable("n"), Some(integer(2)));
     }
 
     #[test]
@@ -2398,5 +2611,63 @@ mod tests {
         let mut runtime: Box<dyn Runtime> = Box::new(SimpleRuntime::default());
         install_meters(runtime.as_mut());
         assert_eq!(runtime.eval("meters(3)").unwrap(), Value::native(Meters(3)));
+    }
+
+    #[test]
+    fn test_typed_let_converts_an_integer_to_a_declared_number() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval("let n: Number = 1").unwrap();
+        assert!(matches!(value, Value::Number(_)), "got {value:?}");
+        assert!(matches!(runtime.get_variable("n"), Some(Value::Number(_))));
+        let value = runtime.eval("n = 2").unwrap();
+        assert!(matches!(value, Value::Number(_)), "got {value:?}");
+        assert!(matches!(runtime.get_variable("n"), Some(Value::Number(_))));
+    }
+
+    #[test]
+    fn test_typed_let_keeps_an_integer_that_a_union_member_accepts() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let x: Integer | Number = 1").unwrap();
+        assert!(matches!(runtime.get_variable("x"), Some(Value::Integer(_))));
+        runtime.eval("let y: Number | String = 1").unwrap();
+        assert!(matches!(runtime.get_variable("y"), Some(Value::Number(_))));
+        runtime.eval("let z = 1").unwrap();
+        assert!(matches!(runtime.get_variable("z"), Some(Value::Integer(_))));
+    }
+
+    #[test]
+    fn test_typed_let_integer_refuses_a_number() {
+        let mut runtime = SimpleRuntime::default();
+        let result = runtime.eval("let i: Integer = 1.0");
+        assert_variable_type_mismatch(result, "i", "Integer", "Number");
+        runtime.eval("let i: Integer = 1").unwrap();
+        let result = runtime.eval("i = 2.5");
+        assert_variable_type_mismatch(result, "i", "Integer", "Number");
+        assert!(matches!(runtime.get_variable("i"), Some(Value::Integer(_))));
+    }
+
+    #[test]
+    fn test_set_variable_converts_an_integer_to_a_declared_number() {
+        let mut runtime = SimpleRuntime::default();
+        let runtime: &mut dyn Runtime = &mut runtime;
+        runtime.eval("let n: Number = 1.5").unwrap();
+        runtime.set_variable("n", Value::from(2u64)).unwrap();
+        assert!(matches!(runtime.get_variable("n"), Some(Value::Number(_))));
+        // A variable without a declared type keeps the integer
+        runtime.set_variable("m", Value::from(2u64)).unwrap();
+        assert!(matches!(runtime.get_variable("m"), Some(Value::Integer(_))));
+    }
+
+    #[test]
+    fn test_integer_is_a_built_in_type_name() {
+        let mut runtime = SimpleRuntime::default();
+        assert_eq!(
+            runtime.eval("Integer").unwrap(),
+            Value::Type(Type::integer())
+        );
+        assert!(matches!(
+            runtime.eval("let Integer = 1"),
+            Err(Error::RuntimeError(RuntimeError::CannotBind { name, .. })) if name == "Integer"
+        ));
     }
 }

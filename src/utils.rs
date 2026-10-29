@@ -1,5 +1,7 @@
 use std::fmt;
 
+use bigdecimal::BigDecimal;
+
 /// Escapes a string for display as a string literal.
 pub fn escape_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -18,6 +20,17 @@ pub(crate) fn write_name(f: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result 
         write!(f, "{name}")
     } else {
         write!(f, "\"{}\"", escape_string(name))
+    }
+}
+
+/// Writes a `Number` as flt prints it: with a trailing `.0` if it has no digits after the
+/// decimal point, so it never looks like an `Integer`, e.g. `2.0`, `2.5` or `2.50`.
+pub(crate) fn write_number(f: &mut fmt::Formatter<'_>, n: &BigDecimal) -> fmt::Result {
+    let text = n.to_string();
+    if text.contains(['.', 'e', 'E']) {
+        write!(f, "{text}")
+    } else {
+        write!(f, "{text}.0")
     }
 }
 

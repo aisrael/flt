@@ -78,6 +78,14 @@ Feature: flt repl
       /inspect 42
       """
     Then the command should succeed
+    And the output should contain "Integer"
+
+  Scenario: inspect a decimal literal
+    When the REPL is run and the user types:
+      """
+      /inspect 4.2
+      """
+    Then the command should succeed
     And the output should contain "Number"
 
   Scenario: inspect an array literal

@@ -130,7 +130,8 @@ types. `Integer` never accepts a `Number`, not even a whole one like `1.0`.
 
 The conversion applies wherever a type is checked:
 
-- a positional argument, a variadic value or a keyword value (ADR 013, decision 1);
+- a positional argument, a variadic value or a keyword value (ADR 013, decision 1), including a
+  keyword's default when a call leaves the keyword out;
 - a function's result, against its return type (ADR 013, decision 6);
 - a declaration, `let n: Number = 1`, and an assignment to a variable declared with a type
   ([ADR 016](016-typed-let-bindings.md), decisions 1 and 3).
@@ -249,6 +250,11 @@ In the Rust API:
   too.
 - flt re-exports `BigInt` and `BigDecimal`, so a host can use them without depending on the same
   versions of `num-bigint` and `bigdecimal` itself.
+- `Value`'s equality compares an `Integer` and a `Number` by value, so `Value::from(1u64)` equals
+  `Value::Number(1.0)`, inside arrays and maps too.
+- In the AST, `Literal::Integer(BigInt)` is a new variant, made with `Literal::integer` or
+  `Expr::literal_integer`, and `BinaryOp::FloorDiv` is `//`. `parse_number` returns a `Literal`,
+  either a `Literal::Integer` or a `Literal::Number`, instead of a `Numeric`.
 
 ## Alternatives Considered
 

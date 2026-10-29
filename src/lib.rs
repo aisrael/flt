@@ -8,4 +8,6 @@ pub mod repl;
 pub mod runtime;
 pub mod utils;
 
+pub use bigdecimal::num_bigint::BigInt;
+pub use bigdecimal::BigDecimal;
 pub use errors::Error;

@@ -12,12 +12,15 @@ use nom::sequence::pair;
 use nom::sequence::preceded;
 use nom::Parser;
 
+use bigdecimal::num_bigint::BigInt;
+
+use crate::ast::Literal;
 use crate::ast::Numeric;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 
-/// Parses a numeric: optional `+` or `-`, digits (with optional `_`), then optionally `.` followed by any number of decimal digits (with optional `_`).
-pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
+/// Parses a numeric literal: optional `+` or `-`, digits (with optional `_`), then optionally `.` followed by any number of decimal digits (with optional `_`). Without a `.`, it's an [`Literal::Integer`], and with one, a [`Literal::Number`], even if no digits follow the `.`.
+pub fn parse_number(input: &str) -> IResult<&str, Literal> {
     let (input, (sign, integer, fractional)) = (
         opt(alt((tag("-"), tag("+")))),
         digits_with_underscores,
@@ -35,9 +38,13 @@ pub fn parse_number(input: &str) -> IResult<&str, Numeric> {
         number.push_str(&fractional.replace('_', ""));
     }
 
-    match Numeric::from_str(&number) {
-        Ok(value) => Ok((input, value)),
-        Err(_) => Err(nom::Err::Failure(ParseError::new(
+    let literal = match fractional {
+        None => BigInt::from_str(&number).map(Literal::Integer).ok(),
+        Some(_) => Numeric::from_str(&number).map(Literal::Number).ok(),
+    };
+    match literal {
+        Some(literal) => Ok((input, literal)),
+        None => Err(nom::Err::Failure(ParseError::new(
             input,
             nom::error::ErrorKind::Float,
         ))),
@@ -58,32 +65,49 @@ fn fractional_digits(input: &str) -> IResult<&str, &str> {
 mod tests {
     use std::str::FromStr;
 
+    use bigdecimal::num_bigint::BigInt;
+
+    use crate::ast::Literal;
     use crate::ast::Numeric;
 
     use super::parse_number;
 
-    fn n(s: &str) -> Numeric {
-        Numeric::from_str(s).unwrap()
+    /// An integer literal
+    fn i(s: &str) -> Literal {
+        Literal::Integer(BigInt::from_str(s).unwrap())
+    }
+
+    /// A number literal
+    fn n(s: &str) -> Literal {
+        Literal::Number(Numeric::from_str(s).unwrap())
     }
 
     #[test]
     fn test_parse_integer() {
-        assert_eq!(parse_number("42"), Ok(("", n("42"))));
-        assert_eq!(parse_number("0"), Ok(("", n("0"))));
-        assert_eq!(parse_number("123"), Ok(("", n("123"))));
+        assert_eq!(parse_number("42"), Ok(("", i("42"))));
+        assert_eq!(parse_number("0"), Ok(("", i("0"))));
+        assert_eq!(parse_number("123"), Ok(("", i("123"))));
     }
 
     #[test]
     fn test_parse_positive_integer() {
-        assert_eq!(parse_number("+0"), Ok(("", n("0"))));
-        assert_eq!(parse_number("+7"), Ok(("", n("7"))));
-        assert_eq!(parse_number("+123"), Ok(("", n("123"))));
+        assert_eq!(parse_number("+0"), Ok(("", i("0"))));
+        assert_eq!(parse_number("+7"), Ok(("", i("7"))));
+        assert_eq!(parse_number("+123"), Ok(("", i("123"))));
     }
 
     #[test]
     fn test_parse_negative_integer() {
-        assert_eq!(parse_number("-7"), Ok(("", n("-7"))));
-        assert_eq!(parse_number("-123"), Ok(("", n("-123"))));
+        assert_eq!(parse_number("-7"), Ok(("", i("-7"))));
+        assert_eq!(parse_number("-123"), Ok(("", i("-123"))));
+    }
+
+    #[test]
+    fn test_parse_integer_with_arbitrary_precision() {
+        assert_eq!(
+            parse_number("340282366920938463463374607431768211456"),
+            Ok(("", i("340282366920938463463374607431768211456")))
+        );
     }
 
     #[test]
@@ -94,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_decimal_with_zero_fractional_digits() {
+    fn test_parse_decimal_with_zero_fractional_digits_is_a_number() {
         assert_eq!(parse_number("42."), Ok(("", n("42"))));
         assert_eq!(parse_number("+3."), Ok(("", n("3"))));
         assert_eq!(parse_number("-7."), Ok(("", n("-7"))));
@@ -114,17 +138,22 @@ mod tests {
 
     #[test]
     fn test_parse_number_with_remainder() {
-        assert_eq!(parse_number("42 "), Ok((" ", n("42"))));
+        assert_eq!(parse_number("42 "), Ok((" ", i("42"))));
         assert_eq!(parse_number("3.14,"), Ok((",", n("3.14"))));
-        assert_eq!(parse_number("+42 "), Ok((" ", n("42"))));
+        assert_eq!(parse_number("+42 "), Ok((" ", i("42"))));
         assert_eq!(parse_number("+3.14,"), Ok((",", n("3.14"))));
     }
 
     #[test]
     fn test_parse_number_with_underscores() {
-        assert_eq!(parse_number("1_000"), Ok(("", n("1000"))));
+        assert_eq!(parse_number("1_000"), Ok(("", i("1000"))));
         assert_eq!(parse_number("3.14_15"), Ok(("", n("3.1415"))));
-        assert_eq!(parse_number("+7_000"), Ok(("", n("7000"))));
+        assert_eq!(parse_number("+7_000"), Ok(("", i("7000"))));
         assert_eq!(parse_number("-1_234.56"), Ok(("", n("-1234.56"))));
+    }
+
+    #[test]
+    fn test_parse_integer_then_floor_division() {
+        assert_eq!(parse_number("7//2"), Ok(("//2", i("7"))));
     }
 }

@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use bigdecimal::BigDecimal;
+
 use crate::runtime::native::NativeType;
 use crate::runtime::native::NativeTypeInfo;
 use crate::runtime::Value;
@@ -38,7 +40,12 @@ impl Type {
         Type::Builtin(BuiltinType::None)
     }
 
-    /// The built-in number type
+    /// The built-in integer type: whole numbers
+    pub fn integer() -> Self {
+        Type::Builtin(BuiltinType::Integer)
+    }
+
+    /// The built-in number type: decimals. It also accepts integers, and converts them.
     pub fn number() -> Self {
         Type::Builtin(BuiltinType::Number)
     }
@@ -89,6 +96,7 @@ impl Type {
         let builtin = match name {
             "None" => BuiltinType::None,
             "String" => BuiltinType::String,
+            "Integer" => BuiltinType::Integer,
             "Number" => BuiltinType::Number,
             "Boolean" => BuiltinType::Boolean,
             "Symbol" => BuiltinType::Symbol,
@@ -107,12 +115,35 @@ impl Type {
     }
 
     /// Whether `value` is a value of this type, e.g. `Number | String` accepts `1` and `"a"`.
+    /// `Number` accepts an `Integer` too, which [`Type::coerce`] converts.
     pub fn accepts(&self, value: &Value) -> bool {
+        self.accepts_as(value, true)
+    }
+
+    /// `value` as a value of this type: an `Integer` that this type accepts only because
+    /// `Number` accepts integers is converted to a `Number`, and any other value is returned as
+    /// it is. So `Number` and `Number | String` convert `1` to `1.0`, while `Integer | Number`
+    /// and `Any` leave it as it is.
+    pub(crate) fn coerce(&self, value: Value) -> Value {
+        match value {
+            Value::Integer(n) if !self.accepts_as(&Value::Integer(n.clone()), false) => {
+                Value::Number(BigDecimal::from(n))
+            }
+            other => other,
+        }
+    }
+
+    /// Whether `value` is a value of this type, letting `Number` accept an `Integer` only if
+    /// `widen` is set
+    fn accepts_as(&self, value: &Value, widen: bool) -> bool {
         match self {
             Type::Builtin(BuiltinType::Any) => true,
+            Type::Builtin(BuiltinType::Number) if widen && matches!(value, Value::Integer(_)) => {
+                true
+            }
             Type::Builtin(_) => value.type_of().is_ok_and(|found| found == *self),
-            Type::Union(members) => members.iter().any(|member| member.accepts(value)),
-            Type::Option(inner) => matches!(value, Value::None) || inner.accepts(value),
+            Type::Union(members) => members.iter().any(|member| member.accepts_as(value, widen)),
+            Type::Option(inner) => matches!(value, Value::None) || inner.accepts_as(value, widen),
             Type::Native(info) => {
                 matches!(value, Value::Native(native) if native.type_info() == *info)
             }
@@ -127,6 +158,34 @@ impl Type {
             },
             // No value has a custom type yet
             Type::Custom(_) => false,
+        }
+    }
+
+    /// Whether every value of this type is a value of `other` too, as `SimpleRuntime` uses to
+    /// pick the narrowest overload: `Integer` is at least as narrow as `Number`, any type as
+    /// `Any`, a union's member as the union, and `T` and `None` as `Option<T>`. Narrowing isn't
+    /// part of the language.
+    pub(crate) fn is_at_least_as_narrow_as(&self, other: &Type) -> bool {
+        if self == other {
+            return true;
+        }
+        match (self, other) {
+            (_, Type::Builtin(BuiltinType::Any)) => true,
+            (Type::Union(members), _) => members
+                .iter()
+                .all(|member| member.is_at_least_as_narrow_as(other)),
+            (Type::Option(inner), _) => {
+                Type::none().is_at_least_as_narrow_as(other)
+                    && inner.is_at_least_as_narrow_as(other)
+            }
+            (_, Type::Union(members)) => members
+                .iter()
+                .any(|member| self.is_at_least_as_narrow_as(member)),
+            (_, Type::Option(inner)) => {
+                *self == Type::none() || self.is_at_least_as_narrow_as(inner)
+            }
+            (Type::Builtin(BuiltinType::Integer), Type::Builtin(BuiltinType::Number)) => true,
+            _ => false,
         }
     }
 }
@@ -149,6 +208,9 @@ impl fmt::Display for Type {
 pub enum BuiltinType {
     None,
     String,
+    /// Whole numbers
+    Integer,
+    /// Decimals, which accept integers
     Number,
     Boolean,
     Symbol,
@@ -165,6 +227,7 @@ impl fmt::Display for BuiltinType {
         let name = match self {
             BuiltinType::None => "None",
             BuiltinType::String => "String",
+            BuiltinType::Integer => "Integer",
             BuiltinType::Number => "Number",
             BuiltinType::Boolean => "Boolean",
             BuiltinType::Symbol => "Symbol",
@@ -191,7 +254,11 @@ impl CustomType {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
     use std::sync::Arc;
+
+    use bigdecimal::num_bigint::BigInt;
+    use bigdecimal::BigDecimal;
 
     use super::*;
     use crate::runtime::functions::Argument;
@@ -215,6 +282,7 @@ mod tests {
     #[test]
     fn test_builtin_named() {
         assert_eq!(Type::builtin_named("Number"), Some(Type::number()));
+        assert_eq!(Type::builtin_named("Integer"), Some(Type::integer()));
         assert_eq!(Type::builtin_named("None"), Some(Type::none()));
         assert_eq!(Type::builtin_named("Type"), Some(Type::type_type()));
     }
@@ -235,6 +303,7 @@ mod tests {
         vec![
             ("None", Value::None),
             ("1", Value::from(1u64)),
+            ("1.5", number("1.5")),
             ("\"a\"", Value::String("a".into())),
             ("true", Value::Boolean(true)),
             (":a", Value::Symbol("a".into())),
@@ -268,7 +337,8 @@ mod tests {
     #[test]
     fn test_builtin_types_accept_their_values() {
         assert_accepts(Type::none(), &["None"]);
-        assert_accepts(Type::number(), &["1"]);
+        assert_accepts(Type::integer(), &["1"]);
+        assert_accepts(Type::number(), &["1", "1.5"]);
         assert_accepts(Type::string(), &["\"a\""]);
         assert_accepts(Type::boolean(), &["true"]);
         assert_accepts(Type::symbol(), &[":a"]);
@@ -279,10 +349,17 @@ mod tests {
 
     #[test]
     fn test_union_accepts_any_members_values() {
-        assert_accepts(Type::union(Type::number(), Type::string()), &["1", "\"a\""]);
+        assert_accepts(
+            Type::union(Type::number(), Type::string()),
+            &["1", "1.5", "\"a\""],
+        );
         assert_accepts(
             Type::union(Type::union(Type::number(), Type::string()), Type::symbol()),
-            &["1", "\"a\"", ":a"],
+            &["1", "1.5", "\"a\"", ":a"],
+        );
+        assert_accepts(
+            Type::union(Type::integer(), Type::string()),
+            &["1", "\"a\""],
         );
     }
 
@@ -349,5 +426,147 @@ mod tests {
         assert_eq!(Type::builtin_named("Any"), None);
         assert_eq!(Type::builtin_named("Foo"), None);
         assert_eq!(Type::builtin_named("number"), None);
+    }
+
+    fn number(s: &str) -> Value {
+        Value::Number(BigDecimal::from_str(s).unwrap())
+    }
+
+    fn integer(i: i64) -> Value {
+        Value::Integer(BigInt::from(i))
+    }
+
+    #[test]
+    fn test_integer_type_display() {
+        assert_eq!(Type::integer().to_string(), "Integer");
+        assert!(Type::is_builtin_name("Integer"));
+    }
+
+    #[test]
+    fn test_integer_doesnt_accept_a_number_even_a_whole_one() {
+        assert!(Type::integer().accepts(&integer(1)));
+        assert!(!Type::integer().accepts(&number("1.0")));
+        assert!(!Type::integer().accepts(&number("1")));
+    }
+
+    #[test]
+    fn test_number_coerces_an_integer_to_a_number() {
+        let coerced = Type::number().coerce(integer(1));
+        assert_eq!(coerced, number("1"));
+        assert!(matches!(coerced, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_coerce_leaves_values_that_are_accepted_as_they_are() {
+        let unchanged = [
+            (Type::integer(), integer(1)),
+            (Type::number(), number("1.5")),
+            (Type::any(), integer(1)),
+            (Type::union(Type::integer(), Type::number()), integer(1)),
+            (Type::union(Type::number(), Type::integer()), integer(1)),
+            (Type::union(Type::integer(), Type::string()), integer(1)),
+            (Type::string(), Value::String("a".into())),
+            (
+                Type::union(Type::number(), Type::string()),
+                Value::String("a".into()),
+            ),
+            (Type::option(Type::number()), Value::None),
+        ];
+        for (r#type, value) in unchanged {
+            let coerced = r#type.coerce(value.clone());
+            assert!(
+                matches!(
+                    (&coerced, &value),
+                    (Value::Integer(_), Value::Integer(_))
+                        | (Value::Number(_), Value::Number(_))
+                        | (Value::String(_), Value::String(_))
+                        | (Value::None, Value::None)
+                ),
+                "{type} changed {value} to {coerced}"
+            );
+            assert_eq!(coerced, value);
+        }
+    }
+
+    #[test]
+    fn test_a_union_or_option_coerces_an_integer_only_if_no_member_accepts_it() {
+        for r#type in [
+            Type::union(Type::number(), Type::string()),
+            Type::union(Type::number(), Type::none()),
+            Type::option(Type::number()),
+        ] {
+            let coerced = r#type.coerce(integer(1));
+            assert!(
+                matches!(coerced, Value::Number(_)),
+                "{type} should coerce 1 to a Number, got {coerced:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_coerce_doesnt_look_inside_collections() {
+        let array = Value::Array(vec![integer(1)]);
+        assert!(matches!(
+            Type::array().coerce(array),
+            Value::Array(values) if matches!(values[0], Value::Integer(_))
+        ));
+    }
+
+    #[test]
+    fn test_function_types_have_no_subtyping_for_integers() {
+        let integer_function = Value::Function(Arc::new(NativeFunction::new(
+            FunctionDefinition::new("f", Type::integer(), vec![Argument::integer("i")]),
+            |args| Ok(args.positional()[0].clone()),
+        )));
+        let number_to_number = FunctionType::new(vec![Type::number()], Type::number());
+        let integer_to_integer = FunctionType::new(vec![Type::integer()], Type::integer());
+        assert!(!Type::Function(number_to_number).accepts(&integer_function));
+        assert!(Type::Function(integer_to_integer).accepts(&integer_function));
+    }
+
+    #[test]
+    fn test_at_least_as_narrow() {
+        let narrower = [
+            (Type::integer(), Type::integer()),
+            (Type::integer(), Type::number()),
+            (Type::integer(), Type::any()),
+            (Type::number(), Type::any()),
+            (Type::string(), Type::union(Type::string(), Type::symbol())),
+            (
+                Type::union(Type::integer(), Type::string()),
+                Type::union(Type::number(), Type::string()),
+            ),
+            (Type::union(Type::integer(), Type::number()), Type::number()),
+            (Type::number(), Type::option(Type::number())),
+            (Type::integer(), Type::option(Type::number())),
+            (Type::none(), Type::option(Type::number())),
+        ];
+        for (this, other) in narrower {
+            assert!(
+                this.is_at_least_as_narrow_as(&other),
+                "{this} should be at least as narrow as {other}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_not_at_least_as_narrow() {
+        let wider = [
+            (Type::number(), Type::integer()),
+            (Type::any(), Type::number()),
+            (Type::union(Type::string(), Type::symbol()), Type::string()),
+            (
+                Type::union(Type::integer(), Type::string()),
+                Type::integer(),
+            ),
+            (Type::option(Type::number()), Type::number()),
+            (Type::string(), Type::number()),
+        ];
+        for (this, other) in wider {
+            assert!(
+                !this.is_at_least_as_narrow_as(&other),
+                "{this} shouldn't be at least as narrow as {other}"
+            );
+        }
     }
 }

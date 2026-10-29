@@ -3,6 +3,9 @@
 use std::cmp::Reverse;
 use std::fmt;
 
+use bigdecimal::num_bigint::BigInt;
+use bigdecimal::BigDecimal;
+
 use crate::errors::ArgumentCount;
 use crate::errors::ArgumentCounts;
 use crate::errors::HandlerError;
@@ -57,17 +60,40 @@ impl NativeFunction {
     /// Invoke the function with evaluated positional and keyword arguments. The overload is
     /// picked by the arguments' count and types and by the keywords
     /// ([`FunctionDefinition::resolve`]), and the result is checked against its return type.
+    ///
+    /// Each value is converted for the type the overload declares for it, before the handler
+    /// runs, and the result after, so a `Number` argument or result is never an `Integer`.
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
         let signature = self.definition.resolve(args, &keywords)?;
         let keywords = signature.bind_keywords(&self.definition.name, keywords)?;
+        let args: Vec<Value> = args
+            .iter()
+            .enumerate()
+            .map(|(i, value)| match signature.argument_type(i) {
+                Some(r#type) => r#type.coerce(value.clone()),
+                None => value.clone(),
+            })
+            .collect();
+        let keywords: Map = keywords
+            .into_iter()
+            .map(
+                |(key, value)| match signature.keyword_type(key_name(&key)) {
+                    Some(r#type) => {
+                        let value = r#type.coerce(value);
+                        (key, value)
+                    }
+                    None => (key, value),
+                },
+            )
+            .collect();
         let result = (self.handler)(&Arguments {
             function_name: &self.definition.name,
             signature,
-            positional: args,
+            positional: &args,
             keywords: &keywords,
         })?;
         if signature.return_type.accepts(&result) {
-            Ok(result)
+            Ok(signature.return_type.coerce(result))
         } else {
             Err(Error::RuntimeError(RuntimeError::ReturnTypeMismatch {
                 name: self.definition.name.clone(),
@@ -268,6 +294,22 @@ macro_rules! from_value_for_numbers {
 
 from_value_for_numbers!(i32, i64, u32, u64, usize, f64);
 
+/// An `Integer`, or a whole `Number`, as a `BigInt`
+impl<'a> FromValue<'a> for BigInt {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        value.to_big_int(&Type::integer().to_string(), "BigInt")
+    }
+}
+
+/// A `Number`, or an `Integer`, as a `BigDecimal`
+impl<'a> FromValue<'a> for BigDecimal {
+    fn from_value(value: &'a Value) -> Result<Self, Error> {
+        value
+            .to_big_decimal()
+            .ok_or_else(|| unexpected_type(&Type::number().to_string(), value))
+    }
+}
+
 /// A function definition is a collection of function signatures (overloads)
 pub struct FunctionDefinition {
     pub name: String,
@@ -376,8 +418,9 @@ impl FunctionDefinition {
     }
 
     /// The overload that accepts these positional arguments and keywords, by count and by
-    /// type. Overloads are tried by arity, longest first; among overloads of the same arity
-    /// that all accept the call, the one declared first wins.
+    /// type. Overloads are tried by arity, longest first. Among overloads of the same arity
+    /// that all accept the call, the narrowest wins, and if none is narrowest, the one declared
+    /// first.
     ///
     /// If no overload takes that many positional arguments, the error lists the counts they
     /// take. If some do, the error is the first way the call doesn't match the closest of them,
@@ -392,11 +435,22 @@ impl FunctionDefinition {
         // A stable sort, so overloads of the same arity stay in declaration order
         candidates.sort_by_key(|overload| Reverse(overload.minimum_arguments()));
         let mut mismatches = Vec::new();
+        let mut matches: Vec<&FunctionSignature> = Vec::new();
         for overload in candidates {
+            // Only overloads of the arity of the first match compete with it
+            if matches
+                .first()
+                .is_some_and(|first| first.minimum_arguments() != overload.minimum_arguments())
+            {
+                break;
+            }
             match overload.mismatch(&self.name, args, keywords) {
-                None => return Ok(overload),
+                None => matches.push(overload),
                 Some(mismatch) => mismatches.push(mismatch),
             }
+        }
+        if let Some(first) = matches.first() {
+            return Ok(narrowest(&matches, args.len(), keywords).unwrap_or(first));
         }
         let Some(closest) = mismatches.iter().map(|mismatch| mismatch.progress).max() else {
             return Err(Error::RuntimeError(self.count_mismatch(args.len())));
@@ -578,6 +632,46 @@ impl FunctionSignature {
         None
     }
 
+    /// The type of the `i`th positional value of a call, or `None` past the last argument of
+    /// a signature without a variadic one
+    fn argument_type(&self, i: usize) -> Option<&Type> {
+        match self.arguments.get(i) {
+            Some(argument) => Some(&argument.r#type),
+            None => self
+                .arguments
+                .last()
+                .filter(|argument| argument.variadic)
+                .map(|argument| &argument.r#type),
+        }
+    }
+
+    /// The type of the keyword `name`: the declared keyword's, or else the rest keywords', if
+    /// the signature takes rest keywords
+    fn keyword_type(&self, name: &str) -> Option<&Type> {
+        self.keywords
+            .iter()
+            .find(|keyword| keyword.name == name)
+            .map(|keyword| &keyword.r#type)
+            .or(self.rest_keywords.as_ref())
+    }
+
+    /// Whether, for a call with `count` positional values and these keywords, each of this
+    /// signature's types is at least as narrow as `other`'s
+    fn is_at_least_as_narrow_as(&self, other: &Self, count: usize, keywords: &Map) -> bool {
+        let positional =
+            (0..count).all(|i| match (self.argument_type(i), other.argument_type(i)) {
+                (Some(this), Some(that)) => this.is_at_least_as_narrow_as(that),
+                _ => false,
+            });
+        positional
+            && keywords.keys().map(key_name).all(|name| {
+                match (self.keyword_type(name), other.keyword_type(name)) {
+                    (Some(this), Some(that)) => this.is_at_least_as_narrow_as(that),
+                    _ => false,
+                }
+            })
+    }
+
     /// Whether a call with `found` positional arguments fits this signature
     fn accepts_count(&self, found: usize) -> bool {
         if self.is_variadic() {
@@ -612,6 +706,23 @@ impl FunctionSignature {
         bound.extend(keywords);
         Ok(bound)
     }
+}
+
+/// The overload among `matches`, which all match a call with `count` positional values and
+/// these keywords, that's narrower than every other: at least as narrow for each value the call
+/// passes, and strictly narrower for one. `None` if there isn't one.
+fn narrowest<'a>(
+    matches: &[&'a FunctionSignature],
+    count: usize,
+    keywords: &Map,
+) -> Option<&'a FunctionSignature> {
+    matches.iter().copied().find(|candidate| {
+        matches.iter().all(|other| {
+            std::ptr::eq(*candidate, *other)
+                || (candidate.is_at_least_as_narrow_as(other, count, keywords)
+                    && !other.is_at_least_as_narrow_as(candidate, count, keywords))
+        })
+    })
 }
 
 /// The name of a value's type, for error messages
@@ -678,6 +789,11 @@ impl Argument {
         }
     }
 
+    /// A convenience method for an argument with the built-in integer type
+    pub fn integer<S: Into<String>>(name: S) -> Self {
+        Self::new(name, Type::integer())
+    }
+
     /// A convenience method for an argument with the built-in number type
     pub fn number<S: Into<String>>(name: S) -> Self {
         Self::new(name, Type::number())
@@ -699,6 +815,11 @@ mod tests {
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
+
+    use std::str::FromStr;
+
+    use bigdecimal::num_bigint::BigInt;
+    use bigdecimal::BigDecimal;
 
     use super::*;
     use crate::runtime::types::FunctionType;
@@ -1306,11 +1427,11 @@ mod tests {
             let function = foo(reversed);
             assert_eq!(
                 error(&function, &[string("abc")], &[("z", number(1))]),
-                "Runtime Error: No overload of foo accepts (String, z: Number)"
+                "Runtime Error: No overload of foo accepts (String, z: Integer)"
             );
             assert_eq!(
                 error(&function, &[string("abc")], &[("b", number(1))]),
-                "Runtime Error: No overload of foo accepts (String, b: Number)"
+                "Runtime Error: No overload of foo accepts (String, b: Integer)"
             );
         }
     }
@@ -1356,7 +1477,7 @@ mod tests {
     fn test_overloads_that_fail_at_the_same_argument_name_none() {
         assert_eq!(
             error(&head(), &[number(1), number(2)], &[]),
-            "Runtime Error: No overload of head accepts (Number, Number)"
+            "Runtime Error: No overload of head accepts (Integer, Integer)"
         );
     }
 
@@ -1371,7 +1492,7 @@ mod tests {
             );
             assert_eq!(
                 error(&function, &abc, &[("t", number(1))]),
-                "Runtime Error: Keyword argument t of foo expects String, found Number"
+                "Runtime Error: Keyword argument t of foo expects String, found Integer"
             );
             assert_eq!(
                 error(
@@ -1379,7 +1500,7 @@ mod tests {
                     &abc,
                     &[("b", Value::Boolean(true)), ("t", number(1))]
                 ),
-                "Runtime Error: Keyword argument t of foo expects String, found Number"
+                "Runtime Error: Keyword argument t of foo expects String, found Integer"
             );
         }
     }
@@ -1411,7 +1532,7 @@ mod tests {
         );
         assert_eq!(
             error(&pad, &[number(1), number(2)], &[]),
-            "Runtime Error: Argument s of pad expects String, found Number"
+            "Runtime Error: Argument s of pad expects String, found Integer"
         );
         assert_eq!(
             error(&pad, &[string("x"), string("2")], &[]),
@@ -1465,7 +1586,7 @@ mod tests {
             );
         assert_eq!(
             error(&greet, &[string("Ann")], &[("greeting", number(1))]),
-            "Runtime Error: Keyword argument greeting of greet expects String, found Number"
+            "Runtime Error: Keyword argument greeting of greet expects String, found Integer"
         );
         assert_eq!(
             unexpected_keyword(
@@ -1690,7 +1811,7 @@ mod tests {
         let cases = [
             (
                 error(<&str>::from_value(&number(1)).map(drop)),
-                "Expected String, found Number",
+                "Expected String, found Integer",
             ),
             (
                 error(String::from_value(&symbol("a")).map(drop)),
@@ -1714,7 +1835,7 @@ mod tests {
             ),
             (
                 error(Option::<&str>::from_value(&number(1)).map(drop)),
-                "Expected String, found Number",
+                "Expected String, found Integer",
             ),
         ];
         for (found, expected) in cases {
@@ -1734,7 +1855,7 @@ mod tests {
         });
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Runtime Error: Expected String, found Number"
+            "Runtime Error: Expected String, found Integer"
         );
     }
 
@@ -1923,5 +2044,346 @@ mod tests {
             .unwrap(),
             Value::Boolean(false)
         );
+    }
+
+    fn integer(n: i64) -> Value {
+        Value::Integer(BigInt::from(n))
+    }
+
+    fn decimal(s: &str) -> Value {
+        Value::Number(BigDecimal::from_str(s).unwrap())
+    }
+
+    /// Returns the types of the overload that matched, then the values it got, e.g.
+    /// `(Integer) 1`
+    fn overload_and_values(definition: FunctionDefinition) -> NativeFunction {
+        NativeFunction::new(definition, |args| {
+            let signature = args.signature();
+            let types: Vec<String> = signature
+                .arguments
+                .iter()
+                .map(|argument| argument.r#type.to_string())
+                .chain(
+                    signature
+                        .keywords
+                        .iter()
+                        .map(|keyword| format!("{}: {}", keyword.name, keyword.r#type)),
+                )
+                .collect();
+            let names = signature
+                .arguments
+                .iter()
+                .map(|argument| argument.name.as_str())
+                .chain(
+                    signature
+                        .keywords
+                        .iter()
+                        .map(|keyword| keyword.name.as_str()),
+                );
+            let values = names
+                .map(|name| args.get::<&Value>(name).map(ToString::to_string))
+                .collect::<Result<Vec<String>, Error>>()?;
+            Ok(Value::String(format!(
+                "({}) {}",
+                types.join(", "),
+                values.join(", ")
+            )))
+        })
+    }
+
+    /// The string a call to an `overload_and_values` function returns
+    fn called(
+        function: &NativeFunction,
+        args: &[Value],
+        call_keywords: &[(&str, Value)],
+    ) -> String {
+        match function.call_with_keywords(args, keywords(call_keywords)) {
+            Ok(Value::String(s)) => s,
+            other => panic!("{} returned {other:?}", function.name()),
+        }
+    }
+
+    #[test]
+    fn test_argument_integer() {
+        let argument = Argument::integer("n");
+        assert_eq!(argument.name, "n");
+        assert_eq!(argument.r#type, Type::integer());
+        assert!(!argument.variadic);
+    }
+
+    #[test]
+    fn test_an_integer_parameter_refuses_a_number() {
+        let function = overload_and_values(FunctionDefinition::new(
+            "f",
+            Type::string(),
+            vec![Argument::integer("i")],
+        ));
+        assert_eq!(called(&function, &[integer(1)], &[]), "(Integer) 1");
+        assert_eq!(
+            error(&function, &[decimal("1.0")], &[]),
+            "Runtime Error: Argument i of f expects Integer, found Number"
+        );
+    }
+
+    #[test]
+    fn test_a_number_parameter_converts_an_integer() {
+        let function = overload_and_values(FunctionDefinition::new(
+            "f",
+            Type::string(),
+            vec![Argument::number("x")],
+        ));
+        assert_eq!(called(&function, &[integer(1)], &[]), "(Number) 1.0");
+        assert_eq!(called(&function, &[decimal("1.5")], &[]), "(Number) 1.5");
+    }
+
+    #[test]
+    fn test_a_union_converts_an_integer_only_if_no_member_accepts_it() {
+        let either = overload_and_values(FunctionDefinition::new(
+            "either",
+            Type::string(),
+            vec![Argument::new(
+                "x",
+                Type::union(Type::integer(), Type::number()),
+            )],
+        ));
+        assert_eq!(called(&either, &[integer(1)], &[]), "(Integer | Number) 1");
+        let num_or_str = overload_and_values(FunctionDefinition::new(
+            "num_or_str",
+            Type::string(),
+            vec![Argument::new(
+                "x",
+                Type::union(Type::number(), Type::string()),
+            )],
+        ));
+        assert_eq!(
+            called(&num_or_str, &[integer(1)], &[]),
+            "(Number | String) 1.0"
+        );
+        let anything = overload_and_values(FunctionDefinition::new(
+            "anything",
+            Type::string(),
+            vec![Argument::new("x", Type::any())],
+        ));
+        assert_eq!(called(&anything, &[integer(1)], &[]), "(Any) 1");
+    }
+
+    #[test]
+    fn test_variadic_values_are_converted() {
+        let function = NativeFunction::new(
+            FunctionDefinition::new(
+                "values",
+                Type::array(),
+                vec![Argument::variadic("values", Type::number())],
+            ),
+            |args| Ok(Value::Array(args.rest().to_vec())),
+        );
+        let result = function.call(&[integer(1), decimal("2.5")]).unwrap();
+        assert_eq!(result.to_string(), "[1.0, 2.5]");
+    }
+
+    #[test]
+    fn test_keyword_values_and_defaults_are_converted() {
+        let function = NativeFunction::new(
+            FunctionDefinition::new("step", Type::any(), vec![])
+                .keyword("by", Type::number(), Value::from(1u64))
+                .rest_keywords(Type::number()),
+            |args| Ok(Value::Map(args.keywords().clone())),
+        );
+        assert_eq!(function.call(&[]).unwrap().to_string(), "{by: 1.0}");
+        let result = function
+            .call_with_keywords(&[], keywords(&[("by", integer(2)), ("k", integer(3))]))
+            .unwrap();
+        assert_eq!(result.to_string(), "{by: 2.0, k: 3.0}");
+    }
+
+    #[test]
+    fn test_an_integer_default_passes_an_integer_keywords_type_check() {
+        // Doesn't panic: `Value::from(usize)` is an `Integer`
+        let definition = FunctionDefinition::new("head", Type::array(), vec![]).keyword(
+            "n",
+            Type::integer(),
+            Value::from(10usize),
+        );
+        assert_eq!(definition.r#type().to_string(), "fn(n: Integer) -> Array");
+    }
+
+    #[test]
+    #[should_panic(expected = "default of the wrong type")]
+    fn test_a_number_default_fails_an_integer_keywords_type_check() {
+        let _ = FunctionDefinition::new("head", Type::array(), vec![]).keyword(
+            "n",
+            Type::integer(),
+            decimal("10.0"),
+        );
+    }
+
+    #[test]
+    fn test_a_number_result_is_converted() {
+        let function = NativeFunction::new(
+            FunctionDefinition::new("rows", Type::number(), vec![]),
+            |_args| Ok(Value::from(5usize)),
+        );
+        let result = function.call(&[]).unwrap();
+        assert!(matches!(result, Value::Number(_)), "got {result:?}");
+        assert_eq!(result.to_string(), "5.0");
+    }
+
+    #[test]
+    fn test_a_handler_reads_numbers_as_big_ints_and_big_decimals() {
+        let function = NativeFunction::new(
+            FunctionDefinition::new(
+                "read",
+                Type::string(),
+                vec![Argument::integer("i"), Argument::number("x")],
+            ),
+            |args| {
+                let i: BigInt = args.get("i")?;
+                let x: BigDecimal = args.get("x")?;
+                let whole: BigInt = args.get("x")?;
+                Ok(Value::String(format!("{i} {x} {whole}")))
+            },
+        );
+        assert_eq!(
+            function.call(&[integer(7), integer(2)]).unwrap(),
+            string("7 2 2")
+        );
+        let error = function
+            .call(&[integer(7), decimal("2.5")])
+            .unwrap_err()
+            .to_string();
+        assert_eq!(error, "Runtime Error: Cannot convert 2.5 to BigInt");
+    }
+
+    #[test]
+    fn test_from_value_for_big_numbers() {
+        let seven = integer(7);
+        assert_eq!(BigInt::from_value(&seven).unwrap(), BigInt::from(7));
+        assert_eq!(BigDecimal::from_value(&seven).unwrap(), BigDecimal::from(7));
+        let half = decimal("0.5");
+        assert_eq!(
+            BigDecimal::from_value(&half).unwrap(),
+            BigDecimal::from_str("0.5").unwrap()
+        );
+        assert_eq!(
+            BigInt::from_value(&decimal("2.0")).unwrap(),
+            BigInt::from(2)
+        );
+        assert!(matches!(
+            BigInt::from_value(&half),
+            Err(Error::RuntimeError(RuntimeError::CannotConvert { .. }))
+        ));
+        assert!(matches!(
+            BigInt::from_value(&string("7")),
+            Err(Error::RuntimeError(RuntimeError::UnexpectedType { .. }))
+        ));
+        assert_eq!(Option::<BigInt>::from_value(&Value::None).unwrap(), None);
+    }
+
+    /// f(n: Number), then f(i: Integer)
+    fn f() -> NativeFunction {
+        overload_and_values(
+            FunctionDefinition::new("f", Type::string(), vec![Argument::number("n")])
+                .add_overload(Type::string(), vec![Argument::integer("i")]),
+        )
+    }
+
+    #[test]
+    fn test_the_narrowest_overload_is_called() {
+        assert_eq!(called(&f(), &[integer(1)], &[]), "(Integer) 1");
+        assert_eq!(called(&f(), &[decimal("1.0")], &[]), "(Number) 1.0");
+    }
+
+    #[test]
+    fn test_a_narrower_overload_beats_any_declared_first() {
+        let show = overload_and_values(
+            FunctionDefinition::new(
+                "show",
+                Type::string(),
+                vec![Argument::new("x", Type::any())],
+            )
+            .add_overload(Type::string(), vec![Argument::number("x")]),
+        );
+        assert_eq!(called(&show, &[decimal("1.0")], &[]), "(Number) 1.0");
+        assert_eq!(called(&show, &[integer(1)], &[]), "(Number) 1.0");
+        assert_eq!(called(&show, &[symbol("a")], &[]), "(Any) :a");
+    }
+
+    #[test]
+    fn test_overloads_that_are_each_narrower_for_one_argument_go_to_the_first_declared() {
+        let g = |reversed: bool| {
+            let (first, second) = if reversed {
+                (
+                    vec![Argument::number("a"), Argument::integer("b")],
+                    vec![Argument::integer("a"), Argument::number("b")],
+                )
+            } else {
+                (
+                    vec![Argument::integer("a"), Argument::number("b")],
+                    vec![Argument::number("a"), Argument::integer("b")],
+                )
+            };
+            overload_and_values(
+                FunctionDefinition::new("g", Type::string(), first)
+                    .add_overload(Type::string(), second),
+            )
+        };
+        assert_eq!(
+            called(&g(false), &[integer(1), integer(2)], &[]),
+            "(Integer, Number) 1, 2.0"
+        );
+        assert_eq!(
+            called(&g(true), &[integer(1), integer(2)], &[]),
+            "(Number, Integer) 1.0, 2"
+        );
+        assert_eq!(
+            called(&g(false), &[decimal("1.0"), integer(2)], &[]),
+            "(Number, Integer) 1.0, 2"
+        );
+    }
+
+    #[test]
+    fn test_keywords_the_call_passes_count_towards_narrowness() {
+        let kw = overload_and_values(
+            FunctionDefinition::new("kw", Type::string(), vec![])
+                .keyword("n", Type::number(), Value::from(0u64))
+                .add_overload(Type::string(), vec![])
+                .keyword("n", Type::integer(), Value::from(0u64)),
+        );
+        assert_eq!(called(&kw, &[], &[("n", integer(1))]), "(n: Integer) 1");
+        assert_eq!(
+            called(&kw, &[], &[("n", decimal("1.0"))]),
+            "(n: Number) 1.0"
+        );
+        // A keyword the call leaves out doesn't count, so this is a tie
+        assert_eq!(called(&kw, &[], &[]), "(n: Number) 0.0");
+    }
+
+    #[test]
+    fn test_arity_still_comes_before_narrowness() {
+        let definition = FunctionDefinition::new(
+            "f",
+            Type::string(),
+            vec![Argument::variadic("rest", Type::integer())],
+        )
+        .add_overload(
+            Type::string(),
+            vec![
+                Argument::number("a"),
+                Argument::variadic("rest", Type::any()),
+            ],
+        );
+        // The arity-1 overload is tried first, although the arity-0 one is narrower
+        let signature = definition.resolve(&[integer(1)], &Map::new()).unwrap();
+        assert_eq!(signature.arguments[0].r#type, Type::number());
+    }
+
+    #[test]
+    fn test_resolve_picks_the_narrowest_overload() {
+        let definition = FunctionDefinition::new("f", Type::string(), vec![Argument::number("n")])
+            .add_overload(Type::string(), vec![Argument::integer("i")]);
+        let signature = definition.resolve(&[integer(1)], &Map::new()).unwrap();
+        assert_eq!(signature.arguments[0].r#type, Type::integer());
+        let signature = definition.resolve(&[decimal("1.5")], &Map::new()).unwrap();
+        assert_eq!(signature.arguments[0].r#type, Type::number());
     }
 }

@@ -8,13 +8,15 @@ pub enum UnaryOp {
     Minus,
 }
 
-/// Binary operand: `+`, `-`, `*`, `/`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`, `==`, `!=`, `<`, `>`, `<=`, `>=`.
+/// Binary operand: `+`, `-`, `*`, `/`, `//`, `&`, `&&`, `|`, `||`, `^`, `^^`, `|>`, `<>`, `==`, `!=`, `<`, `>`, `<=`, `>=`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
     Mul,
     Div,
+    /// Floor division of two integers, e.g. `7 // 2` → `3`.
+    FloorDiv,
     BitAnd,
     And,
     BitOr,
@@ -56,6 +58,7 @@ impl Display for BinaryOp {
             BinaryOp::Sub => write!(f, "-"),
             BinaryOp::Mul => write!(f, "*"),
             BinaryOp::Div => write!(f, "/"),
+            BinaryOp::FloorDiv => write!(f, "//"),
             BinaryOp::BitAnd => write!(f, "&"),
             BinaryOp::And => write!(f, "&&"),
             BinaryOp::BitOr => write!(f, "|"),

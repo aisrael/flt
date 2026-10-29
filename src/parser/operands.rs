@@ -36,6 +36,7 @@ pub fn parse_binary_op(input: &str) -> IResult<&str, BinaryOp> {
         value(BinaryOp::BitXor, tag("^")),
         value(BinaryOp::Mul, tag("*")),
         value(BinaryOp::Add, tag("+")),
+        value(BinaryOp::FloorDiv, tag("//")),
         value(BinaryOp::Div, tag("/")),
         value(BinaryOp::Sub, tag("-")),
     ))
@@ -83,6 +84,13 @@ mod tests {
         assert_eq!(parse_binary_op(">"), Ok(("", BinaryOp::Gt)));
         assert_eq!(parse_binary_op("<="), Ok(("", BinaryOp::Lte)));
         assert_eq!(parse_binary_op(">="), Ok(("", BinaryOp::Gte)));
+    }
+
+    #[test]
+    fn test_parse_floor_division_op() {
+        assert_eq!(parse_binary_op("//"), Ok(("", BinaryOp::FloorDiv)));
+        assert_eq!(parse_binary_op("// 2"), Ok((" 2", BinaryOp::FloorDiv)));
+        assert_eq!(parse_binary_op("/ 2"), Ok((" 2", BinaryOp::Div)));
     }
 
     #[test]

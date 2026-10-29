@@ -305,7 +305,7 @@ mod tests {
                         Expr::literal_number(
                             Numeric::from_str("3.14").expect("unable to parse 3.14 into Numeric")
                         ),
-                        Expr::literal_number(2),
+                        Expr::literal_integer(2),
                     ],
                     keyword_args: KeywordArgs::new(),
                 }
@@ -321,7 +321,7 @@ mod tests {
                 "",
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
-                    positional_args: vec![Expr::literal_number(1)],
+                    positional_args: vec![Expr::literal_integer(1)],
                     keyword_args: KeywordArgs::new(),
                 }
             ))
@@ -336,7 +336,7 @@ mod tests {
                 "",
                 FunctionCall {
                     name: Identifier::try_from("add").expect("invalid identifier"),
-                    positional_args: vec![Expr::literal_number(1), Expr::literal_number(2),],
+                    positional_args: vec![Expr::literal_integer(1), Expr::literal_integer(2),],
                     keyword_args: KeywordArgs::new(),
                 }
             ))
@@ -351,7 +351,7 @@ mod tests {
                 "",
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
-                    positional_args: vec![Expr::literal_number(1)],
+                    positional_args: vec![Expr::literal_integer(1)],
                     keyword_args: KeywordArgs::from([(
                         "optional".to_string(),
                         Expr::literal_boolean(true)
@@ -372,7 +372,7 @@ mod tests {
                     positional_args: vec![],
                     keyword_args: KeywordArgs::from([
                         ("name".to_string(), Expr::literal_string("Alice")),
-                        ("age".to_string(), Expr::literal_number(30)),
+                        ("age".to_string(), Expr::literal_integer(30)),
                     ]),
                 }
             ))
@@ -387,7 +387,7 @@ mod tests {
                 "",
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
-                    positional_args: vec![Expr::literal_number(1)],
+                    positional_args: vec![Expr::literal_integer(1)],
                     keyword_args: KeywordArgs::from([(
                         "optional".to_string(),
                         Expr::literal_boolean(true)
@@ -425,7 +425,7 @@ mod tests {
         assert_eq!(keywords.keyword_args.len(), 1);
         assert_eq!(
             map.positional_args,
-            vec![Expr::map_literal(vec![("k", Expr::literal_number(1))])]
+            vec![Expr::map_literal(vec![("k", Expr::literal_integer(1))])]
         );
         assert!(map.keyword_args.is_empty());
     }
@@ -446,7 +446,7 @@ mod tests {
                 "",
                 FunctionCall {
                     name: Identifier::try_from("foo").expect("invalid identifier"),
-                    positional_args: vec![Expr::literal_number(1)],
+                    positional_args: vec![Expr::literal_integer(1)],
                     keyword_args: KeywordArgs::from([(
                         "output file".to_string(),
                         Expr::literal_string("out.csv")

@@ -53,7 +53,7 @@ mod tests {
     fn test_parse_single_element() {
         assert_eq!(
             parse_array("[ 42 ]"),
-            Ok(("", Expr::array_literal(vec![Expr::literal_number(42)])))
+            Ok(("", Expr::array_literal(vec![Expr::literal_integer(42)])))
         );
         assert_eq!(
             parse_array(r#"[ "hello" ]"#),
@@ -68,9 +68,9 @@ mod tests {
             Ok((
                 "",
                 Expr::array_literal(vec![
-                    Expr::literal_number(1),
-                    Expr::literal_number(2),
-                    Expr::literal_number(3),
+                    Expr::literal_integer(1),
+                    Expr::literal_integer(2),
+                    Expr::literal_integer(3),
                 ])
             ))
         );
@@ -80,7 +80,7 @@ mod tests {
     fn test_parse_trailing_comma() {
         assert_eq!(
             parse_array("[ 1, ]"),
-            Ok(("", Expr::array_literal(vec![Expr::literal_number(1)])))
+            Ok(("", Expr::array_literal(vec![Expr::literal_integer(1)])))
         );
     }
 
@@ -92,9 +92,9 @@ mod tests {
                 "",
                 Expr::array_literal(vec![
                     Expr::binary_expr(
-                        Expr::literal_number(1),
+                        Expr::literal_integer(1),
                         crate::ast::BinaryOp::Add,
-                        Expr::literal_number(2),
+                        Expr::literal_integer(2),
                     ),
                     Expr::function_call("foo", vec![]),
                 ])

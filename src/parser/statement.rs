@@ -121,14 +121,14 @@ mod tests {
     fn test_parse_let_statement() {
         let (rest, stmt) = parse_statement("let x = 1").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_integer(1)));
     }
 
     #[test]
     fn test_parse_let_statement_no_spaces() {
         let (rest, stmt) = parse_statement("let x=1").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_integer(1)));
     }
 
     #[test]
@@ -153,13 +153,13 @@ mod tests {
     fn test_parse_assignment_without_let() {
         let (rest, stmt) = parse_statement("x = 1").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::assign("x", Expr::literal_number(1)));
+        assert_eq!(stmt, Statement::assign("x", Expr::literal_integer(1)));
     }
 
     #[test]
     fn test_parse_typed_let_statement() {
         let expected =
-            Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_number(1));
+            Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_integer(1));
         for input in ["let x: Number = 1", "let x:Number=1", "let x : Number = 1"] {
             assert_eq!(
                 parse_statement(input),
@@ -194,30 +194,30 @@ mod tests {
     fn test_parse_let_statement_optional_semicolon() {
         let (rest, stmt) = parse_statement("let x = 1;").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_integer(1)));
     }
 
     #[test]
     fn test_parse_two_statements_same_line() {
         let (rest, stmt1) = parse_statement("let x = 1; let y = 2").unwrap();
-        assert_eq!(stmt1, Statement::declare("x", Expr::literal_number(1)));
+        assert_eq!(stmt1, Statement::declare("x", Expr::literal_integer(1)));
         let (rest, stmt2) = parse_statement(rest.trim()).unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt2, Statement::declare("y", Expr::literal_number(2)));
+        assert_eq!(stmt2, Statement::declare("y", Expr::literal_integer(2)));
     }
 
     #[test]
     fn test_parse_let_statement_newline_no_semicolon_required() {
         let (rest, stmt) = parse_statement("let x = 1\n").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_integer(1)));
     }
 
     #[test]
     fn test_parse_expr_statement_number() {
         let (rest, stmt) = parse_statement("42").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(stmt, Statement::Expr(Expr::literal_number(42)));
+        assert_eq!(stmt, Statement::Expr(Expr::literal_integer(42)));
     }
 
     #[test]
@@ -227,9 +227,9 @@ mod tests {
         assert_eq!(
             stmt,
             Statement::Expr(Expr::binary_expr(
-                Expr::literal_number(1),
+                Expr::literal_integer(1),
                 crate::ast::BinaryOp::Add,
-                Expr::literal_number(1)
+                Expr::literal_integer(1)
             ))
         );
     }
@@ -257,7 +257,7 @@ mod tests {
     }
 
     fn let_x(n: i64) -> Statement {
-        Statement::declare("x", Expr::literal_number(n))
+        Statement::declare("x", Expr::literal_integer(n))
     }
 
     #[test]
@@ -306,7 +306,7 @@ mod tests {
             let input = format!("let {name} = 1");
             let (rest, stmt) = parse_statement(&input).unwrap();
             assert!(rest.is_empty());
-            assert_eq!(stmt, Statement::declare(name, Expr::literal_number(1)));
+            assert_eq!(stmt, Statement::declare(name, Expr::literal_integer(1)));
             assert!(parses_as_binding(&format!("{name} = 1")));
         }
     }
