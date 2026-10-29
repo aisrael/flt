@@ -107,7 +107,7 @@ pub enum RuntimeError {
     CannotBind { name: String, reason: ProtectedName },
     /// A variable declared with a type is bound to a value of another type
     #[error("Variable {name} expects {expected}, found {found}")]
-    BindingTypeMismatch {
+    VariableTypeMismatch {
         name: String,
         expected: String,
         found: String,

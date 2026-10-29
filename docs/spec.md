@@ -209,10 +209,10 @@ analysis (e.g. type inference).
 
 - **`let` declares a variable.** `let x = expr` declares `x` without a type, and
   `let x: T = expr` declares it with the type `T`. The value must be of type `T`, by the same rules
-  as a function argument (§6), or the declaration raises a `BindingTypeMismatch` error. A
+  as a function argument (§6), or the declaration raises a `VariableTypeMismatch` error. A
   declaration replaces any earlier declaration of `x`, including its type.
 - **`x = expr` assigns.** If `x` was declared with a type, the value must be of that type, or the
-  assignment raises a `BindingTypeMismatch` error and `x` keeps its value. Otherwise the value
+  assignment raises a `VariableTypeMismatch` error and `x` keeps its value. Otherwise the value
   replaces the binding, including its type: after `let x = 1` then `x = "a"`, `typeof(x)` is
   `String`. Assigning to a name with no binding declares it without a type.
 - **The name and the type are checked before the value is evaluated.** A type name the runtime
@@ -226,7 +226,7 @@ analysis (e.g. type inference).
 ```flt
 let n: Number = 1
 n = 2                     # ok
-n = "two"                 # BindingTypeMismatch
+n = "two"                 # VariableTypeMismatch
 let n = "two"             # ok: declares n again, without a type
 let x: Number | None = None
 let y: Foo = 1            # UnknownType

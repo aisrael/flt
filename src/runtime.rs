@@ -725,11 +725,11 @@ fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Err
 
 /// The error for binding `value` to the variable `name`, declared with `type`, if `type` doesn't
 /// accept it.
-fn check_binding_type(name: &str, r#type: &Type, value: &Value) -> Result<(), Error> {
+fn check_variable_type(name: &str, r#type: &Type, value: &Value) -> Result<(), Error> {
     if r#type.accepts(value) {
         return Ok(());
     }
-    Err(Error::RuntimeError(RuntimeError::BindingTypeMismatch {
+    Err(Error::RuntimeError(RuntimeError::VariableTypeMismatch {
         name: name.to_string(),
         expected: r#type.to_string(),
         found: value.type_of()?.to_string(),
@@ -814,7 +814,7 @@ impl GlobalScope {
     pub(crate) fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
         self.check_bindable(name)?;
         if let Some(r#type) = self.declared_types.get(name) {
-            check_binding_type(name, r#type, &value)?;
+            check_variable_type(name, r#type, &value)?;
         }
         self.variables.insert(name.to_string(), value);
         Ok(())
@@ -833,7 +833,7 @@ impl GlobalScope {
         self.check_bindable(name)?;
         match r#type {
             Some(r#type) => {
-                check_binding_type(name, &r#type, &value)?;
+                check_variable_type(name, &r#type, &value)?;
                 self.declared_types.insert(name.to_string(), r#type);
             }
             None => {
@@ -2234,14 +2234,14 @@ mod tests {
     }
 
     /// Asserts that `result` is `Variable <name> expects <expected>, found <found>`
-    fn assert_binding_type_mismatch(
+    fn assert_variable_type_mismatch(
         result: Result<Value, Error>,
         name: &str,
         expected: &str,
         found: &str,
     ) {
         match result {
-            Err(Error::RuntimeError(RuntimeError::BindingTypeMismatch {
+            Err(Error::RuntimeError(RuntimeError::VariableTypeMismatch {
                 name: n,
                 expected: e,
                 found: f,
@@ -2249,7 +2249,7 @@ mod tests {
                 (n.as_str(), e.as_str(), f.as_str()),
                 (name, expected, found)
             ),
-            other => panic!("expected BindingTypeMismatch for {name}, got {other:?}"),
+            other => panic!("expected VariableTypeMismatch for {name}, got {other:?}"),
         }
     }
 
@@ -2268,7 +2268,7 @@ mod tests {
     fn test_typed_let_refuses_a_value_of_another_type() {
         let mut runtime = SimpleRuntime::default();
         let result = runtime.eval(r#"let n: Number = "one""#);
-        assert_binding_type_mismatch(result, "n", "Number", "String");
+        assert_variable_type_mismatch(result, "n", "Number", "String");
         assert_eq!(runtime.get_variable("n"), None);
     }
 
@@ -2277,7 +2277,7 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         runtime.eval("let n: Number = 1").unwrap();
         let result = runtime.eval(r#"n = "two""#);
-        assert_binding_type_mismatch(result, "n", "Number", "String");
+        assert_variable_type_mismatch(result, "n", "Number", "String");
         assert_eq!(runtime.get_variable("n"), Some(number(1)));
         assert_eq!(runtime.eval("n = 2").unwrap(), number(2));
     }
@@ -2287,7 +2287,7 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         runtime.eval("let n = 1").unwrap();
         let result = runtime.eval("let n: String = 2");
-        assert_binding_type_mismatch(result, "n", "String", "Number");
+        assert_variable_type_mismatch(result, "n", "String", "Number");
         assert_eq!(runtime.get_variable("n"), Some(number(1)));
         // n is still declared without a type
         assert_eq!(
@@ -2332,7 +2332,7 @@ mod tests {
         runtime.eval("let d: Meters = meters(5)").unwrap();
         assert_eq!(runtime.get_variable("d"), Some(Value::native(Meters(5))));
         let result = runtime.eval("d = 5");
-        assert_binding_type_mismatch(result, "d", "Meters", "Number");
+        assert_variable_type_mismatch(result, "d", "Meters", "Number");
     }
 
     #[test]
@@ -2344,7 +2344,7 @@ mod tests {
         let result = runtime
             .set_variable("n", Value::String("two".into()))
             .map(|()| Value::None);
-        assert_binding_type_mismatch(result, "n", "Number", "String");
+        assert_variable_type_mismatch(result, "n", "Number", "String");
         assert_eq!(runtime.get_variable("n"), Some(number(2)));
     }
 

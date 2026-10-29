@@ -62,7 +62,7 @@ so `let T = Number` then `let x: T = 1` raises `UnknownType`.
 - `let x = e` and `let x: T = e` **declare** `x`. A declaration replaces any earlier declaration
   of `x`, including its type. `let x = e` declares `x` without a type.
 - `x = e` **assigns** to `x`. If `x` was declared with a type, the value must be of that type, or
-  the assignment raises a `BindingTypeMismatch` error and `x` keeps its value. Otherwise the value
+  the assignment raises a `VariableTypeMismatch` error and `x` keeps its value. Otherwise the value
   replaces the binding, as it does today.
 - Assigning to a name that isn't bound declares it without a type, as it does today.
 
@@ -105,7 +105,7 @@ A binding still evaluates to the bound value.
 ### 6. The rules are the language's
 
 Declarations, declared types, checking an assignment against its declaration, and the two new
-errors, `BindingTypeMismatch` and `UnknownType`, are part of the language, and go in the spec. The
+errors, `VariableTypeMismatch` and `UnknownType`, are part of the language, and go in the spec. The
 error messages are `SimpleRuntime`'s:
 
 - `Variable <name> expects <type>, found <type>`, in the style of
@@ -147,7 +147,7 @@ error messages are `SimpleRuntime`'s:
     or match statements need updating.
   - A statement written `x = e` displays as `x = e`, not `let x = e`.
   - flt source without types behaves as before.
-- New errors: `BindingTypeMismatch` and `UnknownType`.
+- New errors: `VariableTypeMismatch` and `UnknownType`.
 - Later:
   - function types and `Option<T>` in types;
   - declaring a variable without a value, `let t: T`, which would leave `t` unbound until it's
