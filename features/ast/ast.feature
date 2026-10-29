@@ -1,9 +1,41 @@
 Feature: AST
 
-  Scenario: Parsing a number
+  Scenario: Parsing an integer
     Given the input "42"
     When I parse the input
-    Then the output should be a `Literal::Number(42)`
+    Then the output should be a `Literal::Integer(42)`
+
+  Scenario Outline: A numeric literal without a `.` is an integer
+    Given the input "<input>"
+    When I parse the input
+    Then the output should be a `Literal::Integer(<value>)`
+
+    Examples:
+      | input  | value |
+      | 0      | 0     |
+      | 1_000  | 1000  |
+
+  Scenario Outline: A numeric literal with a `.` is a number
+    Given the input "<input>"
+    When I parse the input
+    Then the output should be a `Literal::Number(<value>)`
+
+    Examples:
+      | input   | value |
+      | 3.14    | 3.14  |
+      | 0.5     | 0.5   |
+      | 42.0    | 42.0  |
+      | 1_000.5 | 1000.5 |
+
+  Scenario Outline: A `.` needs a digit after it
+    Given the input "<input>"
+    When I parse the input
+    Then parsing should fail
+
+    Examples:
+      | input |
+      | 42.   |
+      | 1_000. |
 
   Scenario: Parsing a string literal
     Given the input '"hello"'

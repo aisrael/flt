@@ -7,7 +7,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`spec.md`](spec.md) - One-page minimal language specification (grammar, types, operators, semantics).
 - [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL.
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
-- [`literals.md`](literals.md) - Numbers, strings and interpolation, booleans, `None`, symbols, arrays and maps.
+- [`literals.md`](literals.md) - Integers and numbers, strings and interpolation, booleans, `None`, symbols, arrays and maps.
 - [`types.md`](types.md) - Core flt types
   - [`types/none.md`](types/none.md) - `None`: the value, its type, and the result of `if` without `else`.
   - [`types/union_types.md`](types/union_types.md) - Union types (`A | B`) and the type of `if`.
@@ -35,6 +35,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 014: Native Function Arguments](adrs/014-native-function-arguments.md)
 - [ADR 015: Errors Name the Closest Overload](adrs/015-closest-overload-errors.md)
 - [ADR 016: Typed `let` Bindings](adrs/016-typed-let-bindings.md)
+- [ADR 017: Integers](adrs/017-integers.md)
 
 ## Scope
 

@@ -10,14 +10,14 @@ use crate::ast::parse_none;
 use crate::ast::Literal;
 use crate::parser::IResult;
 
-/// Parses a literal: number, string, boolean, or symbol.
+/// Parses a literal: integer, number, string, boolean, or symbol.
 pub fn parse_literal(input: &str) -> IResult<&str, Literal> {
     alt((
         map(parse_boolean, Literal::Boolean),
         map(parse_none, |_| Literal::None),
         map(parse_symbol, Literal::symbol),
         map(parse_string, Literal::string),
-        map(parse_number, Literal::Number),
+        parse_number,
     ))
     .parse(input)
 }
@@ -36,9 +36,14 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_integer_literal() {
+        assert_eq!(parse_literal("42"), Ok(("", Literal::integer(42))));
+    }
+
+    #[test]
     fn test_parse_number_literal() {
-        assert_eq!(parse_literal("42"), Ok(("", Literal::Number(n("42")))));
         assert_eq!(parse_literal("3.14"), Ok(("", Literal::Number(n("3.14")))));
+        assert_eq!(parse_literal("42.0"), Ok(("", Literal::Number(n("42.0")))));
     }
 
     #[test]
@@ -75,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_parse_literal_with_remainder() {
-        assert_eq!(parse_literal("42 "), Ok((" ", Literal::Number(n("42")))));
+        assert_eq!(parse_literal("42 "), Ok((" ", Literal::integer(42))));
         assert_eq!(
             parse_literal(r#""hi" "#),
             Ok((" ", Literal::String("hi".into())))

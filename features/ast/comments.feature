@@ -6,7 +6,7 @@ Feature: Comments
   Scenario: Trailing comment after expression
     Given the input "42 # this is the answer"
     When I parse the input
-    Then the output should be a `Literal::Number(42)`
+    Then the output should be a `Literal::Integer(42)`
 
   Scenario: Leading comment before expression
     Given the multiline input
@@ -15,7 +15,7 @@ Feature: Comments
       42
       """
     When I parse the input
-    Then the output should be a `Literal::Number(42)`
+    Then the output should be a `Literal::Integer(42)`
 
   Scenario: Comment between binary operands
     Given the multiline input
@@ -24,7 +24,7 @@ Feature: Comments
       + 2
       """
     When I parse the input
-    Then the output should be 'BinaryExpr(Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Add, Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2])))))'
+    Then the output should be 'BinaryExpr(Literal(Integer(1)), Add, Literal(Integer(2)))'
 
   Scenario: Comment in function call arguments
     Given the multiline input
@@ -33,7 +33,7 @@ Feature: Comments
        2)
       """
     When I parse the input
-    Then the output should be 'FunctionCall(FunctionCall { name: Identifier("add"), positional_args: [Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[1])))), Literal(Number(Numeric(BigDecimal(sign=Plus, scale=0, digits=[2]))))], keyword_args: {} })'
+    Then the output should be 'FunctionCall(FunctionCall { name: Identifier("add"), positional_args: [Literal(Integer(1)), Literal(Integer(2))], keyword_args: {} })'
 
   Scenario: Comment between string concatenation operands
     Given the multiline input

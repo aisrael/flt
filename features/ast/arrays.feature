@@ -14,7 +14,7 @@ Feature: Arrays
     Given the input "[ 42 ]"
     When I parse the input
     Then the output should be an array with 1 element
-    And the first element should be the number 42
+    And the first element should be the integer 42
 
   Scenario: Parsing an array with a single string
     Given the input '[ "hello" ]'
@@ -26,15 +26,15 @@ Feature: Arrays
     Given the input "[ 1, 2, 3 ]"
     When I parse the input
     Then the output should be an array with 3 elements
-    And the first element should be the number 1
-    And the second element should be the number 2
-    And the third element should be the number 3
+    And the first element should be the integer 1
+    And the second element should be the integer 2
+    And the third element should be the integer 3
 
   Scenario: Parsing an array with mixed types
     Given the input '[ 1, "two", true ]'
     When I parse the input
     Then the output should be an array with 3 elements
-    And the first element should be the number 1
+    And the first element should be the integer 1
     And the second element should be the string "two"
     And the third element should be the boolean true
 
@@ -42,7 +42,7 @@ Feature: Arrays
     Given the input "[ 1, ]"
     When I parse the input
     Then the output should be an array with 1 element
-    And the first element should be the number 1
+    And the first element should be the integer 1
 
   Scenario: Parsing an array with nested expressions
     Given the input "[ 1 + 2, 3 * 4 ]"

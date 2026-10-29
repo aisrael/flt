@@ -237,7 +237,7 @@ fn parse_if_condition_mul_div(input: &str) -> IResult<&str, Expr> {
     parse_binary_level(
         input,
         parse_if_condition_unary,
-        &[BinaryOp::Mul, BinaryOp::Div],
+        &[BinaryOp::Mul, BinaryOp::Div, BinaryOp::FloorDiv],
     )
 }
 
@@ -366,7 +366,11 @@ fn parse_add_sub_concat(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_mul_div(input: &str) -> IResult<&str, Expr> {
-    parse_binary_level(input, parse_unary, &[BinaryOp::Mul, BinaryOp::Div])
+    parse_binary_level(
+        input,
+        parse_unary,
+        &[BinaryOp::Mul, BinaryOp::Div, BinaryOp::FloorDiv],
+    )
 }
 
 /// Parses an expression: unary and binary with proper precedence.
@@ -390,7 +394,7 @@ mod tests {
 
     #[test]
     fn test_parse_number() {
-        assert_eq!(parse_expr("42"), Ok(("", Expr::literal_number(42))));
+        assert_eq!(parse_expr("42"), Ok(("", Expr::literal_integer(42))));
         assert_eq!(
             parse_expr("3.14"),
             Ok((
@@ -406,7 +410,10 @@ mod tests {
     fn test_parse_identifier() {
         assert_eq!(parse_expr("foo"), Ok(("", Expr::ident("foo"))));
         assert_eq!(parse_expr("foo-1"), Ok(("", Expr::ident("foo-1"))));
-        assert_eq!(parse_expr("123abc"), Ok(("abc", Expr::literal_number(123))));
+        assert_eq!(
+            parse_expr("123abc"),
+            Ok(("abc", Expr::literal_integer(123)))
+        );
         assert!(parse_expr("_foo").is_err());
     }
 
@@ -441,8 +448,8 @@ mod tests {
                 "",
                 Expr::if_expr(
                     Expr::literal_boolean(true),
-                    Expr::literal_number(1),
-                    Some(Expr::literal_number(2))
+                    Expr::literal_integer(1),
+                    Some(Expr::literal_integer(2))
                 )
             ))
         );
@@ -517,7 +524,10 @@ mod tests {
         );
         assert_eq!(
             parse_expr("+1"),
-            Ok(("", Expr::unary_expr(UnaryOp::Plus, Expr::literal_number(1))))
+            Ok((
+                "",
+                Expr::unary_expr(UnaryOp::Plus, Expr::literal_integer(1))
+            ))
         );
         assert!(parse_expr("! x").is_err());
         assert!(parse_expr("+ 1").is_err());
@@ -526,7 +536,7 @@ mod tests {
             parse_expr("-42"),
             Ok((
                 "",
-                Expr::unary_expr(UnaryOp::Minus, Expr::literal_number(42))
+                Expr::unary_expr(UnaryOp::Minus, Expr::literal_integer(42))
             ))
         );
     }
@@ -538,9 +548,9 @@ mod tests {
             Ok((
                 "",
                 Expr::binary_expr(
-                    Expr::literal_number(1),
+                    Expr::literal_integer(1),
                     BinaryOp::Add,
-                    Expr::literal_number(2)
+                    Expr::literal_integer(2)
                 )
             ))
         );
@@ -549,9 +559,9 @@ mod tests {
             Ok((
                 "",
                 Expr::binary_expr(
-                    Expr::literal_number(10),
+                    Expr::literal_integer(10),
                     BinaryOp::Mul,
-                    Expr::literal_number(2)
+                    Expr::literal_integer(2)
                 )
             ))
         );
@@ -559,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_parse_binary_add_spacing_variants() {
-        let expected = Expr::binary_expr(Expr::ident("x"), BinaryOp::Add, Expr::literal_number(1));
+        let expected = Expr::binary_expr(Expr::ident("x"), BinaryOp::Add, Expr::literal_integer(1));
         assert_eq!(parse_expr("x + 1"), Ok(("", expected.clone())));
         assert_eq!(parse_expr("x+1"), Ok(("", expected.clone())));
         assert_eq!(parse_expr("x +1"), Ok(("", expected.clone())));
@@ -574,12 +584,12 @@ mod tests {
             Ok((
                 "",
                 Expr::binary_expr(
-                    Expr::literal_number(1),
+                    Expr::literal_integer(1),
                     BinaryOp::Add,
                     Expr::binary_expr(
-                        Expr::literal_number(2),
+                        Expr::literal_integer(2),
                         BinaryOp::Mul,
-                        Expr::literal_number(3)
+                        Expr::literal_integer(3)
                     )
                 )
             ))
@@ -596,7 +606,7 @@ mod tests {
             parse_expr("bar(1)"),
             Ok((
                 "",
-                Expr::function_call("bar", vec![Expr::literal_number(1)])
+                Expr::function_call("bar", vec![Expr::literal_integer(1)])
             ))
         );
         assert_eq!(
@@ -605,7 +615,7 @@ mod tests {
                 "",
                 Expr::function_call(
                     "add",
-                    vec![Expr::literal_number(1), Expr::literal_number(2)]
+                    vec![Expr::literal_integer(1), Expr::literal_integer(2)]
                 )
             ))
         );
@@ -615,7 +625,7 @@ mod tests {
                 "",
                 Expr::function_call(
                     "add",
-                    vec![Expr::literal_number(1), Expr::literal_number(2)]
+                    vec![Expr::literal_integer(1), Expr::literal_integer(2)]
                 )
             ))
         );
@@ -628,9 +638,9 @@ mod tests {
             Ok((
                 "",
                 Expr::binary_expr(
-                    Expr::literal_number(1),
+                    Expr::literal_integer(1),
                     BinaryOp::Pipe,
-                    Expr::function_call("add", vec![Expr::literal_number(2)])
+                    Expr::function_call("add", vec![Expr::literal_integer(2)])
                 )
             ))
         );
@@ -638,7 +648,7 @@ mod tests {
             parse_expr("1 |> add"),
             Ok((
                 "",
-                Expr::binary_expr(Expr::literal_number(1), BinaryOp::Pipe, Expr::ident("add"))
+                Expr::binary_expr(Expr::literal_integer(1), BinaryOp::Pipe, Expr::ident("add"))
             ))
         );
         assert_eq!(
@@ -720,9 +730,9 @@ mod tests {
                     Expr::literal_string("Answer: "),
                     BinaryOp::Concat,
                     Expr::binary_expr(
-                        Expr::literal_number(1),
+                        Expr::literal_integer(1),
                         BinaryOp::Add,
-                        Expr::literal_number(2)
+                        Expr::literal_integer(2)
                     )
                 )
             ))
@@ -763,20 +773,20 @@ mod tests {
     fn test_parse_comments() {
         assert_eq!(
             parse_expr("42 # comment"),
-            Ok(("", Expr::literal_number(42)))
+            Ok(("", Expr::literal_integer(42)))
         );
         assert_eq!(
             parse_expr("# leading comment\n42"),
-            Ok(("", Expr::literal_number(42)))
+            Ok(("", Expr::literal_integer(42)))
         );
         assert_eq!(
             parse_expr("1 # add these\n+ 2"),
             Ok((
                 "",
                 Expr::binary_expr(
-                    Expr::literal_number(1),
+                    Expr::literal_integer(1),
                     BinaryOp::Add,
-                    Expr::literal_number(2)
+                    Expr::literal_integer(2)
                 )
             ))
         );
@@ -786,7 +796,7 @@ mod tests {
                 "",
                 Expr::function_call(
                     "add",
-                    vec![Expr::literal_number(1), Expr::literal_number(2)]
+                    vec![Expr::literal_integer(1), Expr::literal_integer(2)]
                 )
             ))
         );
@@ -851,8 +861,8 @@ mod tests {
                 "",
                 Expr::if_expr(
                     Expr::field_access(Expr::ident("u"), "active"),
-                    Expr::literal_number(1),
-                    Some(Expr::literal_number(0))
+                    Expr::literal_integer(1),
+                    Some(Expr::literal_integer(0))
                 )
             ))
         );
@@ -873,12 +883,12 @@ mod tests {
                 "",
                 Expr::binary_expr(
                     Expr::parenthesized(Expr::binary_expr(
-                        Expr::literal_number(1),
+                        Expr::literal_integer(1),
                         BinaryOp::Add,
-                        Expr::literal_number(2)
+                        Expr::literal_integer(2)
                     )),
                     BinaryOp::Mul,
-                    Expr::literal_number(3)
+                    Expr::literal_integer(3)
                 )
             ))
         );
@@ -892,7 +902,7 @@ mod tests {
                 "",
                 Expr::function_call_with_keywords(
                     "foo",
-                    vec![Expr::literal_number(1)],
+                    vec![Expr::literal_integer(1)],
                     vec![("optional", Expr::literal_boolean(true))],
                 )
             ))
@@ -945,8 +955,8 @@ mod tests {
         Expr::binary_expr(left, op, right)
     }
 
-    fn num(n: i64) -> Expr {
-        Expr::literal_number(n)
+    fn int(n: i64) -> Expr {
+        Expr::literal_integer(n)
     }
 
     fn id(name: &str) -> Expr {
@@ -957,15 +967,15 @@ mod tests {
     fn test_parse_comparisons_bind_looser_than_arithmetic() {
         assert_parses_to(
             "1 + 2 == 3",
-            bin(bin(num(1), BinaryOp::Add, num(2)), BinaryOp::Eq, num(3)),
+            bin(bin(int(1), BinaryOp::Add, int(2)), BinaryOp::Eq, int(3)),
         );
         assert_parses_to(
             "x == y - 1",
-            bin(id("x"), BinaryOp::Eq, bin(id("y"), BinaryOp::Sub, num(1))),
+            bin(id("x"), BinaryOp::Eq, bin(id("y"), BinaryOp::Sub, int(1))),
         );
         assert_parses_to(
             "x * 2 < y",
-            bin(bin(id("x"), BinaryOp::Mul, num(2)), BinaryOp::Lt, id("y")),
+            bin(bin(id("x"), BinaryOp::Mul, int(2)), BinaryOp::Lt, id("y")),
         );
         assert_parses_to(
             r#""a" <> "b" == "ab""#,
@@ -977,6 +987,48 @@ mod tests {
                 ),
                 BinaryOp::Eq,
                 Expr::literal_string("ab"),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_parse_floor_division() {
+        assert_parses_to("7 // 2", bin(int(7), BinaryOp::FloorDiv, int(2)));
+        assert_parses_to("a//b", bin(id("a"), BinaryOp::FloorDiv, id("b")));
+    }
+
+    #[test]
+    fn test_parse_floor_division_binds_like_multiplication() {
+        assert_parses_to(
+            "7 // 2 * 2",
+            bin(
+                bin(int(7), BinaryOp::FloorDiv, int(2)),
+                BinaryOp::Mul,
+                int(2),
+            ),
+        );
+        assert_parses_to(
+            "1 + 7 // 2",
+            bin(
+                int(1),
+                BinaryOp::Add,
+                bin(int(7), BinaryOp::FloorDiv, int(2)),
+            ),
+        );
+        assert_parses_to(
+            "8 / 2 // 3",
+            bin(
+                bin(int(8), BinaryOp::Div, int(2)),
+                BinaryOp::FloorDiv,
+                int(3),
+            ),
+        );
+        assert_parses_to(
+            "-7 // 2",
+            bin(
+                Expr::unary_expr(UnaryOp::Minus, int(7)),
+                BinaryOp::FloorDiv,
+                int(2),
             ),
         );
     }
@@ -997,7 +1049,7 @@ mod tests {
     fn test_parse_comparisons_bind_looser_than_bitwise() {
         assert_parses_to(
             "x & 1 == 0",
-            bin(bin(id("x"), BinaryOp::BitAnd, num(1)), BinaryOp::Eq, num(0)),
+            bin(bin(id("x"), BinaryOp::BitAnd, int(1)), BinaryOp::Eq, int(0)),
         );
         assert_parses_to(
             "x | y < z",
@@ -1025,11 +1077,11 @@ mod tests {
     fn test_parse_pipe_binds_tighter_than_comparisons_and_logical() {
         assert_parses_to(
             "x |> f == 3",
-            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Eq, num(3)),
+            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Eq, int(3)),
         );
         assert_parses_to(
             "x |> f < 3",
-            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Lt, num(3)),
+            bin(bin(id("x"), BinaryOp::Pipe, id("f")), BinaryOp::Lt, int(3)),
         );
         assert_parses_to(
             "a || b |> f",
@@ -1052,7 +1104,7 @@ mod tests {
             bin(
                 bin(id("x"), BinaryOp::Pipe, id("f")),
                 BinaryOp::BitAnd,
-                num(1),
+                int(1),
             ),
         );
         assert_parses_to(
@@ -1069,7 +1121,7 @@ mod tests {
     fn test_parse_arithmetic_binds_tighter_than_pipe() {
         assert_parses_to(
             "1 + 1 |> f",
-            bin(bin(num(1), BinaryOp::Add, num(1)), BinaryOp::Pipe, id("f")),
+            bin(bin(int(1), BinaryOp::Add, int(1)), BinaryOp::Pipe, id("f")),
         );
         assert_parses_to(
             r#""a" <> "b" |> f"#,
@@ -1089,9 +1141,9 @@ mod tests {
                 id("x"),
                 BinaryOp::Pipe,
                 bin(
-                    Expr::function_call("f", vec![num(2)]),
+                    Expr::function_call("f", vec![int(2)]),
                     BinaryOp::Mul,
-                    num(3),
+                    int(3),
                 ),
             ),
         );
@@ -1111,7 +1163,7 @@ mod tests {
         assert_parses_to(
             r#"if 1 + 2 == n "Ok" else "No""#,
             if_ok(bin(
-                bin(num(1), BinaryOp::Add, num(2)),
+                bin(int(1), BinaryOp::Add, int(2)),
                 BinaryOp::Eq,
                 id("n"),
             )),
@@ -1127,7 +1179,7 @@ mod tests {
         assert_parses_to(
             r#"if x & 1 == n "Ok" else "No""#,
             if_ok(bin(
-                bin(id("x"), BinaryOp::BitAnd, num(1)),
+                bin(id("x"), BinaryOp::BitAnd, int(1)),
                 BinaryOp::Eq,
                 id("n"),
             )),
@@ -1153,14 +1205,14 @@ mod tests {
     #[test]
     fn test_parse_call_forms_next_to_pipe() {
         // `identity 1` and `identity(1)` parse the same; the pipe forms parse differently
-        let call = Expr::function_call("identity", vec![num(1)]);
+        let call = Expr::function_call("identity", vec![int(1)]);
         assert_parses_to("identity 1", call.clone());
         assert_parses_to("identity(1)", call);
-        assert_parses_to("1 |> identity", bin(num(1), BinaryOp::Pipe, id("identity")));
+        assert_parses_to("1 |> identity", bin(int(1), BinaryOp::Pipe, id("identity")));
         assert_parses_to(
             "1 |> identity()",
             bin(
-                num(1),
+                int(1),
                 BinaryOp::Pipe,
                 Expr::function_call("identity", vec![]),
             ),
@@ -1171,11 +1223,11 @@ mod tests {
     fn test_parse_pipe_into_call_without_parens_leaves_arguments_unparsed() {
         assert_eq!(
             parse_expr("1 |> f 2"),
-            Ok(("2", bin(num(1), BinaryOp::Pipe, id("f"))))
+            Ok(("2", bin(int(1), BinaryOp::Pipe, id("f"))))
         );
         assert_eq!(
             parse_expr("1 |> f 2, 3"),
-            Ok(("2, 3", bin(num(1), BinaryOp::Pipe, id("f"))))
+            Ok(("2, 3", bin(int(1), BinaryOp::Pipe, id("f"))))
         );
         assert_eq!(
             parse_expr("a |> f |> g 1"),
@@ -1206,7 +1258,7 @@ mod tests {
         assert_parses_to(
             "f(1) |> g()",
             bin(
-                Expr::function_call("f", vec![num(1)]),
+                Expr::function_call("f", vec![int(1)]),
                 BinaryOp::Pipe,
                 Expr::function_call("g", vec![]),
             ),
@@ -1217,7 +1269,7 @@ mod tests {
             Expr::function_call(
                 "f",
                 vec![bin(
-                    num(1),
+                    int(1),
                     BinaryOp::Pipe,
                     Expr::function_call("g", vec![]),
                 )],
@@ -1229,9 +1281,9 @@ mod tests {
             Expr::function_call(
                 "f",
                 vec![
-                    num(2),
+                    int(2),
                     Expr::parenthesized(bin(
-                        num(1),
+                        int(1),
                         BinaryOp::Pipe,
                         Expr::function_call("g", vec![]),
                     )),
@@ -1241,7 +1293,7 @@ mod tests {
         // a whitespace-form call on the left, without a pipe in its arguments
         assert_parses_to(
             "f 1 + 2",
-            Expr::function_call("f", vec![bin(num(1), BinaryOp::Add, num(2))]),
+            Expr::function_call("f", vec![bin(int(1), BinaryOp::Add, int(2))]),
         );
     }
 

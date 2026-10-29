@@ -61,7 +61,7 @@ The trait doesn't say which names a runtime refuses. `set_variable` and `check_b
 
 The evaluator currently supports:
 
-- Number literals and arithmetic: `+`, `-`, `*`, `/`
+- [`Integer` and `Number`](./types.md#integers-and-numbers) literals and arithmetic: `+`, `-`, `*`, `/`, and `//` on integers. A `Number` quotient is computed to 100 significant digits
 - Boolean literals and logic: `&&`, `||`, `^^`, unary `!`
 - String literals and concatenation with `<>`
 - Symbol and `None` literals
@@ -78,13 +78,13 @@ The evaluator currently supports:
 - Calls to [native functions](./native-functions-and-values.md#native-functions), both [built-ins](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and host-registered ones, including through any name a function value is bound to
 - [Native values](./native-functions-and-values.md#native-types-and-values), created by the host's functions: binding, passing, piping, printing, `typeof`, and `==`/`!=` with the host's equality
 
-`<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated). Other values, including functions and native values, become the empty string.
+`<>` concatenation coerces values to strings (numbers, booleans, and symbols can be concatenated). A number becomes the text it prints as, so `"x" <> 2.0` is `"x2.0"`. Other values, including functions and native values, become the empty string.
 
 ## Current Runtime Errors
 
-- `Invalid Operand Type` - unsupported type/operator combination (e.g. `1 + true`, field access on a non-map)
+- `Invalid Operand Type` - unsupported type/operator combination (e.g. `1 + true`, `7.5 // 2`, field access on a non-map)
 - `Cannot compare {0} and {1}` - comparing values of mismatched/incomparable types
-- `Division By Zero`
+- `Division By Zero` - `/` or `//` with a divisor of `0`, or `/` with `0.0`
 - `Unbound identifier: <name>` - referencing an identifier with no binding in scope
 - `No such field: <name>` - field access on a map that doesn't have that field
 - `Undefined function: <name>` - calling a name that has no binding

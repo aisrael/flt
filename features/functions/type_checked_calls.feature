@@ -11,13 +11,13 @@ Feature: Type-checked function calls
   Background:
     Given the native function "describe(n: Number) -> String"
     And the native function "describe(s: String | Symbol) -> String"
-    And the native function "pad(s: String, width: Number) -> String"
+    And the native function "pad(s: String, width: Integer) -> String"
     And the native function "total(*values: Number) -> Number"
     And the native function "liar() -> Number"
     And the native function "scores(**kwargs: Number) -> Map"
     And the native function 'greet(name: String, greeting: String = "Hello") -> String'
-    And the native function "date(yyyy: Number, mm: Number, dd: Number) -> Date"
-    And the native function "days_between(from: Date, to: Date) -> Number"
+    And the native function "date(yyyy: Integer, mm: Integer, dd: Integer) -> Date"
+    And the native function "days_between(from: Date, to: Date) -> Integer"
 
   Scenario Outline: Arguments of the declared types pass
     Given the input '<input>'
@@ -27,9 +27,9 @@ Feature: Type-checked function calls
     Examples:
       | input                    | result  |
       | pad("ab", 4)             | "  ab"  |
-      | total()                  | 0       |
-      | total(1, 2, 3)           | 6       |
-      | scores(a: 1, b: 2)       | {a: 1, b: 2} |
+      | total()                  | 0.0     |
+      | total(1, 2, 3)           | 6.0     |
+      | scores(a: 1, b: 2)       | {a: 1.0, b: 2.0} |
       | greet("Ann", greeting: "Hi") | "Hi, Ann" |
 
   Scenario Outline: An argument of the wrong type is an error
@@ -39,11 +39,11 @@ Feature: Type-checked function calls
 
     Examples:
       | input                       | error                                                                    |
-      | pad(1, 2)                   | Runtime Error: Argument s of pad expects String, found Number            |
-      | pad("x", "2")               | Runtime Error: Argument width of pad expects Number, found String        |
+      | pad(1, 2)                   | Runtime Error: Argument s of pad expects String, found Integer           |
+      | pad("x", "2")               | Runtime Error: Argument width of pad expects Integer, found String       |
       | total(1, "a")               | Runtime Error: Argument values of total expects Number, found String     |
-      | days_between(1, 2)          | Runtime Error: Argument from of days_between expects Date, found Number  |
-      | greet("Ann", greeting: 1)   | Runtime Error: Keyword argument greeting of greet expects String, found Number |
+      | days_between(1, 2)          | Runtime Error: Argument from of days_between expects Date, found Integer |
+      | greet("Ann", greeting: 1)   | Runtime Error: Keyword argument greeting of greet expects String, found Integer |
       | scores(a: "x")              | Runtime Error: Keyword argument a of scores expects Number, found String |
 
   Scenario: The return value is checked
@@ -123,8 +123,8 @@ Feature: Type-checked function calls
       | oof("abc", b: true)  | "t"    |
 
   Scenario Outline: Overloads of the same arity can differ in their first argument alone
-    Given the native function "head(items: Array, n: Number) -> Array"
-    And the native function "head(s: String, n: Number) -> String"
+    Given the native function "head(items: Array, n: Integer) -> Array"
+    And the native function "head(s: String, n: Integer) -> String"
     And the input '<input>'
     When I evaluate the input
     Then the result should be '<result>'
@@ -135,16 +135,16 @@ Feature: Type-checked function calls
       | "abc" \|> head(2)     | "ab"   |
 
   Scenario Outline: The error names the overload that passes the most checks
-    Given the native function "head(items: Array, n: Number) -> Array"
-    And the native function "head(s: String, n: Number) -> String"
+    Given the native function "head(items: Array, n: Integer) -> Array"
+    And the native function "head(s: String, n: Integer) -> String"
     And the input '<input>'
     When I evaluate the input
     Then the evaluation should fail with exactly '<error>'
 
     Examples:
       | input                  | error                                                            |
-      | [1, 2, 3] \|> head("x") | Runtime Error: Argument n of head expects Number, found String   |
-      | "abc" \|> head(:x)      | Runtime Error: Argument n of head expects Number, found Symbol   |
+      | [1, 2, 3] \|> head("x") | Runtime Error: Argument n of head expects Integer, found String  |
+      | "abc" \|> head(:x)      | Runtime Error: Argument n of head expects Integer, found Symbol  |
 
   Scenario Outline: A keyword of the wrong type is closer than one that isn't accepted, whatever the order
     Given the native function 'foo(s: String, n: Number = 0, b: Boolean = false) -> String'
@@ -159,14 +159,14 @@ Feature: Type-checked function calls
       | input                       | error                                                                 |
       | foo("abc", n: "x")          | Runtime Error: Keyword argument n of foo expects Number, found String |
       | oof("abc", n: "x")          | Runtime Error: Keyword argument n of oof expects Number, found String |
-      | foo("abc", t: 1)            | Runtime Error: Keyword argument t of foo expects String, found Number |
-      | foo("abc", b: true, t: 1)   | Runtime Error: Keyword argument t of foo expects String, found Number |
+      | foo("abc", t: 1)            | Runtime Error: Keyword argument t of foo expects String, found Integer |
+      | foo("abc", b: true, t: 1)   | Runtime Error: Keyword argument t of foo expects String, found Integer |
       | foo("abc", n: 1, z: 1)      | Runtime Error: Function foo got an unexpected keyword argument: z     |
       | oof("abc", n: 1, z: 1)      | Runtime Error: Function oof got an unexpected keyword argument: z     |
 
   Scenario Outline: Overloads that are equally close name none
-    Given the native function "head(items: Array, n: Number) -> Array"
-    And the native function "head(s: String, n: Number) -> String"
+    Given the native function "head(items: Array, n: Integer) -> Array"
+    And the native function "head(s: String, n: Integer) -> String"
     And the native function 'foo(s: String, n: Number = 0, b: Boolean = false) -> String'
     And the native function 'foo(s: String, t: String = "", b: Boolean = false) -> String'
     And the input '<input>'
@@ -175,9 +175,9 @@ Feature: Type-checked function calls
 
     Examples:
       | input                | error                                                          |
-      | head(1, 2)           | Runtime Error: No overload of head accepts (Number, Number)    |
-      | foo("abc", z: 1)     | Runtime Error: No overload of foo accepts (String, z: Number)  |
-      | foo("abc", b: 1)     | Runtime Error: No overload of foo accepts (String, b: Number)  |
+      | head(1, 2)           | Runtime Error: No overload of head accepts (Integer, Integer)  |
+      | foo("abc", z: 1)     | Runtime Error: No overload of foo accepts (String, z: Integer) |
+      | foo("abc", b: 1)     | Runtime Error: No overload of foo accepts (String, b: Integer) |
 
   Scenario Outline: The wrong number of arguments lists every accepted count
     Given the native function "two(x: Any) -> Any"

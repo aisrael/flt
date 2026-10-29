@@ -37,7 +37,7 @@ typeof(greet)                  # fn(String, greeting: String) -> String
 - **A keyword can't be repeated.** `greet("Ann", greeting: "Hi", greeting: "Yo")` is a parse error, `Duplicate keyword argument greeting in the call to greet`, and so is `greet("Ann", greeting: "Hi", "greeting": "Yo")`, since both keys are `:greeting`.
 - **A keyword is never filled by position.** `greet("Ann", "Hi")` passes two positional arguments, and raises `Function greet expected 1 argument(s), found 2`.
 - **A map is a positional argument.** `f(k: 1)` passes the keyword `k`, and `f({k: 1})` passes one map.
-- **Keyword values are type-checked**, like positional arguments ([Calls](#calls)): `greet("Ann", greeting: 1)` raises `Keyword argument greeting of greet expects String, found Number`.
+- **Keyword values are type-checked**, like positional arguments ([Calls](#calls)): `greet("Ann", greeting: 1)` raises `Keyword argument greeting of greet expects String, found Integer`.
 
 Positional arguments are evaluated first, left to right, then keyword values, left to right.
 
@@ -57,13 +57,13 @@ This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` 
 The pipe operator `|>` passes the value on its left as the **first** argument of the function on its right, as in [Elixir](https://elixirschool.com/en/lessons/basics/pipe_operator).
 
 ```flt
-1 |> typeof              # typeof(1)         → Number
-1 |> typeof()            # typeof(1)         → Number
+1 |> typeof              # typeof(1)         → Integer
+1 |> typeof()            # typeof(1)         → Integer
 typeof(1) |> typeof      # typeof(typeof(1)) → Type
 10 |> sub(3)             # sub(10, 3)        → 7
 x |> f(a, k: v)          # f(x, a, k: v)
 a |> f |> g(1)           # g(f(a), 1)
-1 |> typeof == Number    # (1 |> typeof) == Number → true
+1 |> typeof == Integer   # (1 |> typeof) == Integer → true
 READ("input") |> SELECT(:id) |> WRITE("output")
 ```
 
@@ -74,7 +74,7 @@ Pipes are left-associative, so `a |> f |> g` is `(a |> f) |> g`. The left side i
 `|>` binds looser than `+`, `-` and `<>`, and tighter than everything else ([precedence](./operators.md#precedence-low-to-high)), as in Elixir:
 
 ```flt
-1 + 1 |> typeof          # (1 + 1) |> typeof   → Number
+1 + 1 |> typeof          # (1 + 1) |> typeof   → Integer
 x |> f == 3              # (x |> f) == 3
 x |> f & 1               # (x |> f) & 1
 a || b |> f              # a || (b |> f)
@@ -125,7 +125,7 @@ Piping into anything other than a call or a name raises `Cannot pipe into <expr>
 
 The runtime currently registers one built-in function:
 
-- `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Number`, `typeof({a: 1})` evaluates to `Map`, and `typeof(42) == Number` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
+- `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Integer`, `typeof(4.2)` to `Number`, `typeof({a: 1})` to `Map`, and `typeof(42) == Integer` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
 
 Built-ins are [native functions](./native-functions-and-values.md#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `fn(Any) -> Type`:
 
@@ -134,7 +134,7 @@ typeof                # <fn typeof>
 typeof(typeof)        # fn(Any) -> Type
 let t = typeof
 t("hi")               # String
-1 |> t                # Number
+1 |> t                # Integer
 ```
 
 A built-in's name can't be bound, like any function's name (see [Name Resolution](#name-resolution)):
@@ -169,13 +169,14 @@ f(42)                 # 42
 Every call is type-checked before the function runs ([ADR 013](./adrs/013-type-checked-function-calls.md)). A function's signature declares the type of each positional argument, each [variadic](./native-functions-and-values.md#variadic-arguments) value, each [keyword argument](#keyword-arguments) and its result, and the call has to match:
 
 - **The number of positional arguments.** A signature whose last positional argument is variadic takes any number of positional arguments after the ones before it ([ADR 011](./adrs/011-variadic-arguments.md)).
-- **Each argument's type.** `Any` accepts every value. A union accepts a value of any of its members, and a [native type](./native-functions-and-values.md#native-types-and-values) only values of that same type.
+- **Each argument's type.** `Any` accepts every value. `Number` accepts an `Integer` too, and converts it to a `Number`, so a function declared with `Number` always gets a `Number` ([`Number` Accepts an `Integer`](./types.md#number-accepts-an-integer)). A union accepts a value of any of its members, and a [native type](./native-functions-and-values.md#native-types-and-values) only values of that same type.
 - **Each keyword.** It has to be one the signature declares, with a value of its type, or one its rest keywords accept.
 - **The result.** It has to be of the signature's return type.
 
-With `pad(s: String, width: Number) -> String`, `sprintf(format: String, *args: Any) -> String` and `identity(v: Any) -> Any`:
+With `pad(s: String, width: Integer) -> String`, `sprintf(format: String, *args: Any) -> String` and `identity(v: Any) -> Any`:
 
-- `pad(1, 2)` raises `Argument s of pad expects String, found Number`.
+- `pad(1, 2)` raises `Argument s of pad expects String, found Integer`.
+- `pad("x", 2.0)` raises `Argument width of pad expects Integer, found Number`.
 - `identity(1, 2)` raises `Function identity expected 1 argument(s), found 2`.
 - `sprintf()` raises `Function sprintf expected at least 1 argument(s), found 0`.
 - `identity(1, k: 2)` raises `Function identity got an unexpected keyword argument: k`.
@@ -187,17 +188,45 @@ With `pad(s: String, width: Number) -> String`, `sprintf(format: String, *args: 
 A function can have several signatures, or overloads. A call runs the one that matches it:
 
 - **Overloads are tried by arity, longest first.** An overload's arity is the number of its positional arguments before any variadic one, so a call reaches the overload that matches the most of its arguments one for one, whatever order the overloads were declared in.
-- **Types and keywords tell overloads of the same arity apart.** With `count(plan: Plan) -> Number` and `count(column: Symbol | String) -> Aggregate`, `count(:id)` runs the second. With `foo(s: String, n: Number = 0)` and `foo(s: String, t: String = "")`, `foo("abc", n: 1)` runs the first.
-- **A tie isn't specified.** If several overloads of the same arity match, flt doesn't say which one runs, so flt source shouldn't depend on it. `SimpleRuntime` runs the one declared first.
+- **Types and keywords tell overloads of the same arity apart.** With `count(plan: Plan) -> Integer` and `count(column: Symbol | String) -> Aggregate`, `count(:id)` runs the second. With `foo(s: String, n: Number = 0)` and `foo(s: String, t: String = "")`, `foo("abc", n: 1)` runs the first.
+- **A tie isn't specified.** If several overloads of the same arity match, flt doesn't say which one runs, so flt source shouldn't depend on it. `SimpleRuntime` runs the [narrowest](#the-narrowest-overload), and if none is narrowest, the one declared first.
 
 When no overload matches:
 
 - **No overload takes that many positional arguments:** the error lists the counts they take, e.g. `Function g expected 1 or 2 argument(s), found 3`, or `Function f expected 1 or at least 3 argument(s), found 2`.
-- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Number`.
+- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Integer`.
 - **Several take that many, but none matches:** the error is the closest overload's, as if it were the only one ([ADR 015](./adrs/015-closest-overload-errors.md)). The closest is the one that passes the most checks before one fails. With `head(plan: Plan, n: Number)` and `head(path: String, n: Number)`, `read("data.parquet") |> head("x")` raises `Argument n of head expects Number, found String`, because `head(plan, n)` takes the plan. If several first fail at the same keyword, one that declares it is closer than one that doesn't, so with the two `foo`s above, `foo("abc", n: "x")` raises `Keyword argument n of foo expects Number, found String`.
 - **Several are equally close:** `No overload of count accepts (Number)`, listing the call's argument types, then its keywords, e.g. `No overload of foo accepts (String, z: Number)`.
 
-A function's type shows every overload: `typeof(count)` is `fn(Plan) -> Number | fn(Symbol | String) -> Aggregate`.
+A function's type shows every overload: `typeof(count)` is `fn(Plan) -> Integer | fn(Symbol | String) -> Aggregate`.
+
+### The Narrowest Overload
+
+Since `Number` accepts an `Integer`, overloads that take an `Integer` and a `Number` both match an integer. flt doesn't say which one runs, but `SimpleRuntime` runs the **narrowest** ([ADR 017](./adrs/017-integers.md)):
+
+- One type is at least as narrow as another if they're the same, if the other is `Any`, if it's `Integer` and the other is `Number`, or if it's a member of the other, a union. A union is at least as narrow as a type if each of its members is.
+- One overload is narrower than another if each of its types for the arguments the call passes is at least as narrow as the other's, and at least one is narrower.
+- If no overload is narrower than every other, `SimpleRuntime` runs the one declared first.
+
+With these overloads:
+
+```
+f(n: Number) -> String
+f(i: Integer) -> String
+show(x: Any) -> String
+show(x: Number) -> String
+g(a: Integer, b: Number) -> String
+g(a: Number, b: Integer) -> String
+```
+
+```flt
+f(1)           # runs f(i: Integer)
+f(1.0)         # runs f(n: Number), the only one that matches
+show(1.0)      # runs show(x: Number), though show(x: Any) was declared first
+g(1, 2)        # neither is narrower, so runs the first declared, g(a: Integer, b: Number)
+```
+
+The overload is chosen before an `Integer` is converted to a `Number`, so `f(1)` passes `f(i: Integer)` the `Integer` `1`.
 
 ## Current Semantics Note
 

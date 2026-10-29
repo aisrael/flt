@@ -57,17 +57,17 @@ mod tests {
         assert_eq!(
             Expr::function_call_with_keywords(
                 "f",
-                vec![Expr::literal_number(1)],
+                vec![Expr::literal_integer(1)],
                 vec![
-                    ("k", Expr::literal_number(2)),
-                    ("c d", Expr::literal_number(3))
+                    ("k", Expr::literal_integer(2)),
+                    ("c d", Expr::literal_integer(3))
                 ],
             )
             .to_string(),
             r#"f(1, k: 2, "c d": 3)"#
         );
         assert_eq!(
-            Expr::function_call_with_keywords("f", vec![], vec![("k", Expr::literal_number(2))])
+            Expr::function_call_with_keywords("f", vec![], vec![("k", Expr::literal_integer(2))])
                 .to_string(),
             "f(k: 2)"
         );

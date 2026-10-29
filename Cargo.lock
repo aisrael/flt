@@ -522,6 +522,7 @@ dependencies = [
  "indexmap",
  "log",
  "nom",
+ "num-integer",
  "regex",
  "rustyline",
  "serial_test",

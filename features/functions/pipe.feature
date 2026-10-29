@@ -8,12 +8,12 @@ Feature: Pipe operator
   Scenario: Piping into a bare function name
     Given the input '1 |> typeof'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: Piping into a call with no other arguments
     Given the input '1 |> typeof()'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: Chaining pipes
     Given the input '1 |> typeof |> typeof'
@@ -29,7 +29,7 @@ Feature: Pipe operator
   Scenario: Piping into typeof bound to another name
     Given the input 'let t = typeof; 1 |> t'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: The piped value counts as an argument
     Given the input '1 |> typeof(2)'
@@ -52,14 +52,14 @@ Feature: Pipe operator
     Then the evaluation should fail with "Undefined function: nope"
 
   Scenario: A pipe binds tighter than a comparison
-    Given the input '1 |> typeof == Number'
+    Given the input '1 |> typeof == Integer'
     When I evaluate the input
     Then the result should be "true"
 
   Scenario: Arithmetic binds tighter than a pipe
     Given the input '1 + 1 |> typeof'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: Arithmetic binds tighter than a comparison
     Given the input '1 + 2 == 3'
@@ -78,10 +78,10 @@ Feature: Pipe operator
       | identity(1)         | 1      |
       | 1 \|> identity      | 1      |
       | 1 \|> identity()    | 1      |
-      | typeof 1            | Number |
-      | typeof(1)           | Number |
-      | 1 \|> typeof        | Number |
-      | 1 \|> typeof()      | Number |
+      | typeof 1            | Integer |
+      | typeof(1)           | Integer |
+      | 1 \|> typeof        | Integer |
+      | 1 \|> typeof()      | Integer |
 
   Scenario Outline: A call next to a pipe needs parentheses
     Given the input '<input>'
@@ -102,7 +102,7 @@ Feature: Pipe operator
     Given the native function "identity(v: Any) -> Any"
     And the input 'identity(1) |> typeof'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: A parenthesized pipe as a call's argument
     Given the input 'typeof (1 |> typeof)'

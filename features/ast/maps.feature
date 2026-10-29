@@ -10,10 +10,10 @@ Feature: Maps
     When I parse the input
     Then the output should be a map with key "foo" and string value "bar"
 
-  Scenario: Parsing a map with a bare key and number value
+  Scenario: Parsing a map with a bare key and integer value
     Given the input "{ abc123: 456 }"
     When I parse the input
-    Then the output should be a map with key "abc123" and number value 456
+    Then the output should be a map with key "abc123" and integer value 456
 
   Scenario: Parsing a map with a quoted key
     Given the input '{ "spaced out": (1 + 1) }'

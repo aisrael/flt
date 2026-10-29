@@ -19,8 +19,8 @@ Feature: Native function arguments
   - `first` reads its variadic argument `values` with `get::<&Value>`.
 
   Background:
-    Given the native function "repeat(s: String, n: Number) -> String"
-    And the native function "repeat(s: String, n: Number = 2) -> String"
+    Given the native function "repeat(s: String, n: Integer) -> String"
+    And the native function "repeat(s: String, n: Integer = 2) -> String"
 
   Scenario Outline: An argument is read by name, positional or keyword
     Given the input '<input>'
@@ -47,19 +47,19 @@ Feature: Native function arguments
 
   # Plain scenarios, since an outline would read <Number> as a placeholder.
   Scenario: An Option argument reads a value
-    Given the native function "twice(n: Option<Number>) -> Option<Number>"
+    Given the native function "twice(n: Option<Integer>) -> Option<Integer>"
     And the input 'twice(21)'
     When I evaluate the input
     Then the result should be "42"
 
   Scenario: An Option argument reads None as None
-    Given the native function "twice(n: Option<Number>) -> Option<Number>"
+    Given the native function "twice(n: Option<Integer>) -> Option<Integer>"
     And the input 'twice(None)'
     When I evaluate the input
     Then the result should be "None"
 
   Scenario: A handler reads an array's elements
-    Given the native function "size(items: Array) -> Number"
+    Given the native function "size(items: Array) -> Integer"
     And the input 'size([1, :a, "b"])'
     When I evaluate the input
     Then the result should be "3"
@@ -74,7 +74,7 @@ Feature: Native function arguments
     Given the native function "shout(v: Any) -> String"
     And the input 'shout(1)'
     When I evaluate the input
-    Then the evaluation should fail with "Expected String, found Number"
+    Then the evaluation should fail with "Expected String, found Integer"
 
   Scenario: Reading an undeclared name is a handler error
     Given the native function "typo(name: String) -> String"

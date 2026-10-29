@@ -46,10 +46,10 @@ runtime.register_function(NativeFunction::new(
     identity,
 ))?;
 
-// count() returns how many times it has been called, and has type fn() -> Number
+// count() returns how many times it has been called, and has type fn() -> Integer
 let calls = Arc::new(AtomicU64::new(0));
 runtime.register_function(NativeFunction::new(
-    FunctionDefinition::new("count", Type::number(), vec![]),
+    FunctionDefinition::new("count", Type::integer(), vec![]),
     counter(Arc::clone(&calls)),
 ))?;
 ```
@@ -68,6 +68,8 @@ f(42)                 # 42
 
 Before a native function runs, the runtime checks the call against the function's signature, by the number of arguments and by type, including [native types](#native-types-and-values) ([Calls](./functions-and-pipe.md#calls), [ADR 013](./adrs/013-type-checked-function-calls.md)). A handler only ever sees arguments of the types it declares, and a function with several signatures runs its handler with the arguments of whichever one matched ([Overloads](#overloads)). After the handler returns, the runtime checks its result against the signature's return type: a handler for `-> Number` that returns a string raises `Function <name> returned String, expected Number`. Declare `Any` for an argument or result the function checks itself.
 
+`Number` accepts an `Integer`, and converts it to a `Number` ([ADR 017](./adrs/017-integers.md)). So a handler always gets a `Value::Number` for an argument declared `Number`, even when the call passed `1`. The same goes for a keyword declared `Number`, including its default when the call leaves it out. A handler declared `-> Number` may return a `Value::Integer`, which is converted the same way, so it prints as `1.0`. Declare `Integer` for an argument or result that must be a whole number.
+
 ### Reading Arguments
 
 A handler gets the call's arguments as `&Arguments`, and reads each one by the name its signature gives it, converted to a Rust type ([ADR 014](./adrs/014-native-function-arguments.md)):
@@ -80,12 +82,12 @@ fn pad(args: &Arguments) -> Result<Value, Error> {
     Ok(Value::String(format!("{s:>width$}")))
 }
 
-// pad has type fn(String, Number) -> String
+// pad has type fn(String, Integer) -> String
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "pad",
         Type::string(),
-        vec![Argument::string("s"), Argument::number("width")],
+        vec![Argument::string("s"), Argument::integer("width")],
     ),
     pad,
 ))?;
@@ -100,7 +102,8 @@ pad("ab", 4)          # "  ab"
   - `String` or `&str`, for a `String`;
   - `bool`, for a `Boolean`;
   - `&Map`, for a `Map`, and `&[Value]`, for an `Array`'s elements;
-  - `i32`, `i64`, `u32`, `u64`, `usize` or `f64`, for a `Number` ([as `try_from` converts it](#defining-and-registering-a-native-type));
+  - `i32`, `i64`, `u32`, `u64` or `usize`, for an `Integer` or a whole `Number`, and `f64`, for either ([as `try_from` converts it](#defining-and-registering-a-native-type));
+  - `BigInt`, for an `Integer` or a whole `Number`, and `BigDecimal`, for a `Number` or an `Integer`. flt re-exports both, as `flt::BigInt` and `flt::BigDecimal`;
   - `Option<T>` of any of these, for an argument declared `Option<…>`, which reads `None` as `None`.
 
   A host can implement the `FromValue` trait for types of its own.
@@ -209,11 +212,11 @@ fn count_args(args: &Arguments) -> Result<Value, Error> {
     Ok(Value::from(args.rest().len()))
 }
 
-// count_args has type fn(*Any) -> Number
+// count_args has type fn(*Any) -> Integer
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "count_args",
-        Type::number(),
+        Type::integer(),
         vec![Argument::variadic("args", Type::any())],
     ),
     count_args,
@@ -265,10 +268,10 @@ describe(:a)                   # "text"
 describe(true)                 # error: No overload of describe accepts (Boolean)
 ```
 
-- **The overload is picked by arity, longest first, then by type and keywords**, as described in [Overloads](./functions-and-pipe.md#overloads). The order the overloads are declared in doesn't matter, except that if several of the same arity match a call, `SimpleRuntime` runs the one declared first.
+- **The overload is picked by arity, longest first, then by type and keywords**, as described in [Overloads](./functions-and-pipe.md#overloads). The order the overloads are declared in doesn't matter, except that if several of the same arity match a call and none is [narrowest](./functions-and-pipe.md#the-narrowest-overload), `SimpleRuntime` runs the one declared first.
 - **A call that doesn't match gets the closest overload's error**, if one is closest, as described in [Overloads](./functions-and-pipe.md#overloads). `describe(true)` fails at the first argument of both, so neither is closer.
 - **Each overload has its own return type**, and the handler's result is checked against the one that matched.
-- **Use a union when the forms do the same thing**, as in `column: Symbol | String`, and overloads when they do different things or return different types. `count(plan: Plan) -> Number`, which runs a query, and `count(column: Symbol | String) -> Aggregate`, which builds an aggregate, are two overloads.
+- **Use a union when the forms do the same thing**, as in `column: Symbol | String`, and overloads when they do different things or return different types. `count(plan: Plan) -> Integer`, which runs a query, and `count(column: Symbol | String) -> Aggregate`, which builds an aggregate, are two overloads.
 - **Give the same thing the same name in every overload**, and the handler can read it without knowing which overload matched. `args.value` tells overloads apart by their names, as `describe` does.
 
 An argument can be positional in one overload and a keyword in another, under the same name. flt has no defaults for positional arguments, so this is how an argument gets a default:
@@ -281,15 +284,15 @@ fn repeat(args: &Arguments) -> Result<Value, Error> {
     Ok(Value::String(s.repeat(n)))
 }
 
-// repeat has type fn(String, Number) -> String | fn(String, n: Number) -> String
+// repeat has type fn(String, Integer) -> String | fn(String, n: Integer) -> String
 runtime.register_function(NativeFunction::new(
     FunctionDefinition::new(
         "repeat",
         Type::string(),
-        vec![Argument::string("s"), Argument::number("n")],
+        vec![Argument::string("s"), Argument::integer("n")],
     )
     .add_overload(Type::string(), vec![Argument::string("s")])
-    .keyword("n", Type::number(), Value::from(2u64)),
+    .keyword("n", Type::integer(), Value::from(2u64)),
     repeat,
 ))?;
 ```
@@ -368,21 +371,21 @@ fn days_between(args: &Arguments) -> Result<Value, Error> {
 fn install(runtime: &mut impl Runtime) -> Result<(), Error> {
     runtime.register_native_type::<Date>()?;
 
-    // date has type fn(Number, Number, Number) -> Date
+    // date has type fn(Integer, Integer, Integer) -> Date
     runtime.register_function(NativeFunction::new(
         FunctionDefinition::new(
             "date",
             Type::native::<Date>(),
-            vec![Argument::number("yyyy"), Argument::number("mm"), Argument::number("dd")],
+            vec![Argument::integer("yyyy"), Argument::integer("mm"), Argument::integer("dd")],
         ),
         date,
     ))?;
 
-    // days_between has type fn(Date, Date) -> Number
+    // days_between has type fn(Date, Date) -> Integer
     runtime.register_function(NativeFunction::new(
         FunctionDefinition::new(
             "days_between",
-            Type::number(),
+            Type::integer(),
             vec![
                 Argument::new("from", Type::native::<Date>()),
                 Argument::new("to", Type::native::<Date>()),
@@ -402,8 +405,8 @@ install(&mut runtime)?;
 - `value.get_native::<Date>()` reads one back as an `Option`, for a handler that accepts more than one kind of value, e.g. one declared with a union type.
 - `Type::native::<Date>()` names the native type in a signature.
 - `runtime.register_native_type::<Date>()` registers the type. Through a `&mut dyn Runtime`, call `runtime.register_native_type_info(NativeTypeInfo::of::<Date>())` instead, since the generic method can't be called there.
-- `Value::from` turns a Rust `u64`, `i64` or `usize` into a `Number`.
-- `args.get::<i32>(name)` reads a `Number` as a Rust number, as `i32::try_from(&value)` does for a `&Value`. Both work for `i32`, `i64`, `u32`, `u64`, `usize` and `f64`. A value that isn't a number raises `Expected Number, found <type>`, and a number that doesn't fit the type raises `Cannot convert <number> to <type>`, e.g. `Cannot convert 2.5 to u32`. Conversion to `f64` accepts any number, and may lose precision.
+- `Value::from` turns a Rust `u64`, `i64`, `usize` or a `BigInt` into an `Integer`, and a `BigDecimal` into a `Number`.
+- `args.get::<i32>(name)` reads an `Integer`, or a whole `Number`, as a Rust integer, as `i32::try_from(&value)` does for a `&Value`. Both work for `i32`, `i64`, `u32`, `u64`, `usize` and `f64`. A value that isn't a number raises `Expected Number, found <type>`, and a number that doesn't fit the type raises `Cannot convert <number> to <type>`, e.g. `Cannot convert -1 to u32` or `Cannot convert 2.5 to u32`. Conversion to `f64` accepts either kind of number, and may lose precision.
 
 In `SimpleRuntime`, `register_native_type` fails with `Cannot register native type <name>: …` if the type's name is a built-in type name, a function's name, a variable's name or another native type's name. A value of a native type that was never registered still works, but its type's name doesn't resolve in flt source.
 
@@ -417,10 +420,10 @@ new_year                                   # 2026-01-01
 typeof(new_year)                           # Date
 typeof(new_year) == Date                   # true
 typeof(Date)                               # Type
-typeof(days_between)                       # fn(Date, Date) -> Number
+typeof(days_between)                       # fn(Date, Date) -> Integer
 new_year |> days_between(date(2026, 10, 25))   # 297
 new_year == date(2026, 1, 1)               # true: the host's PartialEq compares the dates
-days_between(1, new_year)                  # error: Argument from of days_between expects Date, found Number
+days_between(1, new_year)                  # error: Argument from of days_between expects Date, found Integer
 date(2026, -1, 1)                          # error: Cannot convert -1 to u32
 Date(2026, 1, 1)                           # error: Date is not a function
 new_year.year                              # error: Invalid Operand Type
@@ -431,7 +434,7 @@ let Date = 1                               # error: Cannot bind Date: it's a nat
 - **They print as the host displays them**, with nothing added: a `Date` prints as `2026-01-01`.
 - **They compare as the host defines.** `==` and `!=` use the host's `PartialEq`, so two `Date`s for the same day are equal. Values of different native types are never equal, and a native value never equals any other kind of value. Native values can't be ordered: `<`, `>`, `<=` and `>=` raise `Invalid Operand Type`.
 - **A native type's name evaluates to that type**, like a [built-in type's name](./types.md#types-as-values). It can't be bound: `let Date = 1` raises `Cannot bind Date: it's a native type`, and `/unset Date` in the REPL reports the same reason.
-- **Function types can name native types**, as in `fn(Date, Date) -> Number`, and the runtime checks them like any type: `days_between(1, new_year)` raises `Argument from of days_between expects Date, found Number`. Two native types with the same name are still different types.
+- **Function types can name native types**, as in `fn(Date, Date) -> Integer`, and the runtime checks them like any type: `days_between(1, new_year)` raises `Argument from of days_between expects Date, found Integer`. Two native types with the same name are still different types.
 - **`<>` treats a native value as the empty string**, as it does for function values.
 
 ## Host Errors

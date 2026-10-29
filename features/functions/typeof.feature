@@ -18,7 +18,7 @@ Feature: typeof
   Scenario: Calling typeof through another name
     Given the input 'let t = typeof; t(42)'
     When I evaluate the input
-    Then the result should be "Number"
+    Then the result should be "Integer"
 
   Scenario: typeof equals itself
     Given the input 'let t = typeof; t == typeof'
