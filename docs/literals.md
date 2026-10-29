@@ -2,7 +2,7 @@
 
 ### Numbers
 
-A numeric literal is an optional `+` or `-`, digits, then optionally a `.` and more digits. `_` can separate groups of digits, e.g. `1_000`. Both kinds are arbitrary-precision ([ADR 017](./adrs/017-integers.md)):
+A numeric literal is an optional `+` or `-`, digits, then optionally a `.` and at least one more digit. `_` can separate groups of digits, e.g. `1_000`. Both kinds are arbitrary-precision ([ADR 017](./adrs/017-integers.md)):
 
 - **Without a `.`, it's an `Integer`**, a whole number:
 
@@ -13,16 +13,15 @@ A numeric literal is an optional `+` or `-`, digits, then optionally a `.` and m
   1_000
   ```
 
-- **With a `.`, it's a `Number`**, a decimal, even with no digits after the `.`:
+- **With a `.`, it's a `Number`**, a decimal:
 
   ```flt
   3.14
   -0.5
   42.0
-  42.
   ```
 
-A `Number` with no digits after the `.` prints with `.0`, so `42.` prints `42.0`. See [Integers and Numbers](./types.md#integers-and-numbers).
+A `.` needs a digit after it, so `42.` is a parse error: write `42.0`. A whole `Number` prints with `.0`, e.g. `4.0 / 2` prints `2.0`. See [Integers and Numbers](./types.md#integers-and-numbers).
 
 ### Strings
 

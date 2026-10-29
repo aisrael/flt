@@ -29,7 +29,7 @@ flt has two numeric types ([ADR 017](./adrs/017-integers.md)). An `Integer` is a
 ```flt
 typeof(1)          # Integer
 typeof(1.5)        # Number
-typeof(42.)        # Number
+typeof(42.0)       # Number
 ```
 
 Arithmetic on two integers gives an `Integer`, and on a `Number` and anything else a `Number`. That includes `/`, which floors on integers, so `7 / 2` is `3`. Write `7.0 / 2` to get `3.5`. See [Integer and Number arithmetic](./operators.md#integer-and-number-arithmetic).

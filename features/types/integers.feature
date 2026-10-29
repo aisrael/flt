@@ -21,7 +21,6 @@ Feature: Integers
       | typeof(1.5)    | Number  |
       | typeof(-0.5)   | Number  |
       | typeof(42.0)   | Number  |
-      | typeof(42.)    | Number  |
 
   Scenario Outline: Integers and numbers print as they're written, with `.0` on a whole number
     Given the input '<input>'
@@ -35,7 +34,6 @@ Feature: Integers
       | 1_000          | 1000    |
       | 3.14           | 3.14    |
       | 42.0           | 42.0    |
-      | 42.            | 42.0    |
       | -0.0           | 0.0     |
       | 2.50           | 2.50    |
 

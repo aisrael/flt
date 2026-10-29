@@ -43,8 +43,8 @@ take an `int` (PEP 484).
 `Integer` is a built-in type of whole numbers, with arbitrary precision. Like every built-in type,
 its name evaluates to the type, and can't be bound ([ADR 006](006-no-shadowing.md)).
 
-A numeric literal without a `.` is an `Integer`. A numeric literal with a `.` is a `Number`, even
-if it has no digits after the `.`:
+A numeric literal without a `.` is an `Integer`. A numeric literal with a `.` is a `Number`, and
+needs at least one digit after the `.`:
 
 ```flt
 typeof(1)          # Integer
@@ -52,10 +52,11 @@ typeof(-7)         # Integer
 typeof(1_000)      # Integer
 typeof(1.5)        # Number
 typeof(42.0)       # Number
-typeof(42.)        # Number
+42.                # a parse error
 ```
 
-Before this ADR, `42.` and `42` were the same value.
+Before this ADR, `42.` was the same value as `42`. Now it's no longer valid, so every `Number`
+literal is written the way it prints, e.g. `42.0`.
 
 ### 2. Integer arithmetic results in an integer
 
@@ -177,7 +178,7 @@ looks like an `Integer`, and reads back as a `Number`:
 
 ```flt
 4.0 / 2            # 2.0
-42.                # 42.0
+42.0               # 42.0
 -0.0               # 0.0
 1 + 2.0            # 3.0
 2.50 * 2           # 5.00
@@ -289,7 +290,7 @@ In the Rust API:
     `false`.
   - `7 / 2` is `3`, not `3.5`. Source that divides integer literals and expects a fraction has to
     make an operand a `Number`, e.g. `7.0 / 2`.
-  - `42.` is a `Number`, and prints `42.0`.
+  - `42.` is a parse error. Write `42.0` instead.
   - A whole `Number` prints with `.0`, e.g. `4.0 / 2` prints `2.0`.
   - A value bound to a variable declared `Number`, passed to a `Number` parameter, or returned from
     a `-> Number` function is a `Number`, so an integer prints with `.0`: `let n: Number = 1` then

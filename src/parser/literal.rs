@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn test_parse_number_literal() {
         assert_eq!(parse_literal("3.14"), Ok(("", Literal::Number(n("3.14")))));
-        assert_eq!(parse_literal("42."), Ok(("", Literal::Number(n("42")))));
+        assert_eq!(parse_literal("42.0"), Ok(("", Literal::Number(n("42.0")))));
     }
 
     #[test]

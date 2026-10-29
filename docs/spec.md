@@ -41,7 +41,7 @@ key        = ident | string ;
 | Kind      | Examples                                   | Notes                                              |
 | --------- | ------------------------------------------ | -------------------------------------------------- |
 | Integer   | `42` `-7` `+7` `1_000`                     | Arbitrary-precision whole number; no `.`           |
-| Number    | `3.14` `-0.5` `42.0` `42.`                 | Arbitrary-precision decimal; has a `.`             |
+| Number    | `3.14` `-0.5` `42.0`                       | Arbitrary-precision decimal; digits after a `.`    |
 | String    | `"hi"` `"say \"hi\""` `"Answer: {1 + 2}"` | `{expr}` interpolates; `\{` is a literal `{`       |
 | Boolean   | `true` `false`                             |                                                    |
 | None      | `None`                                     | No value; also its own type                        |

@@ -25,8 +25,17 @@ Feature: AST
       | 3.14    | 3.14  |
       | 0.5     | 0.5   |
       | 42.0    | 42.0  |
-      | 42.     | 42    |
       | 1_000.5 | 1000.5 |
+
+  Scenario Outline: A `.` needs a digit after it
+    Given the input "<input>"
+    When I parse the input
+    Then parsing should fail
+
+    Examples:
+      | input |
+      | 42.   |
+      | 1_000. |
 
   Scenario: Parsing a string literal
     Given the input '"hello"'

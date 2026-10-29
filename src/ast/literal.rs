@@ -20,7 +20,7 @@ use super::number::Numeric;
 pub enum Literal {
     /// A whole number, written without a `.`, e.g. `42`
     Integer(BigInt),
-    /// A decimal, written with a `.`, e.g. `3.14` or `42.`
+    /// A decimal, written with digits after a `.`, e.g. `3.14` or `42.0`
     Number(Numeric),
     String(String),
     Boolean(bool),

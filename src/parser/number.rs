@@ -3,7 +3,6 @@ use std::str::FromStr;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::char;
-use nom::character::complete::digit0;
 use nom::character::complete::digit1;
 use nom::combinator::opt;
 use nom::combinator::recognize;
@@ -19,12 +18,12 @@ use crate::ast::Numeric;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 
-/// Parses a numeric literal: optional `+` or `-`, digits (with optional `_`), then optionally `.` followed by any number of decimal digits (with optional `_`). Without a `.`, it's an [`Literal::Integer`], and with one, a [`Literal::Number`], even if no digits follow the `.`.
+/// Parses a numeric literal: optional `+` or `-`, digits (with optional `_`), then optionally `.` followed by at least one decimal digit (with optional `_`). Without a `.`, it's a [`Literal::Integer`], and with one, a [`Literal::Number`]. A `.` with no digit after it isn't part of the literal.
 pub fn parse_number(input: &str) -> IResult<&str, Literal> {
     let (input, (sign, integer, fractional)) = (
         opt(alt((tag("-"), tag("+")))),
         digits_with_underscores,
-        opt(preceded(char('.'), fractional_digits)),
+        opt(preceded(char('.'), digits_with_underscores)),
     )
         .parse(input)?;
 
@@ -54,11 +53,6 @@ pub fn parse_number(input: &str) -> IResult<&str, Literal> {
 /// Digits with optional `_` separators between digit groups (e.g. `1_000`, `14_15`).
 fn digits_with_underscores(input: &str) -> IResult<&str, &str> {
     recognize(pair(digit1, many0(preceded(char('_'), digit1)))).parse(input)
-}
-
-/// Fraction after `.`: either empty (`digit0`) or digits with optional `_` (e.g. `14_15`).
-fn fractional_digits(input: &str) -> IResult<&str, &str> {
-    alt((digits_with_underscores, digit0)).parse(input)
 }
 
 #[cfg(test)]
@@ -118,10 +112,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_decimal_with_zero_fractional_digits_is_a_number() {
-        assert_eq!(parse_number("42."), Ok(("", n("42"))));
-        assert_eq!(parse_number("+3."), Ok(("", n("3"))));
-        assert_eq!(parse_number("-7."), Ok(("", n("-7"))));
+    fn test_parse_dot_without_fractional_digits_leaves_the_dot() {
+        assert_eq!(parse_number("42."), Ok((".", i("42"))));
+        assert_eq!(parse_number("+3."), Ok((".", i("3"))));
+        assert_eq!(parse_number("-7.x"), Ok((".x", i("-7"))));
     }
 
     #[test]
