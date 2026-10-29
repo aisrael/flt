@@ -1,7 +1,7 @@
 # ADR 016: Typed `let` Bindings
 
 - **Date:** 2026-10-28
-- **Status:** Proposed
+- **Status:** Accepted
 
 ## Context
 
