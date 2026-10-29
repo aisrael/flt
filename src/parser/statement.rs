@@ -3,6 +3,8 @@ use nom::bytes::complete::tag;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::verify;
+use nom::sequence::preceded;
+use nom::sequence::terminated;
 use nom::Parser;
 
 use crate::ast::Identifier;
@@ -15,6 +17,7 @@ use super::comment::multispace0_or_comment;
 use super::expr::parse_expr;
 use super::identifier::parse_identifier;
 use super::keyword::parse_keyword;
+use super::type_expr::parse_type;
 
 /// Parses the name in a binding: an identifier that isn't a reserved keyword, so `let if = 1`
 /// doesn't parse.
@@ -25,9 +28,8 @@ fn parse_binding_name(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-/// Parses a let/assignment statement: optional `let` keyword, then identifier, `=`, expression,
-/// with optional whitespace (or comments) between each part.
-/// So both `let x = 1` and `x = 1` are valid and equivalent.
+/// Parses a statement: a declaration, `let x = 1` or `let x: Number = 1`; an assignment,
+/// `x = 1`; or an expression. Whitespace (or comments) may separate each part.
 /// A statement may be followed by an optional `;`. If it ends on a newline,
 /// the `;` is not required. Two statements on the same line require `;` after the first.
 pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
@@ -39,11 +41,19 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
                 multispace0_or_comment,
                 parse_binding_name,
                 multispace0_or_comment,
+                opt(terminated(
+                    preceded((tag(":"), multispace0_or_comment), parse_type),
+                    multispace0_or_comment,
+                )),
                 tag("="),
                 multispace0_or_comment,
                 parse_expr,
             ),
-            |(_, _, name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
+            |(_, _, name, _, r#type, _, _, expr)| Statement::Let {
+                name: Identifier(name.to_string()),
+                r#type,
+                expr,
+            },
         ),
         map(
             (
@@ -53,7 +63,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
                 multispace0_or_comment,
                 parse_expr,
             ),
-            |(name, _, _, _, expr)| Statement::Let(Identifier(name.to_string()), expr),
+            |(name, _, _, _, expr)| Statement::assign(name, expr),
         ),
     ));
 
@@ -100,8 +110,8 @@ pub fn parse_statements(source: &str) -> Result<Vec<Statement>, Error> {
 #[cfg(test)]
 mod tests {
     use crate::ast::Expr;
-    use crate::ast::Identifier;
     use crate::ast::Statement;
+    use crate::ast::TypeExpr;
 
     use strum::IntoEnumIterator;
 
@@ -111,20 +121,14 @@ mod tests {
     fn test_parse_let_statement() {
         let (rest, stmt) = parse_statement("let x = 1").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(
-            stmt,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
-        );
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
     }
 
     #[test]
     fn test_parse_let_statement_no_spaces() {
         let (rest, stmt) = parse_statement("let x=1").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(
-            stmt,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
-        );
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
     }
 
     #[test]
@@ -132,8 +136,8 @@ mod tests {
         let (rest, stmt) = parse_statement("let foo = 2 + 3").unwrap();
         assert!(rest.is_empty());
         match &stmt {
-            Statement::Let(ident, expr) => {
-                assert!(*ident == "foo");
+            Statement::Let { name, expr, .. } => {
+                assert!(*name == "foo");
                 assert!(matches!(expr, Expr::BinaryExpr(_, _, _)));
             }
             _ => panic!("expected let statement"),
@@ -149,45 +153,64 @@ mod tests {
     fn test_parse_assignment_without_let() {
         let (rest, stmt) = parse_statement("x = 1").unwrap();
         assert!(rest.is_empty());
+        assert_eq!(stmt, Statement::assign("x", Expr::literal_number(1)));
+    }
+
+    #[test]
+    fn test_parse_typed_let_statement() {
+        let expected =
+            Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_number(1));
+        for input in ["let x: Number = 1", "let x:Number=1", "let x : Number = 1"] {
+            assert_eq!(
+                parse_statement(input),
+                Ok(("", expected.clone())),
+                "{input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_typed_let_statement_with_union() {
+        let (rest, stmt) = parse_statement("let x: Number | None = None").unwrap();
+        assert!(rest.is_empty());
         assert_eq!(
             stmt,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
+            Statement::declare_typed(
+                "x",
+                TypeExpr::Union(vec![TypeExpr::name("Number"), TypeExpr::name("None")]),
+                Expr::Literal(crate::ast::Literal::None)
+            )
         );
+    }
+
+    #[test]
+    fn test_parse_type_only_after_let() {
+        assert!(!parses_as_binding("x: Number = 1"));
+        assert!(!parses_as_binding("let x: Number"));
+        assert!(!parses_as_binding("let x: = 1"));
     }
 
     #[test]
     fn test_parse_let_statement_optional_semicolon() {
         let (rest, stmt) = parse_statement("let x = 1;").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(
-            stmt,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
-        );
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
     }
 
     #[test]
     fn test_parse_two_statements_same_line() {
         let (rest, stmt1) = parse_statement("let x = 1; let y = 2").unwrap();
-        assert_eq!(
-            stmt1,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
-        );
+        assert_eq!(stmt1, Statement::declare("x", Expr::literal_number(1)));
         let (rest, stmt2) = parse_statement(rest.trim()).unwrap();
         assert!(rest.is_empty());
-        assert_eq!(
-            stmt2,
-            Statement::Let(Identifier("y".to_string()), Expr::literal_number(2))
-        );
+        assert_eq!(stmt2, Statement::declare("y", Expr::literal_number(2)));
     }
 
     #[test]
     fn test_parse_let_statement_newline_no_semicolon_required() {
         let (rest, stmt) = parse_statement("let x = 1\n").unwrap();
         assert!(rest.is_empty());
-        assert_eq!(
-            stmt,
-            Statement::Let(Identifier("x".to_string()), Expr::literal_number(1))
-        );
+        assert_eq!(stmt, Statement::declare("x", Expr::literal_number(1)));
     }
 
     #[test]
@@ -213,7 +236,10 @@ mod tests {
 
     /// Whether `input` parses completely as a binding.
     fn parses_as_binding(input: &str) -> bool {
-        matches!(parse_statement(input), Ok((rest, Statement::Let(_, _))) if rest.trim().is_empty())
+        matches!(
+            parse_statement(input),
+            Ok((rest, Statement::Let { .. } | Statement::Assign(_, _))) if rest.trim().is_empty()
+        )
     }
 
     #[test]
@@ -231,7 +257,7 @@ mod tests {
     }
 
     fn let_x(n: i64) -> Statement {
-        Statement::Let(Identifier("x".to_string()), Expr::literal_number(n))
+        Statement::declare("x", Expr::literal_number(n))
     }
 
     #[test]
@@ -280,10 +306,7 @@ mod tests {
             let input = format!("let {name} = 1");
             let (rest, stmt) = parse_statement(&input).unwrap();
             assert!(rest.is_empty());
-            assert_eq!(
-                stmt,
-                Statement::Let(Identifier(name.to_string()), Expr::literal_number(1))
-            );
+            assert_eq!(stmt, Statement::declare(name, Expr::literal_number(1)));
             assert!(parses_as_binding(&format!("{name} = 1")));
         }
     }

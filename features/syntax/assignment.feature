@@ -1,14 +1,16 @@
 Feature: Assignment
 
-  Scenario: Assigning a value to a variable
+  Scenario: Declaring a variable with let
     Given the input "let x = 1;"
     When I parse the input
-    Then the output should be a `Statement::Let(Identifier("x"), Expr::Literal(Literal::Number(1)))`
+    Then the statement should be a declaration of "x" without a type
+    And the statement should print as "let x = 1"
 
   Scenario: Assigning a value without a let keyword
     Given the input "x = 1;"
     When I parse the input
-    Then the output should be a `Statement::Let(Identifier("x"), Expr::Literal(Literal::Number(1)))`
+    Then the statement should be an assignment to "x"
+    And the statement should print as "x = 1"
 
   Scenario Outline: A reserved keyword can't be a binding name
     Given the input "<input>"
@@ -26,4 +28,4 @@ Feature: Assignment
   Scenario: A name that starts with a keyword can be bound
     Given the input "iffy = 1"
     When I parse the input
-    Then the output should be a `Statement::Let(Identifier("iffy"), Expr::Literal(Literal::Number(1)))`
+    Then the statement should be an assignment to "iffy"

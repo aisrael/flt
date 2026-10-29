@@ -105,6 +105,16 @@ pub enum RuntimeError {
     },
     #[error("Cannot bind {name}: it's {reason}")]
     CannotBind { name: String, reason: ProtectedName },
+    /// A variable declared with a type is bound to a value of another type
+    #[error("Variable {name} expects {expected}, found {found}")]
+    VariableTypeMismatch {
+        name: String,
+        expected: String,
+        found: String,
+    },
+    /// A type in a declaration names something that isn't a type
+    #[error("Unknown type: {0}")]
+    UnknownType(String),
     /// A host registered a function or a native type (`kind`) under a name that's in use
     #[error("Cannot register {kind} {name}: it's {reason}")]
     CannotRegister {

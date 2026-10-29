@@ -19,6 +19,7 @@ use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Literal;
 use crate::ast::Statement;
+use crate::ast::TypeExpr;
 use crate::ast::UnaryOp;
 use crate::errors::ProtectedName;
 use crate::errors::RuntimeError;
@@ -300,13 +301,15 @@ pub trait Runtime {
     /// A registered native type, by name.
     fn get_native_type(&self, name: &str) -> Option<NativeTypeInfo>;
 
-    /// Binds the global variable `name` to `value`, unless the runtime refuses the name.
+    /// Assigns `value` to the global variable `name`, as `name = value` does, unless the runtime
+    /// refuses the name, or the variable was declared with a type that `value` isn't of.
     fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error>;
 
     /// The value of the global variable `name`.
     fn get_variable(&self, name: &str) -> Option<Value>;
 
-    /// Unbinds the global variable `name`, returning its value if it was bound.
+    /// Unbinds the global variable `name`, and removes its declared type, returning its value if
+    /// it was bound.
     fn remove_variable(&mut self, name: &str) -> Option<Value>;
 
     /// Checks that `name` can be bound as a variable, returning the error binding it would
@@ -374,9 +377,20 @@ impl Runtime for SimpleRuntime {
     fn eval_statement(&mut self, statement: &Statement) -> Result<Value, Error> {
         match statement {
             Statement::Expr(expr) => self.eval_expr(expr),
-            // The name is checked first, so `let Number = f()` doesn't call `f`.
-            Statement::Let(ident, expr) => {
-                let name = ident.0.as_str();
+            // The name and the type are checked first, so neither `let Number = f()` nor
+            // `let x: Foo = f()` calls `f`.
+            Statement::Let { name, r#type, expr } => {
+                self.global_scope.check_bindable(name)?;
+                let r#type = r#type
+                    .as_ref()
+                    .map(|r#type| self.resolve_type(r#type))
+                    .transpose()?;
+                let value = self.eval_expr(expr)?;
+                self.global_scope
+                    .declare_variable(name, r#type, value.clone())?;
+                Ok(value)
+            }
+            Statement::Assign(name, expr) => {
                 self.global_scope.check_bindable(name)?;
                 let value = self.eval_expr(expr)?;
                 self.global_scope.set_variable(name, value.clone())?;
@@ -451,6 +465,24 @@ impl SimpleRuntime {
                 self.get_native_type(name)
                     .map(|info| Value::Type(Type::Native(info)))
             })
+    }
+
+    /// Resolves a type written in a declaration: a built-in type name, including `Any`, a
+    /// native type's name, or a union of types. Any other name raises `Unknown type: <name>`.
+    fn resolve_type(&self, r#type: &TypeExpr) -> Result<Type, Error> {
+        match r#type {
+            TypeExpr::Name(name) if name == "Any" => Ok(Type::any()),
+            TypeExpr::Name(name) => Type::builtin_named(name)
+                .or_else(|| self.get_native_type(name).map(Type::Native))
+                .ok_or_else(|| Error::RuntimeError(RuntimeError::UnknownType(name.clone()))),
+            TypeExpr::Union(members) => {
+                let mut union = Type::Union(vec![]);
+                for member in members {
+                    union = Type::union(union, self.resolve_type(member)?);
+                }
+                Ok(union)
+            }
+        }
     }
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
@@ -691,6 +723,19 @@ fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Err
     })
 }
 
+/// The error for binding `value` to the variable `name`, declared with `type`, if `type` doesn't
+/// accept it.
+fn check_variable_type(name: &str, r#type: &Type, value: &Value) -> Result<(), Error> {
+    if r#type.accepts(value) {
+        return Ok(());
+    }
+    Err(Error::RuntimeError(RuntimeError::VariableTypeMismatch {
+        name: name.to_string(),
+        expected: r#type.to_string(),
+        found: value.type_of()?.to_string(),
+    }))
+}
+
 /// The global scope is the scope that is available to all other scopes.
 ///
 /// A name in it is a variable, a function, a built-in type, or a native type registered with
@@ -700,6 +745,8 @@ fn cannot_register(kind: &'static str, name: &str, reason: ProtectedName) -> Err
 pub(crate) struct GlobalScope {
     functions: HashMap<String, Arc<NativeFunction>>,
     variables: HashMap<String, Value>,
+    /// The types of variables declared with one, e.g. `let n: Number = 1`
+    declared_types: HashMap<String, Type>,
     /// The names of native types registered with the runtime, which hold the types themselves
     native_type_names: HashSet<String>,
 }
@@ -761,16 +808,46 @@ impl GlobalScope {
         }))
     }
 
-    /// Set a variable in the global scope by name, unless the name is a built-in type name, a
-    /// function's name or a native type's name.
+    /// Assign a variable in the global scope by name, as `name = value` does, unless the name is
+    /// a built-in type name, a function's name or a native type's name, or the variable was
+    /// declared with a type that doesn't accept `value`.
     pub(crate) fn set_variable(&mut self, name: &str, value: Value) -> Result<(), Error> {
         self.check_bindable(name)?;
+        if let Some(r#type) = self.declared_types.get(name) {
+            check_variable_type(name, r#type, &value)?;
+        }
         self.variables.insert(name.to_string(), value);
         Ok(())
     }
 
-    /// Remove a variable from the global scope by name, returning its previous value if bound.
+    /// Declare a variable in the global scope, as `let name = value` or
+    /// `let name: type = value` does, replacing any earlier declaration and its type, unless the
+    /// name is a built-in type name, a function's name or a native type's name, or `type`
+    /// doesn't accept `value`.
+    pub(crate) fn declare_variable(
+        &mut self,
+        name: &str,
+        r#type: Option<Type>,
+        value: Value,
+    ) -> Result<(), Error> {
+        self.check_bindable(name)?;
+        match r#type {
+            Some(r#type) => {
+                check_variable_type(name, &r#type, &value)?;
+                self.declared_types.insert(name.to_string(), r#type);
+            }
+            None => {
+                self.declared_types.remove(name);
+            }
+        }
+        self.variables.insert(name.to_string(), value);
+        Ok(())
+    }
+
+    /// Remove a variable and its declared type from the global scope by name, returning its
+    /// previous value if bound.
     pub(crate) fn remove_variable(&mut self, name: &str) -> Option<Value> {
+        self.declared_types.remove(name);
         self.variables.remove(name)
     }
 
@@ -789,7 +866,6 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::ast::Identifier;
     use crate::errors::ArgumentCount;
     use crate::parser::parse_statement;
     use crate::runtime::native::fixtures::Meters;
@@ -1087,10 +1163,7 @@ mod tests {
         for name in [
             "None", "Boolean", "Number", "String", "Symbol", "Array", "Map", "Type", "Any",
         ] {
-            let result = runtime.eval_statement(&Statement::Let(
-                Identifier(name.to_string()),
-                Expr::literal_number(5),
-            ));
+            let result = runtime.eval_statement(&Statement::declare(name, Expr::literal_number(5)));
             assert_cannot_bind(result, name, ProtectedName::BuiltinType);
         }
         // The refused binding leaves the type in place
@@ -1311,7 +1384,7 @@ mod tests {
     }
 
     fn let_statement(name: &str, expr: Expr) -> Statement {
-        Statement::Let(Identifier(name.to_string()), expr)
+        Statement::declare(name, expr)
     }
 
     fn call(name: &str, args: Vec<Expr>) -> Statement {
@@ -2158,6 +2231,133 @@ mod tests {
         // A function isn't a variable, so it can't be removed as one
         assert_eq!(runtime.remove_variable("typeof"), None);
         assert!(runtime.get_function("typeof").is_some());
+    }
+
+    /// Asserts that `result` is `Variable <name> expects <expected>, found <found>`
+    fn assert_variable_type_mismatch(
+        result: Result<Value, Error>,
+        name: &str,
+        expected: &str,
+        found: &str,
+    ) {
+        match result {
+            Err(Error::RuntimeError(RuntimeError::VariableTypeMismatch {
+                name: n,
+                expected: e,
+                found: f,
+            })) => assert_eq!(
+                (n.as_str(), e.as_str(), f.as_str()),
+                (name, expected, found)
+            ),
+            other => panic!("expected VariableTypeMismatch for {name}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_typed_let_binds_a_value_of_its_type() {
+        let mut runtime = SimpleRuntime::default();
+        assert_eq!(runtime.eval("let n: Number = 1").unwrap(), number(1));
+        assert_eq!(runtime.get_variable("n"), Some(number(1)));
+        assert_eq!(
+            runtime.eval("let x: Number | None = None").unwrap(),
+            Value::None
+        );
+    }
+
+    #[test]
+    fn test_typed_let_refuses_a_value_of_another_type() {
+        let mut runtime = SimpleRuntime::default();
+        let result = runtime.eval(r#"let n: Number = "one""#);
+        assert_variable_type_mismatch(result, "n", "Number", "String");
+        assert_eq!(runtime.get_variable("n"), None);
+    }
+
+    #[test]
+    fn test_failed_assignment_keeps_the_value_and_type() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let n: Number = 1").unwrap();
+        let result = runtime.eval(r#"n = "two""#);
+        assert_variable_type_mismatch(result, "n", "Number", "String");
+        assert_eq!(runtime.get_variable("n"), Some(number(1)));
+        assert_eq!(runtime.eval("n = 2").unwrap(), number(2));
+    }
+
+    #[test]
+    fn test_failed_typed_let_keeps_the_earlier_declaration() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let n = 1").unwrap();
+        let result = runtime.eval("let n: String = 2");
+        assert_variable_type_mismatch(result, "n", "String", "Number");
+        assert_eq!(runtime.get_variable("n"), Some(number(1)));
+        // n is still declared without a type
+        assert_eq!(
+            runtime.eval("n = :two").unwrap(),
+            Value::Symbol("two".into())
+        );
+    }
+
+    #[test]
+    fn test_let_without_a_type_clears_the_declared_type() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let n: Number = 1").unwrap();
+        runtime.eval(r#"let n = "two""#).unwrap();
+        assert_eq!(
+            runtime.eval("n = :two").unwrap(),
+            Value::Symbol("two".into())
+        );
+    }
+
+    #[test]
+    fn test_unknown_type() {
+        let mut runtime = SimpleRuntime::default();
+        for (source, name) in [
+            ("let x: Foo = 1", "Foo"),
+            ("let x: typeof = 1", "typeof"),
+            ("let x: Number | Foo = 1", "Foo"),
+        ] {
+            assert!(
+                matches!(
+                    runtime.eval(source),
+                    Err(Error::RuntimeError(RuntimeError::UnknownType(n))) if n == name
+                ),
+                "{source}"
+            );
+        }
+        assert_eq!(runtime.get_variable("x"), None);
+    }
+
+    #[test]
+    fn test_typed_let_with_a_native_type() {
+        let mut runtime = runtime_with_meters();
+        runtime.eval("let d: Meters = meters(5)").unwrap();
+        assert_eq!(runtime.get_variable("d"), Some(Value::native(Meters(5))));
+        let result = runtime.eval("d = 5");
+        assert_variable_type_mismatch(result, "d", "Meters", "Number");
+    }
+
+    #[test]
+    fn test_set_variable_is_checked_against_the_declared_type() {
+        let mut runtime = SimpleRuntime::default();
+        let runtime: &mut dyn Runtime = &mut runtime;
+        runtime.eval("let n: Number = 1").unwrap();
+        runtime.set_variable("n", number(2)).unwrap();
+        let result = runtime
+            .set_variable("n", Value::String("two".into()))
+            .map(|()| Value::None);
+        assert_variable_type_mismatch(result, "n", "Number", "String");
+        assert_eq!(runtime.get_variable("n"), Some(number(2)));
+    }
+
+    #[test]
+    fn test_remove_variable_removes_the_declared_type() {
+        let mut runtime = SimpleRuntime::default();
+        let runtime: &mut dyn Runtime = &mut runtime;
+        runtime.eval("let n: Number = 1").unwrap();
+        runtime.remove_variable("n");
+        assert_eq!(
+            runtime.eval(r#"n = "a""#).unwrap(),
+            Value::String("a".into())
+        );
     }
 
     #[test]

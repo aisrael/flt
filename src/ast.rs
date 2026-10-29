@@ -8,6 +8,7 @@ mod literal;
 mod number;
 mod operands;
 mod statement;
+mod type_expr;
 
 pub use expr::Expr;
 pub use expr::KeyValue;
@@ -21,3 +22,4 @@ pub use number::Numeric;
 pub use operands::BinaryOp;
 pub use operands::UnaryOp;
 pub use statement::Statement;
+pub use type_expr::TypeExpr;

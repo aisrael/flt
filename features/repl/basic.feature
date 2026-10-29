@@ -35,6 +35,17 @@ Feature: flt repl
     Then the command should succeed
     And the output should contain "UnboundIdentifier"
 
+  Scenario: unset a typed variable removes its declared type
+    When the REPL is run and the user types:
+      """
+      let n: Number = 1
+      /unset n
+      n = "a"
+      n
+      """
+    Then the command should succeed
+    And the output should contain '"a"'
+
   Scenario: inspect an unbound variable
     When the REPL is run and the user types:
       """

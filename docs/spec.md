@@ -16,8 +16,11 @@ statements; every statement evaluates to a value.
 
 ```ebnf
 program    = { statement [ ";" ] } ;           (* ";" required only between statements on one line *)
-statement  = [ "let" ] ident "=" expr          (* binding; "let" is optional *)
+statement  = "let" ident [ ":" type ] "=" expr  (* declaration *)
+           | ident "=" expr                       (* assignment *)
            | expr ;
+type       = type_atom { "|" type_atom } ;
+type_atom  = ident | "None" | "(" type ")" ;
 expr       = binary ;
 binary     = unary { binop unary } ;          (* precedence table below; all left-assoc *)
 unary      = ( "!" | "+" | "-" ) unary         (* no space between operator and operand *)
@@ -53,6 +56,10 @@ expression evaluates to `Any`, and `Any` is not a value. Types are first-class v
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without
 `else` evaluates to `None` when its condition is `false`, so it has type `T | None`.
+
+flt source writes a type only in a `let` declaration (§7). A type there is a built-in type name
+(including `Any` and `None`), a native type's name, a union `A | B` of types, or a type in
+parentheses.
 
 A runtime may let its host define **native types** (see [native types](native-functions-and-values.md#native-types-and-values)). A
 native type's name evaluates to that type. Its values come only from the host's functions: flt source
@@ -198,10 +205,29 @@ names, then native type names. Calls raise:
 ## 7. Bindings
 
 A variable is a binding of an identifier: to a value at run time, or to an expression for static
-analysis (e.g. type inference). `let x = expr` and `x = expr` both bind `x`.
+analysis (e.g. type inference).
 
+- **`let` declares a variable.** `let x = expr` declares `x` without a type, and
+  `let x: T = expr` declares it with the type `T`. The value must be of type `T`, by the same rules
+  as a function argument (§6), or the declaration raises a `VariableTypeMismatch` error. A
+  declaration replaces any earlier declaration of `x`, including its type.
+- **`x = expr` assigns.** If `x` was declared with a type, the value must be of that type, or the
+  assignment raises a `VariableTypeMismatch` error and `x` keeps its value. Otherwise the value
+  replaces the binding, including its type: after `let x = 1` then `x = "a"`, `typeof(x)` is
+  `String`. Assigning to a name with no binding declares it without a type.
+- **The name and the type are checked before the value is evaluated.** A type name the runtime
+  doesn't know raises an `UnknownType` error.
+- **A binding evaluates to the bound value.** `typeof` reports the value's type, not the declared
+  one.
 - **Bindings are global.** There are no scopes, so a binding is visible to every statement after it.
   Once scopes exist, a binding will be limited to its scope.
-- **Re-binding replaces the binding, including its type.** After `let x = 1` then `x = "a"`,
-  `typeof(x)` is `String`.
 - Referencing an identifier with no binding raises an `UnboundIdentifier` error.
+
+```flt
+let n: Number = 1
+n = 2                     # ok
+n = "two"                 # VariableTypeMismatch
+let n = "two"             # ok: declares n again, without a type
+let x: Number | None = None
+let y: Foo = 1            # UnknownType
+```

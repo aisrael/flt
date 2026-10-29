@@ -15,6 +15,7 @@ mod operands;
 mod statement;
 mod string;
 mod symbol;
+mod type_expr;
 
 pub use crate::ast::BinaryOp;
 pub use crate::ast::Expr;
@@ -33,3 +34,4 @@ pub use statement::parse_statement;
 pub use statement::parse_statements;
 pub use string::parse_string;
 pub use symbol::parse_symbol;
+pub use type_expr::parse_type;
