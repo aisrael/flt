@@ -54,12 +54,12 @@ The REPL parses one statement per line (an expression or a `let` / assignment bi
 
 The following words are reserved and recognized with word boundaries (e.g. `if` is a keyword, but `iffy` is an identifier):
 
-| Keyword | Keyword | Keyword |
-| --- | --- | --- |
-| `if` | `else` | `return` |
-| `and` | `or` | `not` |
-| `for` | `in` | `let` |
-| `while` | `do` | `fn` |
+| Keyword | Keyword | Keyword  |
+| ------- | ------- | -------- |
+| `if`    | `else`  | `return` |
+| `and`   | `or`    | `not`    |
+| `for`   | `in`    | `let`    |
+| `while` | `do`    | `fn`     |
 
 A reserved keyword can't be the name in a binding, so `let if = 1` and `fn = 1` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
 

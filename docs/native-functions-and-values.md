@@ -107,6 +107,7 @@ pad("ab", 4)          # "  ab"
   - `Option<T>` of any of these, for an argument declared `Option<…>`, which reads `None` as `None`.
 
   A host can implement the `FromValue` trait for types of its own.
+
 - **`args.native::<T>(name)`** borrows a [native value](#native-types-and-values).
 - **`args.value(name)`** gives the `&Value`, or `None` if the overload that matched has no argument or keyword of that name, or if it's the variadic argument, whose values are in `args.rest()` ([Overloads](#overloads)).
 - **`args.rest()`** gives a [variadic argument](#variadic-arguments)'s values, and **`args.keywords()`** the keyword arguments as a map.

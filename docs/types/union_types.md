@@ -11,12 +11,12 @@ Number | String | None    # a Number, a String, or None
 
 An `if` with an `else` has the type `<then type> | <else type>`. An `if` without an `else` evaluates to [`None`](./none.md) when its condition is `false`, so it has type `<then type> | None`:
 
-| Expression              | Type              |
-| ----------------------- | ----------------- |
-| `if b 1`                | `Integer \| None` |
-| `if b 1 else "one"`     | `Integer \| String` |
-| `if b 1 else 2`         | `Integer`         |
-| `if b 1 else 2.0`       | `Integer \| Number` |
+| Expression          | Type                |
+| ------------------- | ------------------- |
+| `if b 1`            | `Integer \| None`   |
+| `if b 1 else "one"` | `Integer \| String` |
+| `if b 1 else 2`     | `Integer`           |
+| `if b 1 else 2.0`   | `Integer \| Number` |
 
 These are inferred types. flt doesn't infer types yet (see [ADR 002](../adrs/002-union-types.md)), so they can't be observed from a program. Types are checked at runtime: [`typeof`](../functions-and-pipe.md#built-in-functions) reports the type of the value an expression actually produced, which is always one of the union's members:
 

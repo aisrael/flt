@@ -85,28 +85,28 @@ condition `x |> f` followed by the `"Ok"` branch.
 `x |> f == 3` is `(x |> f) == 3`, as in Elixir. Elixir puts `|>` below `+`, `-` and `<>`, and above
 comparisons and the logical operators:
 
-| Expression        | flt before         | Elixir and flt after |
-| ----------------- | ------------------ | -------------------- |
-| `1 + 1 \|> f`     | `f(2)`             | `f(2)`               |
-| `x \|> f == 3`    | `x \|> (f == 3)`   | `f(x) == 3`          |
-| `a \|\| b \|> f`  | `f(a \|\| b)`      | `a \|\| f(b)`        |
+| Expression       | flt before       | Elixir and flt after |
+| ---------------- | ---------------- | -------------------- |
+| `1 + 1 \|> f`    | `f(2)`           | `f(2)`               |
+| `x \|> f == 3`   | `x \|> (f == 3)` | `f(x) == 3`          |
+| `a \|\| b \|> f` | `f(a \|\| b)`    | `a \|\| f(b)`        |
 
 That needs comparisons to bind looser than arithmetic, so the precedence becomes, lowest to highest:
 
-| Level | Operators              | Change                                    |
-| ----- | ---------------------- | ----------------------------------------- |
-| 1     | `\|\|`                 |                                           |
-| 2     | `&&`                   |                                           |
-| 3     | `^^`                   |                                           |
-| 4     | `==` `!=`              | moved down from the `*` `/` level         |
-| 5     | `<` `>` `<=` `>=`      | moved down from the `*` `/` level         |
-| 6     | `\|`                   |                                           |
-| 7     | `^`                    |                                           |
-| 8     | `&`                    |                                           |
-| 9     | `\|>`                  | moved up from level 1                     |
-| 10    | `+` `-` `<>`           |                                           |
-| 11    | `*` `/`                |                                           |
-| —     | unary, then `.field`   |                                           |
+| Level | Operators            | Change                            |
+| ----- | -------------------- | --------------------------------- |
+| 1     | `\|\|`               |                                   |
+| 2     | `&&`                 |                                   |
+| 3     | `^^`                 |                                   |
+| 4     | `==` `!=`            | moved down from the `*` `/` level |
+| 5     | `<` `>` `<=` `>=`    | moved down from the `*` `/` level |
+| 6     | `\|`                 |                                   |
+| 7     | `^`                  |                                   |
+| 8     | `&`                  |                                   |
+| 9     | `\|>`                | moved up from level 1             |
+| 10    | `+` `-` `<>`         |                                   |
+| 11    | `*` `/`              |                                   |
+| —     | unary, then `.field` |                                   |
 
 - `|>` sits directly below `+ - <>` and above everything else, so `x |> f & 1` is `(x |> f) & 1`.
 - Bitwise operators stay tighter than comparisons (as in Rust), so `x & 1 == 0` is `(x & 1) == 0`.

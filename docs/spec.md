@@ -38,16 +38,16 @@ key        = ident | string ;
 
 ## 3. Literals
 
-| Kind      | Examples                                   | Notes                                              |
-| --------- | ------------------------------------------ | -------------------------------------------------- |
-| Integer   | `42` `-7` `+7` `1_000`                     | Arbitrary-precision whole number; no `.`           |
-| Number    | `3.14` `-0.5` `42.0`                       | Arbitrary-precision decimal; digits after a `.`    |
-| String    | `"hi"` `"say \"hi\""` `"Answer: {1 + 2}"` | `{expr}` interpolates; `\{` is a literal `{`       |
-| Boolean   | `true` `false`                             |                                                    |
-| None      | `None`                                     | No value; also its own type                        |
-| Symbol    | `:id` `:foo-bar` `:"hello world"`          | Bare or quoted                                     |
-| Array     | `[]` `[1, 2, 3,]`                          | Trailing comma allowed                             |
-| Map       | `{ foo: 1, "spaced out": 2 }`              | Keys are symbols, bare or quoted; unique           |
+| Kind    | Examples                                  | Notes                                           |
+| ------- | ----------------------------------------- | ----------------------------------------------- |
+| Integer | `42` `-7` `+7` `1_000`                    | Arbitrary-precision whole number; no `.`        |
+| Number  | `3.14` `-0.5` `42.0`                      | Arbitrary-precision decimal; digits after a `.` |
+| String  | `"hi"` `"say \"hi\""` `"Answer: {1 + 2}"` | `{expr}` interpolates; `\{` is a literal `{`    |
+| Boolean | `true` `false`                            |                                                 |
+| None    | `None`                                    | No value; also its own type                     |
+| Symbol  | `:id` `:foo-bar` `:"hello world"`         | Bare or quoted                                  |
+| Array   | `[]` `[1, 2, 3,]`                         | Trailing comma allowed                          |
+| Map     | `{ foo: 1, "spaced out": 2 }`             | Keys are symbols, bare or quoted; unique        |
 
 ## 4. Types
 
@@ -77,18 +77,18 @@ are never equal, and native values can't be ordered.
 
 ## 5. Operators (lowest → highest precedence)
 
-| Level | Operators                                  | Meaning                     |
-| ----- | ------------------------------------------ | --------------------------- |
-| 1     | `\|\|`                                     | logical or                  |
-| 2     | `&&`                                       | logical and                 |
-| 3     | `^^`                                       | logical xor                 |
-| 4     | `==` `!=`                                  | equality                    |
-| 5     | `<` `>` `<=` `>=`                          | ordering                    |
-| 6–8   | `\|`, `^`, `&`                             | bitwise or / xor / and      |
-| 9     | `\|>`                                      | pipe                        |
-| 10    | `+` `-` `<>`                               | add, subtract, concatenate  |
-| 11    | `*` `/` `//`                               | multiply, divide, floor-divide |
-| —     | unary `!` `+` `-`, then postfix `.field`   | bind tightest               |
+| Level | Operators                                | Meaning                        |
+| ----- | ---------------------------------------- | ------------------------------ |
+| 1     | `\|\|`                                   | logical or                     |
+| 2     | `&&`                                     | logical and                    |
+| 3     | `^^`                                     | logical xor                    |
+| 4     | `==` `!=`                                | equality                       |
+| 5     | `<` `>` `<=` `>=`                        | ordering                       |
+| 6–8   | `\|`, `^`, `&`                           | bitwise or / xor / and         |
+| 9     | `\|>`                                    | pipe                           |
+| 10    | `+` `-` `<>`                             | add, subtract, concatenate     |
+| 11    | `*` `/` `//`                             | multiply, divide, floor-divide |
+| —     | unary `!` `+` `-`, then postfix `.field` | bind tightest                  |
 
 Comparisons bind looser than arithmetic, `<>` and bitwise operators, so `1 + 2 == 3` is `true` and
 `x & 1 == 0` is `(x & 1) == 0`. As in Elixir, `|>` binds looser than `+` `-` `<>` and tighter than
@@ -96,12 +96,12 @@ everything else, so `x |> f == 3` is `(x |> f) == 3` and `a || b |> f` is `a || 
 
 ### Arithmetic
 
-| Operation      | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number` |
-| -------------- | -------------------- | ---------------------------------------- | ------------------ |
-| `+` `-` `*`    | `Integer`            | `Number`                                 | `Number`           |
-| `/`            | `Integer`, floored   | `Number`                                 | `Number`           |
-| `//`           | `Integer`, floored   | `InvalidOperandType` error               | `InvalidOperandType` error |
-| unary `+` `-`  | `Integer`            |                                          | `Number`           |
+| Operation     | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number`         |
+| ------------- | -------------------- | ---------------------------------------- | -------------------------- |
+| `+` `-` `*`   | `Integer`            | `Number`                                 | `Number`                   |
+| `/`           | `Integer`, floored   | `Number`                                 | `Number`                   |
+| `//`          | `Integer`, floored   | `InvalidOperandType` error               | `InvalidOperandType` error |
+| unary `+` `-` | `Integer`            |                                          | `Number`                   |
 
 - **Floored:** `/` and `//` on two integers round the quotient toward negative infinity, so `7 / 2`
   is `3`, `-7 / 2` is `-4` and `7 // -2` is `-4`. Unary `-` binds tighter, so `-7 / 2` is

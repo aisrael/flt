@@ -39,19 +39,19 @@ runtime.eval("days_between(date(2026, 1, 1), date(2026, 10, 25))")?;   // 297
 
 ### 2. The trait holds everything a host does
 
-| Method                            | Does                                                                 |
-| --------------------------------- | -------------------------------------------------------------------- |
+| Method                            | Does                                                                  |
+| --------------------------------- | --------------------------------------------------------------------- |
 | `eval(source)`                    | parses and evaluates flt source, returning the last statement's value |
-| `eval_statement(statement)`       | evaluates one parsed statement                                       |
+| `eval_statement(statement)`       | evaluates one parsed statement                                        |
 | `register_function(function)`     | registers a native function, replacing one of the same name, or fails |
-| `register_native_type::<T>()`     | registers the native type `T`, or fails                              |
-| `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                 |
-| `get_native_type(name)`           | a registered native type                                             |
-| `set_variable(name, value)`       | binds a global variable, or fails                                    |
-| `get_variable(name)`              | a global variable's value                                            |
-| `remove_variable(name)`           | unbinds a global variable, returning its value                       |
-| `check_bindable(name)`            | whether `name` can be bound, and if not, why                         |
-| `get_function(name)`              | a global function                                                    |
+| `register_native_type::<T>()`     | registers the native type `T`, or fails                               |
+| `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                  |
+| `get_native_type(name)`           | a registered native type                                              |
+| `set_variable(name, value)`       | binds a global variable, or fails                                     |
+| `get_variable(name)`              | a global variable's value                                             |
+| `remove_variable(name)`           | unbinds a global variable, returning its value                        |
+| `check_bindable(name)`            | whether `name` can be bound, and if not, why                          |
+| `get_function(name)`              | a global function                                                     |
 
 ### 3. `eval` takes source; `eval_statement` takes a parsed statement
 
@@ -154,7 +154,6 @@ holds within `SimpleRuntime`: the global scope enforces the rule.
   - any other `Runtime` implementation must implement the new methods;
   - `FltRepl` gains a type parameter, defaulting to `SimpleRuntime`.
 - New Rust API: `Runtime::eval_statement`, `register_native_type_info`, `set_variable`,
-  `get_variable`, `remove_variable`, `check_bindable` and `get_function`, and
-  `FltRepl::with_runtime`.- New error: `Cannot register <function|native type> <name>: it's <a built-in type|a function|a
-  variable|a native type>`.
+  `get_variable`, `remove_variable`, `check_bindable` and `get_function`, and `FltRepl::with_runtime`.
+- New error: `Cannot register <function|native type> <name>: it's <a built-in type|a function|a variable|a native type>`.
 - The spec doesn't change: the trait is the reference implementation's Rust API.

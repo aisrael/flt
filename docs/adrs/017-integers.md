@@ -21,16 +21,16 @@ flt needs an integer type that a signature can declare and a call can be checked
 Before deciding, we compared how Elixir, Python, Ruby and Rust handle integers and
 non-integers. The table shows the results that matter here:
 
-| Expression | Elixir | Python | Ruby | Rust |
-| --- | --- | --- | --- | --- |
-| `7 / 2` | `3.5` | `3.5` | `3` | `3` |
-| `-7 / 2` | `-3.5` | `-3.5` | `-4` (floors) | `-3` (truncates) |
-| `-7 // 2`, or floor division | `Integer.floor_div` → `-4`; `div` → `-3` | `-4` | `-7.div(2)` → `-4` | `div_floor` → `-4` |
-| `1 / 0` | error | error | error | panic |
-| `1 + 1.0` | `2.0` | `2.0` | `2.0` | doesn't compile |
-| `1 == 1.0` | `true` | `True` | `true` | doesn't compile |
-| a whole float prints as | `2.0` | `2.0` | `2.0` | `2` (`{}`), `2.0` (`{:?}`) |
-| a float where an integer is expected | error | error | error | doesn't compile |
+| Expression                           | Elixir                                   | Python | Ruby               | Rust                       |
+| ------------------------------------ | ---------------------------------------- | ------ | ------------------ | -------------------------- |
+| `7 / 2`                              | `3.5`                                    | `3.5`  | `3`                | `3`                        |
+| `-7 / 2`                             | `-3.5`                                   | `-3.5` | `-4` (floors)      | `-3` (truncates)           |
+| `-7 // 2`, or floor division         | `Integer.floor_div` → `-4`; `div` → `-3` | `-4`   | `-7.div(2)` → `-4` | `div_floor` → `-4`         |
+| `1 / 0`                              | error                                    | error  | error              | panic                      |
+| `1 + 1.0`                            | `2.0`                                    | `2.0`  | `2.0`              | doesn't compile            |
+| `1 == 1.0`                           | `true`                                   | `True` | `true`             | doesn't compile            |
+| a whole float prints as              | `2.0`                                    | `2.0`  | `2.0`              | `2` (`{}`), `2.0` (`{:?}`) |
+| a float where an integer is expected | error                                    | error  | error              | doesn't compile            |
 
 The three dynamic languages all convert an integer to a float when an operation mixes the two,
 and none converts a float to an integer implicitly. Python's type hints let a `float` parameter
@@ -60,12 +60,12 @@ literal is written the way it prints, e.g. `42.0`.
 
 ### 2. Integer arithmetic results in an integer
 
-| Operation | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number` |
-| --- | --- | --- | --- |
-| `+`, `-`, `*` | `Integer` | `Number` | `Number` |
-| `/` | `Integer`, floored | `Number` | `Number` |
-| `//` | `Integer`, floored | `InvalidOperandType` | `InvalidOperandType` |
-| unary `-`, `+` | `Integer` | | `Number` |
+| Operation      | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number`   |
+| -------------- | -------------------- | ---------------------------------------- | -------------------- |
+| `+`, `-`, `*`  | `Integer`            | `Number`                                 | `Number`             |
+| `/`            | `Integer`, floored   | `Number`                                 | `Number`             |
+| `//`           | `Integer`, floored   | `InvalidOperandType`                     | `InvalidOperandType` |
+| unary `-`, `+` | `Integer`            |                                          | `Number`             |
 
 `/` on two integers rounds the quotient toward negative infinity, as Ruby does, so `7 / 2` is `3`
 and `-7 / 2` is `-4`. To get a fraction, an operand has to be a `Number`: `7.0 / 2` is `3.5`.
@@ -139,14 +139,14 @@ The conversion applies wherever a type is checked:
 
 A union, or an `Option`, converts a value only if none of its members accepts it as it is:
 
-| Declared type | `1` is bound as | `1.0` is bound as |
-| --- | --- | --- |
-| `Integer` | `1` | an error |
-| `Number` | `1.0` | `1.0` |
-| `Integer \| Number` | `1` | `1.0` |
-| `Number \| String` | `1.0` | `1.0` |
-| `Option<Number>`, or `Number \| None` | `1.0` | `1.0` |
-| `Any` | `1` | `1.0` |
+| Declared type                         | `1` is bound as | `1.0` is bound as |
+| ------------------------------------- | --------------- | ----------------- |
+| `Integer`                             | `1`             | an error          |
+| `Number`                              | `1.0`           | `1.0`             |
+| `Integer \| Number`                   | `1`             | `1.0`             |
+| `Number \| String`                    | `1.0`           | `1.0`             |
+| `Option<Number>`, or `Number \| None` | `1.0`           | `1.0`             |
+| `Any`                                 | `1`             | `1.0`             |
 
 ```flt
 let i: Integer = 1         # ok
@@ -243,9 +243,10 @@ In the Rust API:
 - A handler reads an argument with `args.get` as:
   - `BigInt`, from an `Integer` or a whole `Number`;
   - `BigDecimal`, from a `Number` or an `Integer`.
-  
+
   The Rust integer types (`i32`, `i64`, `u32`, `u64`, `usize`) convert from an `Integer` or a
   whole `Number`, and `f64` from either.
+
 - A handler for a `Number` parameter always gets a `Value::Number`, since an `Integer` argument is
   converted first. A handler declared `-> Number` may return a `Value::Integer`, which is converted
   too.

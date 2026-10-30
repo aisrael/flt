@@ -177,6 +177,7 @@ the function, not in the call, but it's reported where it happens rather than pa
 
   A function with one overload gets the same messages as before. ADR 011 built this error from the
   first overload, so its count depended on declaration order.
+
 - One overload takes that many, but the call doesn't match it: the error names the first thing
   that fails, positional arguments first, then keywords in call order:
   - `Argument <argument> of <name> expects <type>, found <type>`. A variadic value names the

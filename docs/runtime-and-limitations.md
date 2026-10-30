@@ -15,19 +15,19 @@ runtime.eval("let x = 1 + 2")?;
 runtime.eval("x * 2")?;          // 6
 ```
 
-| Method                            | Does                                                                   |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| `eval(source)`                    | parses and evaluates flt source, returning the last statement's value |
-| `eval_statement(statement)`       | evaluates one parsed statement                                         |
+| Method                            | Does                                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `eval(source)`                    | parses and evaluates flt source, returning the last statement's value                                                      |
+| `eval_statement(statement)`       | evaluates one parsed statement                                                                                             |
 | `register_function(function)`     | registers a [native function](./native-functions-and-values.md#native-functions), replacing one of the same name, or fails |
-| `register_native_type::<T>()`     | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails |
-| `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                   |
-| `get_native_type(name)`           | a registered native type                                               |
-| `set_variable(name, value)`       | assigns a global variable, as `name = value` does, or fails            |
-| `get_variable(name)`              | a global variable's value                                              |
-| `remove_variable(name)`           | unbinds a global variable and its declared type, returning its value   |
-| `check_bindable(name)`            | whether `name` can be bound, and if not, why                           |
-| `get_function(name)`              | a global function                                                      |
+| `register_native_type::<T>()`     | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails                        |
+| `register_native_type_info(info)` | the same, given its `NativeTypeInfo`                                                                                       |
+| `get_native_type(name)`           | a registered native type                                                                                                   |
+| `set_variable(name, value)`       | assigns a global variable, as `name = value` does, or fails                                                                |
+| `get_variable(name)`              | a global variable's value                                                                                                  |
+| `remove_variable(name)`           | unbinds a global variable and its declared type, returning its value                                                       |
+| `check_bindable(name)`            | whether `name` can be bound, and if not, why                                                                               |
+| `get_function(name)`              | a global function                                                                                                          |
 
 ### `eval` and `eval_statement`
 
