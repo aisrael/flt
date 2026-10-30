@@ -1,7 +1,9 @@
+flt
+====
+
+[![CI Tests](https://github.com/aisrael/flt/actions/workflows/ci.yml/badge.svg)](https://github.com/aisrael/flt/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/flt.svg)](https://crates.io/crates/flt)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/aisrael/flt/blob/main/LICENSE)
-
-# flt
 
 A lightweight functional language with a parser, REPL, and a rudimentary interpreter/runtime.
 
@@ -42,7 +44,8 @@ A host works with a runtime only through the `Runtime` trait, and names `SimpleR
 
 ### Literals
 
-- Number: `42`, `3.14`, `+7`, `-2`
+- Integer: `42`, `+7`, `-2` (arbitrary precision)
+- Number: `3.14`, `-0.5`
 - String: `"hello"`, `"path\\to\\file"`
 - Boolean: `true`, `false`
 - Symbol: `:name`, `:"display name"`
@@ -98,7 +101,7 @@ Unary operators:
 
 Binary operators:
 
-- Arithmetic: `+`, `-`, `*`, `/`
+- Arithmetic: `+`, `-`, `*`, `/`, `//` (integer floor division)
 - String concat: `<>`
 - Logical: `&&`, `||`, `^^`
 - Bitwise: `&`, `|`, `^`
@@ -107,7 +110,7 @@ Binary operators:
 
 ### Precedence (lowest to highest)
 
-`||` → `&&` → `^^` → `==`/`!=` → `<`/`>`/`<=`/`>=` → `|` → `^` → `&` → `|>` → `+`/`-`/`<>` → `*`/`/`
+`||` → `&&` → `^^` → `==`/`!=` → `<`/`>`/`<=`/`>=` → `|` → `^` → `&` → `|>` → `+`/`-`/`<>` → `*`/`/`/`//`
 
 Parentheses override precedence as expected. See [Operators](https://github.com/aisrael/flt/blob/main/docs/operators.md).
 
@@ -149,39 +152,11 @@ The runtime evaluates expressions and statements: literals (including maps and a
 
 ## Public API
 
-- `flt::parser`:
-  - `parse_expr`
-  - `parse_statement`
-  - `parse_statements` (all of a source's statements, separated by newlines or `;`)
-  - `parse_literal`
-  - `parse_identifier`
-  - `parse_number`
-  - `parse_string`
-  - `parse_symbol`
-  - `parse_binary_op`
-  - `parse_unary_op`
-- `flt::ast`:
-  - `Expr`
-  - `FunctionCall` (a call's name, positional arguments and keyword arguments)
-  - `KeywordArgs` (a call's keyword arguments, in source order)
-  - `Literal`
-  - `Identifier`
-  - `Numeric`
-  - `BinaryOp`
-  - `UnaryOp`
-- `flt::repl`:
-  - `Repl`
-  - `FltRepl` (`FltRepl::with_runtime` runs the REPL on a host's runtime)
-- `flt::runtime`:
-  - `Runtime` (the runtime API: `eval`, `eval_statement`, registering native functions and types, and global variables)
-  - `SimpleRuntime` (the reference implementation)
-  - `Value`
-  - `functions::NativeFunction`, `functions::FunctionDefinition`, `functions::Argument` (declaring native functions and their overloads)
-  - `native::NativeType` (declaring native types)
-  - `types::Type`
-- `flt::eval`:
-  - `eval` (evaluate a parsed `Expr` with a fresh runtime)
-- `flt::Error` and `flt::errors::RuntimeError`
+- `flt::parser` - Parses flt source text into statements and expressions
+- `flt::ast` - Defines the syntax tree types that the parser makes
+- `flt::repl` - Provides the interactive prompt, which a host can embed as its own REPL
+- `flt::runtime` - Provides the `SimpleRuntime` reference implementation
+- `flt::eval` - Evaluates a parsed expression with a fresh runtime
 
 ## Development
 

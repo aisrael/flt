@@ -1,23 +1,23 @@
 # Quickstart
 
-`flt` is a lightweight expression language with a CLI in `flt-cli`.
+`flt` is a lightweight expression language with a REPL and CLI in the `flt` crate.
 
 ## Check Version
 
 ```bash
-cargo run -p flt-cli -- version
+cargo run -- version
 ```
 
 Expected output:
 
 ```text
-flt version 0.2.0
+flt version 0.3.0
 ```
 
 ## Start the REPL
 
 ```bash
-cargo run -p flt-cli
+cargo run
 ```
 
 You will get a prompt:
