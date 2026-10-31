@@ -27,6 +27,9 @@ pub trait ReplHandler {
     fn prompt(&self) -> &str {
         "> "
     }
+    /// Called when the user presses Ctrl+C at the prompt. Handlers that accumulate input across
+    /// lines should discard it here, so the next prompt starts fresh.
+    fn interrupt(&mut self) {}
 }
 
 /// The generic Repl
@@ -99,7 +102,10 @@ impl<H: ReplHandler> Repl<H> {
             let line = match self.editor.readline(&prompt) {
                 Ok(line) => line,
                 Err(ReadlineError::Eof) => break Ok(()),
-                Err(ReadlineError::Interrupted) => continue,
+                Err(ReadlineError::Interrupted) => {
+                    self.handler.interrupt();
+                    continue;
+                }
                 Err(e) => return Err(e.into()),
             };
             let line = line.trim();
