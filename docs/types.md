@@ -4,17 +4,17 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 
 ## Built-In Types
 
-| Type      | Example values     | Notes                                                                               |
-| --------- | ------------------ | ----------------------------------------------------------------------------------- |
-| `None`    | `None`             | The `None` type (and value); see [None](./types/none.md)                            |
-| `Boolean` | `true`, `false`    |                                                                                     |
-| `Integer` | `42`, `-7`         | Arbitrary-precision whole number; see [Integers and Numbers](#integers-and-numbers) |
-| `Number`  | `3.14`, `42.0`     | Arbitrary-precision decimal; also accepts an `Integer`, converting it               |
-| `String`  | `"hi"`             |                                                                                     |
-| `Symbol`  | `:id`              |                                                                                     |
-| `Array`   | `[1, 2, 3]`        |                                                                                     |
-| `Map`     | `{ foo: 1 }`       |                                                                                     |
-| `Type`    | `Number`, `String` | The type of a type value; see [Types as Values](#types-as-values)                   |
+| Type | Example values | Notes |
+| --- | --- | --- |
+| `None` | `None` | The `None` type (and value); see [None](./types/none.md) |
+| `Boolean` | `true`, `false` |  |
+| `Integer` | `42`, `-7` | Arbitrary-precision whole number; see [Integers and Numbers](#integers-and-numbers) |
+| `Number` | `3.14`, `42.0` | Arbitrary-precision decimal; also accepts an `Integer`, converting it |
+| `String` | `"hi"` |  |
+| `Symbol` | `:id` |  |
+| `Array` | `[1, 2, 3]` |  |
+| `Map` | `{ foo: 1 }` |  |
+| `Type` | `Number`, `String` | The type of a type value; see [Types as Values](#types-as-values) |
 
 ## More About Types
 
