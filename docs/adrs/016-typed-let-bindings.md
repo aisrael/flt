@@ -1,6 +1,7 @@
 # ADR 016: Typed `let` Bindings
 
 - **Date:** 2026-10-28
+- **Applies to:** Language specification
 - **Status:** Accepted
 
 ## Context

@@ -1,8 +1,8 @@
 # ADR 002: Union Types
 
 - **Date:** 2026-10-22
-- **Status:** Accepted and implemented.
-- **PR:** [#18](https://github.com/aisrael/flt/pull/18)
+- **Applies to:** Language specification
+- **Status:** Accepted
 
 ## Context
 

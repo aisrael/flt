@@ -1,8 +1,8 @@
 # ADR 005: `typeof` as a Native Function
 
 - **Date:** 2026-10-24
-- **Status:** Accepted and implemented.
-- **PR:** [#21](https://github.com/aisrael/flt/pull/21)
+- **Applies to:** Language specification, runtime
+- **Status:** Accepted
 
 ## Context
 

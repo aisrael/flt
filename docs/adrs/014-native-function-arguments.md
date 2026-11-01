@@ -1,6 +1,7 @@
 # ADR 014: Native Function Arguments
 
 - **Date:** 2026-10-28
+- **Applies to:** Runtime
 - **Status:** Accepted
 
 ## Context

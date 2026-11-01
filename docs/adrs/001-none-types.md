@@ -1,8 +1,8 @@
 # ADR 001: `None` Types
 
 - **Date:** 2026-10-22
-- **Status:** Accepted and implemented.
-- **PR:** [#17](https://github.com/aisrael/flt/pull/17)
+- **Applies to:** Language specification
+- **Status:** Accepted
 
 ## Context
 

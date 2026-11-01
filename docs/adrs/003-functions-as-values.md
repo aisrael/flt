@@ -1,8 +1,8 @@
 # ADR 003: Functions as Values
 
 - **Date:** 2026-10-23
-- **Status:** Accepted and implemented.
-- **PR:** TBD
+- **Applies to:** Language specification
+- **Status:** Accepted
 
 ## Context
 

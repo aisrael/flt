@@ -36,7 +36,3 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 015: Errors Name the Closest Overload](adrs/015-closest-overload-errors.md)
 - [ADR 016: Typed `let` Bindings](adrs/016-typed-let-bindings.md)
 - [ADR 017: Integers](adrs/017-integers.md)
-
-## Scope
-
-These docs describe the currently implemented parser and CLI evaluator for version `0.3.0`.

@@ -1,7 +1,8 @@
 # ADR 012: Variadic Notation
 
 - **Date:** 2026-10-27
-- **Status:** Accepted.
+- **Applies to:** Language specification
+- **Status:** Accepted
 
 ## Context
 

@@ -1,7 +1,8 @@
 # ADR 009: Symbol Keys and Ordered Maps
 
 - **Date:** 2026-10-26
-- **Status:** Accepted.
+- **Applies to:** Runtime
+- **Status:** Accepted
 
 ## Context
 

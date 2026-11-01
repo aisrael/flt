@@ -1,7 +1,8 @@
 # ADR 010: Keyword Arguments
 
 - **Date:** 2026-10-26
-- **Status:** Accepted.
+- **Applies to:** Language specification, runtime
+- **Status:** Accepted
 
 ## Context
 
