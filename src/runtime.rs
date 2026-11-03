@@ -33,6 +33,7 @@ use crate::runtime::functions::Argument;
 use crate::runtime::functions::Arguments;
 use crate::runtime::functions::FunctionBody;
 use crate::runtime::functions::FunctionDefinition;
+use crate::runtime::functions::FunctionImplementation;
 use crate::runtime::functions::FunctionSignature;
 use crate::runtime::functions::KeywordArgument;
 use crate::runtime::functions::NativeFunction;
@@ -665,7 +666,7 @@ impl SimpleRuntime {
         let mut signature = FunctionSignature::new(arguments, return_type);
         signature.keywords = keywords;
         signature.rest_keywords = rest_keywords;
-        signature.body = Some(Arc::new(FunctionBody {
+        signature.implementation = FunctionImplementation::Declared(Arc::new(FunctionBody {
             statements: declaration.body.clone(),
             defaults,
             rest_keywords: rest_name,
@@ -709,10 +710,9 @@ impl SimpleRuntime {
     ) -> Result<Value, Error> {
         let name = function.name();
         let signature = function.definition.resolve(args, &keywords)?;
-        let body = signature
-            .body
-            .clone()
-            .expect("an overload of a function declared in flt has a body");
+        let FunctionImplementation::Declared(body) = signature.implementation.clone() else {
+            unreachable!("an overload of a function declared in flt has a body");
+        };
         // A default can use global bindings, but not the parameters or the caller's variables
         for (keyword, default) in &body.defaults {
             let key = MapKey::symbol(keyword.as_str());
