@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-31
 - **Applies to:** Language specification
-- **Status:** Proposed
+- **Status:** Accepted
 
 ## Context
 
