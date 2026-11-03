@@ -13,7 +13,7 @@ This folder contains initial documentation for the `flt` language as it exists i
   - [`types/union_types.md`](types/union_types.md) - Union types (`A | B`) and the type of `if`.
 - [`operators.md`](operators.md) - Unary/binary operators and precedence.
 - [`field-access.md`](field-access.md) - Dot-access syntax for reading map fields (`u.foo`).
-- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments) and pipe chaining.
+- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments), declaring functions with `def`, and pipe chaining.
 - [`native-functions-and-values.md`](native-functions-and-values.md) - Native functions, types and values: extending flt from a Rust host.
 - [`runtime-and-limitations.md`](runtime-and-limitations.md) - Evaluation behavior, errors, and current limitations.
 
@@ -36,3 +36,5 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 015: Errors Name the Closest Overload](adrs/015-closest-overload-errors.md)
 - [ADR 016: Typed `let` Bindings](adrs/016-typed-let-bindings.md)
 - [ADR 017: Integers](adrs/017-integers.md)
+- [ADR 018: Overloads Have Distinct Parameter Signatures](adrs/018-distinct-overload-signatures.md)
+- [ADR 019: Declaring Functions in flt with `def`](adrs/019-def-function-declarations.md)

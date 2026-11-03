@@ -50,7 +50,78 @@ add 1
 add 1, 2
 ```
 
+The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument.
+
 This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
+
+## Declaring Functions
+
+flt source can declare a function with `def` ([ADR 019](./adrs/019-def-function-declarations.md)). The examples use `end` to close the body.
+
+```flt
+def mod(n: Integer, d: Integer) -> Integer
+  n - (n // d) * d
+end
+
+mod(7, 3)             # 1
+typeof(mod)           # fn(Integer, Integer) -> Integer
+```
+
+### Parameters
+
+The parameters come in this order:
+
+1. positional parameters, `name: Type`;
+2. at most one variadic parameter, `*name: Type`;
+3. keyword parameters, `name: Type = default`;
+4. at most one rest keywords parameter, `**name: Type`.
+
+```flt
+def log(label: String, *values: Any, level: Symbol = :info, **extra: Any)
+  None
+end
+```
+
+A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type. Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
+
+A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global variables, but not other parameters.
+
+### Return Type and Body
+
+The body is a list of statements that ends with `end`. The function gives the value of its last statement. An empty body gives `None`.
+
+Without `-> Type`, the return type is `None`. Then the body must give `None`, or the call raises `ReturnTypeMismatch`. The result of every call is checked against the return type.
+
+```flt
+def two() -> Integer
+  1
+  2
+end
+
+two()                 # 2
+
+def one()             # no return type, so -> None
+  1
+end
+
+one()                 # error: the body gives an Integer, not None
+```
+
+### Scope
+
+Each call has its own scope:
+
+- Parameters and variables declared with `let` in the body exist only during the call.
+- A name that the scope does not bind is looked up in the global scope.
+- `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the call.
+
+### Names and Overloads
+
+A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
+
+A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
+
+Known limitation: `SimpleRuntime` does not yet share overloads with a name that is bound to the function. After `let f = show`, a later `def show(…)` adds an overload to `show` but not to `f`. Declare every overload before you bind the function to another name.
 
 ## Pipe Operator
 

@@ -20,7 +20,9 @@ use num_integer::Integer as _;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
+use crate::ast::FunctionDeclaration;
 use crate::ast::Literal;
+use crate::ast::ParameterKind;
 use crate::ast::Statement;
 use crate::ast::TypeExpr;
 use crate::ast::UnaryOp;
@@ -29,7 +31,10 @@ use crate::errors::RuntimeError;
 use crate::parser::parse_statements;
 use crate::runtime::functions::Argument;
 use crate::runtime::functions::Arguments;
+use crate::runtime::functions::FunctionBody;
 use crate::runtime::functions::FunctionDefinition;
+use crate::runtime::functions::FunctionSignature;
+use crate::runtime::functions::KeywordArgument;
 use crate::runtime::functions::NativeFunction;
 use crate::runtime::native::NativeType;
 use crate::runtime::native::NativeTypeInfo;
@@ -413,6 +418,9 @@ pub trait Runtime {
 /// flt source.
 pub struct SimpleRuntime {
     global_scope: GlobalScope,
+    /// The scopes of the calls to functions declared in flt, innermost last. A call sees only
+    /// its own scope and the global scope.
+    frames: Vec<Frame>,
     /// Native types registered by the host, by name
     native_types: HashMap<&'static str, NativeTypeInfo>,
 }
@@ -424,6 +432,7 @@ impl Default for SimpleRuntime {
         register_builtins(&mut global_scope);
         Self {
             global_scope,
+            frames: Vec::new(),
             native_types: HashMap::new(),
         }
     }
@@ -461,12 +470,30 @@ impl Runtime for SimpleRuntime {
                     .map(|r#type| self.resolve_type(r#type))
                     .transpose()?;
                 let value = self.eval_expr(expr)?;
-                self.global_scope.declare_variable(name, r#type, value)
+                match self.frames.last_mut() {
+                    Some(frame) => frame.declare(name, r#type, value),
+                    None => self.global_scope.declare_variable(name, r#type, value),
+                }
             }
+            // An assignment changes the nearest binding of the name: in the scope of the call,
+            // else global. With neither, it declares the name, in the scope of the call if
+            // there is one.
             Statement::Assign(name, expr) => {
                 self.global_scope.check_bindable(name)?;
                 let value = self.eval_expr(expr)?;
-                self.global_scope.set_variable(name, value)
+                match self.frames.last_mut() {
+                    Some(frame) if frame.variables.contains_key(name.0.as_str()) => {
+                        frame.set(name, value)
+                    }
+                    Some(frame) if !self.global_scope.has_variable(name) => {
+                        frame.declare(name, None, value)
+                    }
+                    _ => self.global_scope.set_variable(name, value),
+                }
+            }
+            Statement::Def(declaration) => {
+                self.define_function(declaration)?;
+                Ok(Value::None)
             }
         }
     }
@@ -523,8 +550,10 @@ impl SimpleRuntime {
     /// a native type name. A name is never more than one of these, since a binding can't
     /// shadow a function or a type, so the order doesn't change the result.
     fn lookup(&self, name: &str) -> Option<Value> {
-        self.global_scope
-            .get_variable(name)
+        self.frames
+            .last()
+            .and_then(|frame| frame.variables.get(name))
+            .or_else(|| self.global_scope.get_variable(name))
             .cloned()
             .or_else(|| {
                 self.global_scope
@@ -559,8 +588,11 @@ impl SimpleRuntime {
 
     /// Calls the function bound to `name` with already-evaluated arguments. `name` resolves
     /// like an identifier.
-    fn call_function(&self, name: &str, args: &[Value], keywords: Map) -> Result<Value, Error> {
+    fn call_function(&mut self, name: &str, args: &[Value], keywords: Map) -> Result<Value, Error> {
         match self.lookup(name) {
+            Some(Value::Function(function)) if function.is_declared_in_flt() => {
+                self.call_declared_function(&function, args, keywords)
+            }
             Some(Value::Function(function)) => function.call_with_keywords(args, keywords),
             Some(_) => Err(Error::RuntimeError(RuntimeError::NotCallable(
                 name.to_string(),
@@ -568,6 +600,187 @@ impl SimpleRuntime {
             None => Err(Error::RuntimeError(RuntimeError::UndefinedFunction(
                 name.to_string(),
             ))),
+        }
+    }
+
+    /// Declares a function with `def`, or adds an overload to a function declared in flt.
+    /// Raises `NameAlreadyBound` if the name is a built-in type, a native type, a variable or a
+    /// function the host registered, and `DuplicateOverload` if an overload with equal
+    /// parameter types exists.
+    fn define_function(&mut self, declaration: &FunctionDeclaration) -> Result<(), Error> {
+        let name = declaration.name.0.as_str();
+        let existing = self.global_scope.get_function(name).cloned();
+        let reason = if Type::is_builtin_name(name) {
+            Some(ProtectedName::BuiltinType)
+        } else if self.get_native_type(name).is_some() {
+            Some(ProtectedName::NativeType)
+        } else if self.global_scope.has_variable(name)
+            || self
+                .frames
+                .last()
+                .is_some_and(|frame| frame.variables.contains_key(name))
+        {
+            Some(ProtectedName::Variable)
+        } else if existing.as_ref().is_some_and(|f| !f.is_declared_in_flt()) {
+            Some(ProtectedName::Function)
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            return Err(Error::RuntimeError(RuntimeError::NameAlreadyBound {
+                name: name.to_string(),
+                reason,
+            }));
+        }
+        let mut arguments = Vec::new();
+        let mut keywords = Vec::new();
+        let mut defaults = Vec::new();
+        let mut rest_keywords = None;
+        let mut rest_name = None;
+        for param in &declaration.params {
+            let param_name = param.name.0.clone();
+            self.global_scope.check_bindable(&param_name)?;
+            let r#type = self.resolve_type(&param.r#type)?;
+            match &param.kind {
+                ParameterKind::Positional => arguments.push(Argument::new(param_name, r#type)),
+                ParameterKind::Variadic => arguments.push(Argument::variadic(param_name, r#type)),
+                ParameterKind::Keyword(default) => {
+                    defaults.push((param_name.clone(), default.clone()));
+                    keywords.push(KeywordArgument {
+                        name: param_name,
+                        r#type,
+                        default: Value::None,
+                    });
+                }
+                ParameterKind::RestKeywords => {
+                    rest_keywords = Some(r#type);
+                    rest_name = Some(param_name);
+                }
+            }
+        }
+        let return_type = match &declaration.return_type {
+            Some(r#type) => self.resolve_type(r#type)?,
+            None => Type::none(),
+        };
+        let mut signature = FunctionSignature::new(arguments, return_type);
+        signature.keywords = keywords;
+        signature.rest_keywords = rest_keywords;
+        signature.body = Some(Arc::new(FunctionBody {
+            statements: declaration.body.clone(),
+            defaults,
+            rest_keywords: rest_name,
+        }));
+        let mut overloads = existing
+            .map(|function| function.definition.overloads.clone())
+            .unwrap_or_default();
+        if overloads
+            .iter()
+            .any(|overload| overload.same_parameters(&signature))
+        {
+            return Err(Error::RuntimeError(RuntimeError::DuplicateOverload {
+                name: name.to_string(),
+                overload: Type::Function((&signature).into()).to_string(),
+            }));
+        }
+        overloads.push(signature);
+        let owned_name = name.to_string();
+        self.global_scope.set_function(NativeFunction::new(
+            FunctionDefinition {
+                name: owned_name.clone(),
+                overloads,
+            },
+            move |_| {
+                Err(Error::RuntimeError(RuntimeError::DeclaredInFlt(
+                    owned_name.clone(),
+                )))
+            },
+        ));
+        Ok(())
+    }
+
+    /// Calls a function declared in flt: picks the overload, evaluates the defaults of the
+    /// keywords the call leaves out, binds the parameters in a new scope, runs the body, and
+    /// checks the result against the return type.
+    fn call_declared_function(
+        &mut self,
+        function: &NativeFunction,
+        args: &[Value],
+        mut keywords: Map,
+    ) -> Result<Value, Error> {
+        let name = function.name();
+        let signature = function.definition.resolve(args, &keywords)?;
+        let body = signature
+            .body
+            .clone()
+            .expect("an overload of a function declared in flt has a body");
+        // A default can use global bindings, but not the parameters or the caller's variables
+        for (keyword, default) in &body.defaults {
+            let key = MapKey::symbol(keyword.as_str());
+            if keywords.contains_key(&key) {
+                continue;
+            }
+            let caller_frames = std::mem::take(&mut self.frames);
+            let value = self.eval_expr(default);
+            self.frames = caller_frames;
+            let value = value?;
+            let expected = signature
+                .keyword_type(keyword)
+                .expect("a default belongs to a declared keyword");
+            if !expected.accepts(&value) {
+                return Err(Error::RuntimeError(RuntimeError::KeywordTypeMismatch {
+                    name: name.to_string(),
+                    key: keyword.clone(),
+                    expected: expected.to_string(),
+                    found: value.type_of()?.to_string(),
+                }));
+            }
+            keywords.insert(key, value);
+        }
+        let keywords = signature.bind_keywords(name, keywords)?;
+        let (args, keywords) = signature.coerce_call(args, keywords);
+
+        let mut frame = Frame::default();
+        let minimum = signature.minimum_arguments();
+        for (argument, value) in signature.arguments.iter().zip(&args) {
+            if !argument.variadic {
+                frame.bind(&argument.name, argument.r#type.clone(), value.clone());
+            }
+        }
+        if let Some(variadic) = signature.arguments.iter().find(|a| a.variadic) {
+            frame.bind(
+                &variadic.name,
+                Type::array(),
+                Value::Array(args[minimum..].to_vec()),
+            );
+        }
+        let mut rest = keywords.clone();
+        for keyword in &signature.keywords {
+            if let Some(value) = rest.shift_remove(&MapKey::symbol(keyword.name.as_str())) {
+                frame.bind(&keyword.name, keyword.r#type.clone(), value);
+            }
+        }
+        if let Some(rest_name) = &body.rest_keywords {
+            frame.bind(rest_name, Type::map(), Value::Map(rest));
+        }
+
+        self.frames.push(frame);
+        let mut result = Ok(Value::None);
+        for statement in &body.statements {
+            result = self.eval_statement(statement);
+            if result.is_err() {
+                break;
+            }
+        }
+        self.frames.pop();
+        let value = result?;
+        if signature.return_type.accepts(&value) {
+            Ok(signature.return_type.coerce(value))
+        } else {
+            Err(Error::RuntimeError(RuntimeError::ReturnTypeMismatch {
+                name: name.to_string(),
+                expected: signature.return_type.to_string(),
+                found: value.type_of()?.to_string(),
+            }))
         }
     }
 
@@ -842,6 +1055,51 @@ fn check_variable_type(name: &str, r#type: &Type, value: Value) -> Result<Value,
     }))
 }
 
+/// The scope of a call to a function declared in flt: its parameters, and the variables its
+/// body declares.
+#[derive(Default)]
+struct Frame {
+    variables: HashMap<String, Value>,
+    /// The types of variables declared with one, which includes every parameter
+    declared_types: HashMap<String, Type>,
+}
+
+impl Frame {
+    /// Binds a parameter, whose value is already of `type`.
+    fn bind(&mut self, name: &str, r#type: Type, value: Value) {
+        self.declared_types.insert(name.to_string(), r#type);
+        self.variables.insert(name.to_string(), value);
+    }
+
+    /// Declares a variable, as `let` does, replacing any earlier declaration and its type.
+    /// Returns the value as it was bound, converted for `type`.
+    fn declare(&mut self, name: &str, r#type: Option<Type>, value: Value) -> Result<Value, Error> {
+        let value = match r#type {
+            Some(r#type) => {
+                let value = check_variable_type(name, &r#type, value)?;
+                self.declared_types.insert(name.to_string(), r#type);
+                value
+            }
+            None => {
+                self.declared_types.remove(name);
+                value
+            }
+        };
+        self.variables.insert(name.to_string(), value.clone());
+        Ok(value)
+    }
+
+    /// Assigns a variable that is already bound, keeping to its declared type, if it has one.
+    fn set(&mut self, name: &str, value: Value) -> Result<Value, Error> {
+        let value = match self.declared_types.get(name) {
+            Some(r#type) => check_variable_type(name, r#type, value)?,
+            None => value,
+        };
+        self.variables.insert(name.to_string(), value.clone());
+        Ok(value)
+    }
+}
+
 /// The global scope is the scope that is available to all other scopes.
 ///
 /// A name in it is a variable, a function, a built-in type, or a native type registered with
@@ -884,6 +1142,13 @@ impl GlobalScope {
             return Ok(());
         };
         Err(cannot_register("function", name, reason))
+    }
+
+    /// Sets the function under its name, replacing any function with that name. The caller has
+    /// checked the name.
+    pub(crate) fn set_function(&mut self, function: NativeFunction) {
+        self.functions
+            .insert(function.name().to_string(), Arc::new(function));
     }
 
     /// Check if the global scope has a variable with the given name.
@@ -2669,5 +2934,327 @@ mod tests {
             runtime.eval("let Integer = 1"),
             Err(Error::RuntimeError(RuntimeError::CannotBind { name, .. })) if name == "Integer"
         ));
+    }
+
+    // Function declarations (`def`), ADR 019
+
+    /// Evaluates `source` in a fresh runtime and returns the displayed value of its last
+    /// statement.
+    fn run(source: &str) -> String {
+        SimpleRuntime::default()
+            .eval(source)
+            .unwrap_or_else(|e| panic!("{source:?} should evaluate, got {e}"))
+            .to_string()
+    }
+
+    /// Evaluates `source` in a fresh runtime and returns the error it raises, as `Debug` text
+    /// (which names the `RuntimeError` variant) and as displayed.
+    fn run_error(source: &str) -> (String, String) {
+        let error = SimpleRuntime::default()
+            .eval(source)
+            .expect_err(&format!("{source:?} should fail"));
+        let message = error.to_string();
+        let message = message.strip_prefix("Runtime Error: ").unwrap_or(&message);
+        (format!("{error:?}"), message.to_string())
+    }
+
+    const MOD: &str = "def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend\n";
+
+    #[test]
+    fn test_def_gives_none() {
+        assert_eq!(run("def one() -> Integer\n  1\nend"), "None");
+    }
+
+    #[test]
+    fn test_def_function_can_be_called() {
+        assert_eq!(run(&format!("{MOD}mod(7, 3)")), "1");
+        assert_eq!(run(&format!("{MOD}mod 7, 3")), "1");
+        assert_eq!(run(&format!("{MOD}mod(2, 3)")), "2");
+        assert_eq!(run(&format!("{MOD}7 |> mod(3)")), "1");
+    }
+
+    #[test]
+    fn test_def_function_type() {
+        assert_eq!(
+            run(&format!("{MOD}typeof(mod)")),
+            "fn(Integer, Integer) -> Integer"
+        );
+        assert_eq!(
+            run("def log(label: String, *values: Any, level: Symbol = :info)\n  None\nend\ntypeof(log)"),
+            "fn(String, *Any, level: Symbol) -> None"
+        );
+        assert_eq!(
+            run("def options(**opts: Any) -> Map\n  opts\nend\ntypeof(options)"),
+            "fn(**Any) -> Map"
+        );
+        assert_eq!(run("def nothing()\nend\ntypeof(nothing)"), "fn() -> None");
+    }
+
+    #[test]
+    fn test_def_function_is_a_function_value() {
+        assert_eq!(run("def one() -> Integer\n  1\nend\nlet f = one\nf()"), "1");
+        assert_eq!(run("def one() -> Integer\n  1\nend\none"), "<fn one>");
+    }
+
+    #[test]
+    fn test_def_argument_checks_are_the_same_as_for_a_native_function() {
+        let (_, message) = run_error(&format!("{MOD}mod(1)"));
+        assert_eq!(message, "Function mod expected 2 argument(s), found 1");
+        let (_, message) = run_error(&format!("{MOD}mod(1, \"two\")"));
+        assert_eq!(message, "Argument d of mod expects Integer, found String");
+        let (_, message) = run_error(&format!("{MOD}mod(1, 2, k: 3)"));
+        assert_eq!(
+            message,
+            "Function mod got an unexpected keyword argument: k"
+        );
+    }
+
+    #[test]
+    fn test_def_number_parameter_and_result_convert_an_integer() {
+        assert_eq!(
+            run("def same(n: Number) -> Number\n  n\nend\nsame(1)"),
+            "1.0"
+        );
+        assert_eq!(run("def one() -> Number\n  1\nend\none()"), "1.0");
+    }
+
+    #[test]
+    fn test_def_variadic_parameter_is_an_array() {
+        let collect = "def collect(*values: Any) -> Array\n  values\nend\n";
+        assert_eq!(
+            run(&format!("{collect}collect(1, :a, \"b\")")),
+            "[1, :a, \"b\"]"
+        );
+        assert_eq!(run(&format!("{collect}collect()")), "[]");
+    }
+
+    #[test]
+    fn test_def_rest_keywords_parameter_is_a_map() {
+        let options = "def options(**opts: Any) -> Map\n  opts\nend\n";
+        assert_eq!(
+            run(&format!("{options}options(color: :red, size: 3)")),
+            "{color: :red, size: 3}"
+        );
+        assert_eq!(run(&format!("{options}options()")), "{}");
+    }
+
+    #[test]
+    fn test_def_keyword_defaults() {
+        let greet = "def greet(name: String, greeting: String = \"Hello\") -> String\n  greeting <> \", \" <> name\nend\n";
+        assert_eq!(run(&format!("{greet}greet(\"Ann\")")), "\"Hello, Ann\"");
+        assert_eq!(
+            run(&format!("{greet}greet(\"Ann\", greeting: \"Hi\")")),
+            "\"Hi, Ann\""
+        );
+        let (_, message) = run_error(&format!("{greet}greet(\"Ann\", greeting: 1)"));
+        assert_eq!(
+            message,
+            "Keyword argument greeting of greet expects String, found Integer"
+        );
+    }
+
+    #[test]
+    fn test_def_default_is_evaluated_for_each_call() {
+        let source = "let base = 1\n\
+            def plus(n: Integer, by: Integer = base) -> Integer\n  n + by\nend\n\
+            let first = plus(10)\nbase = 5\n[first, plus(10)]";
+        assert_eq!(run(source), "[11, 15]");
+    }
+
+    #[test]
+    fn test_def_default_cannot_use_another_parameter() {
+        let (_, message) =
+            run_error("def f(a: Integer, b: Integer = a) -> Integer\n  b\nend\nf(1)");
+        assert_eq!(message, "Unbound identifier: a");
+    }
+
+    #[test]
+    fn test_def_default_is_checked_against_the_keyword_type() {
+        let (_, message) = run_error("def f(k: Integer = \"one\") -> Integer\n  k\nend\nf()");
+        assert_eq!(
+            message,
+            "Keyword argument k of f expects Integer, found String"
+        );
+    }
+
+    #[test]
+    fn test_def_value_is_the_last_statement() {
+        assert_eq!(run("def two() -> Integer\n  1\n  2\nend\ntwo()"), "2");
+        assert_eq!(run("def nothing()\nend\nnothing()"), "None");
+    }
+
+    #[test]
+    fn test_def_without_a_return_type_returns_none() {
+        let (variant, message) = run_error("def one()\n  1\nend\none()");
+        assert!(
+            variant.starts_with("RuntimeError(ReturnTypeMismatch"),
+            "{variant}"
+        );
+        assert_eq!(message, "Function one returned Integer, expected None");
+        assert_eq!(run("def none()\n  None\nend\nnone()"), "None");
+    }
+
+    #[test]
+    fn test_def_result_is_checked_against_the_return_type() {
+        let (variant, message) = run_error("def f() -> String\n  1\nend\nf()");
+        assert!(
+            variant.starts_with("RuntimeError(ReturnTypeMismatch"),
+            "{variant}"
+        );
+        assert_eq!(message, "Function f returned Integer, expected String");
+    }
+
+    #[test]
+    fn test_def_parameters_and_lets_are_local_to_the_call() {
+        let (_, message) = run_error("def id(n: Integer) -> Integer\n  n\nend\nid(1)\nn");
+        assert_eq!(message, "Unbound identifier: n");
+        let (_, message) =
+            run_error("def f() -> Integer\n  let inner = 1\n  inner\nend\nf()\ninner");
+        assert_eq!(message, "Unbound identifier: inner");
+    }
+
+    #[test]
+    fn test_def_body_reads_globals_and_a_parameter_hides_one() {
+        assert_eq!(
+            run("let base = 10\ndef plus(n: Integer) -> Integer\n  n + base\nend\nplus(1)"),
+            "11"
+        );
+        assert_eq!(
+            run("let n = 100\ndef id(n: Integer) -> Integer\n  n\nend\nid(1)"),
+            "1"
+        );
+    }
+
+    #[test]
+    fn test_def_parameter_keeps_its_declared_type() {
+        let (_, message) = run_error("def f(n: Integer) -> Integer\n  n = \"two\"\n  1\nend\nf(1)");
+        assert_eq!(message, "Variable n expects Integer, found String");
+    }
+
+    #[test]
+    fn test_def_assignment_changes_the_nearest_binding() {
+        assert_eq!(
+            run("let count = 0\ndef bump()\n  count = count + 1\n  None\nend\nbump()\ncount"),
+            "1"
+        );
+        let (_, message) = run_error("def f() -> Integer\n  x = 1\n  x\nend\nf()\nx");
+        assert_eq!(message, "Unbound identifier: x");
+    }
+
+    #[test]
+    fn test_def_function_can_call_itself() {
+        let factorial = "def factorial(n: Integer) -> Integer\n  if n <= 1 { 1 } else { n * factorial(n - 1) }\nend\n";
+        assert_eq!(run(&format!("{factorial}factorial(5)")), "120");
+        let depth = "def depth(n: Integer) -> Integer\n  let here = n + 0\n  if n == 0 { 0 } else { depth(n - 1) + here }\nend\ndepth(3)";
+        assert_eq!(run(depth), "6");
+    }
+
+    #[test]
+    fn test_def_with_the_same_name_adds_an_overload() {
+        let show = "def show(x: Integer) -> String\n  \"integer\"\nend\n\
+            def show(x: String) -> String\n  \"string\"\nend\n";
+        assert_eq!(
+            run(&format!("{show}[show(1), show(\"a\")]")),
+            "[\"integer\", \"string\"]"
+        );
+        assert_eq!(
+            run(&format!("{show}typeof(show)")),
+            "fn(Integer) -> String | fn(String) -> String"
+        );
+        let arities = "def f() -> String\n  \"none\"\nend\ndef f(x: Any) -> String\n  \"one\"\nend\n[f(), f(1)]";
+        assert_eq!(run(arities), "[\"none\", \"one\"]");
+    }
+
+    #[test]
+    fn test_def_with_an_equal_parameter_signature_is_a_duplicate_overload() {
+        for second in [
+            // Only the return type differs
+            "def foo(s: String) -> String\n  \"a\"\nend",
+            // Only a positional name differs
+            "def foo(text: String) -> Number\n  2\nend",
+        ] {
+            let source = format!("def foo(s: String) -> Number\n  1\nend\n{second}");
+            let (variant, _) = run_error(&source);
+            assert!(
+                variant.contains("DuplicateOverload"),
+                "{source:?}: {variant}"
+            );
+        }
+        let source = "def foo(s: String, n: Number = 0) -> Number\n  n\nend\n\
+            def foo(s: String, n: Number = 1) -> Number\n  n\nend";
+        let (variant, _) = run_error(source);
+        assert!(
+            variant.starts_with("RuntimeError(DuplicateOverload"),
+            "{variant}"
+        );
+    }
+
+    #[test]
+    fn test_def_overloads_with_different_keywords_are_not_duplicates() {
+        let source = "def foo(s: String, n: Number = 0) -> Number\n  n\nend\n\
+            def foo(s: String, t: String = \"\") -> Number\n  1\nend\nfoo(\"a\", n: 5)";
+        assert_eq!(run(source), "5.0");
+    }
+
+    #[test]
+    fn test_def_cannot_use_a_name_that_is_in_use() {
+        for source in [
+            "def Number() -> Integer\n  1\nend",
+            "let x = 1\ndef x() -> Integer\n  1\nend",
+        ] {
+            let (variant, _) = run_error(source);
+            assert!(
+                variant.contains("NameAlreadyBound"),
+                "{source:?}: {variant}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_def_cannot_add_an_overload_to_a_native_function() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "identity",
+                    Type::any(),
+                    vec![Argument::new("v", Type::any())],
+                ),
+                |args| Ok(args.get::<&Value>("v")?.clone()),
+            ))
+            .unwrap();
+        let error = runtime
+            .eval("def identity(v: String) -> String\n  v\nend")
+            .expect_err("a def should not add an overload to a native function");
+        assert!(
+            format!("{error:?}").contains("NameAlreadyBound"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn test_def_on_one_line() {
+        assert_eq!(
+            run("def double(n: Number) -> Number n * 2 end\ndouble(21)"),
+            "42.0"
+        );
+        assert_eq!(run("def one() 1 end; typeof(one)"), "fn() -> None");
+    }
+
+    #[test]
+    fn test_def_function_cannot_be_called_by_the_host_directly() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("def one() -> Integer 1 end").unwrap();
+        let function = runtime.get_function("one").unwrap();
+        assert!(matches!(
+            function.call(&[]),
+            Err(Error::RuntimeError(RuntimeError::DeclaredInFlt(name))) if name == "one"
+        ));
+    }
+
+    #[test]
+    fn test_def_function_name_cannot_be_bound() {
+        let (_, message) = run_error("def one() -> Integer\n  1\nend\nlet one = 2");
+        assert_eq!(message, "Cannot bind one: it's a function");
     }
 }

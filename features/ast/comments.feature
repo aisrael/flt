@@ -59,3 +59,12 @@ Feature: Comments
       """
     When I parse the input
     Then the output should be 'Literal(String("hello"))'
+
+  Scenario: Trailing comment after a call without parentheses
+    Given the multiline input
+      """
+      add 1, # first
+       2
+      """
+    When I parse the input
+    Then the output should be 'FunctionCall(FunctionCall { name: Identifier("add"), positional_args: [Literal(Integer(1)), Literal(Integer(2))], keyword_args: {} })'

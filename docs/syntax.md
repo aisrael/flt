@@ -42,13 +42,23 @@ n = "two"            # error: Variable n expects Integer, found String
 let n = "two"        # ok: declares n again, without a type
 ```
 
-Only `let` takes a type, so `x: Integer = 1` is a parse error.
+An assignment can't declare a type, so `x: Integer = 1` is a parse error. Use `let x: Integer = 1`.
+
+A **function declaration** starts with `def`, and its body ends with `end` ([ADR 019](./adrs/019-def-function-declarations.md)):
+
+```flt
+def greet(name: String, greeting: String = "Hello") -> String
+  greeting <> ", " <> name
+end
+```
+
+A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
 - Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
 
-The REPL parses one statement per line (an expression or a `let` / assignment binding).
+The REPL parses one statement per line (an expression, a `let` / assignment binding or a `def`). A `def` must be written on one line in the REPL, e.g. `def double(n: Number) -> Number n * 2 end`.
 
 ## Reserved Keywords
 
@@ -60,8 +70,9 @@ The following words are reserved and recognized with word boundaries (e.g. `if` 
 | `and`   | `or`    | `not`    |
 | `for`   | `in`    | `let`    |
 | `while` | `do`    | `fn`     |
+| `def`   | `end`   |          |
 
-A reserved keyword can't be the name in a binding, so `let if = 1` and `fn = 1` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
+A reserved keyword can't be the name in a binding or in a `def`, so `let if = 1`, `fn = 1` and `def end() end` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
 
 ## Identifiers
 
@@ -96,4 +107,13 @@ Examples:
 1 + 2
 ```
 
-Comments are allowed where whitespace is allowed, including between function arguments.
+Comments are allowed where whitespace is allowed, including between the arguments of a call. One exception: a call without parentheses takes its first argument from the same line as the name, so a comment can follow that call but not sit between the name and its first argument:
+
+```flt
+add(1, # first
+    2)           # ok
+add 1, # first
+    2            # ok
+add # name
+  1              # not a call: `add` and `1` are two statements
+```

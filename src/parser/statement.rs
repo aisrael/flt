@@ -1,16 +1,21 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::combinator::cut;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::verify;
+use nom::multi::separated_list0;
 use nom::sequence::preceded;
 use nom::sequence::terminated;
 use nom::Parser;
 
+use crate::ast::FunctionDeclaration;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
+use crate::ast::Parameter;
 use crate::ast::Statement;
 use crate::parser::IResult;
+use crate::parser::ParseError;
 use crate::Error;
 
 use super::comment::multispace0_or_comment;
@@ -67,7 +72,9 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         ),
     ));
 
-    let (input, stmt) = if input.starts_with("let") {
+    let (input, stmt) = if starts_with_keyword(input, Keyword::Def) {
+        map(parse_def, Statement::Def).parse(input)?
+    } else if input.starts_with("let") {
         parse_let_or_assign.parse(input)?
     } else {
         alt((parse_let_or_assign, map(parse_expr, Statement::Expr))).parse(input)?
@@ -75,6 +82,118 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
+}
+
+/// Whether `input` starts with the reserved word `keyword`, as a whole word.
+fn starts_with_keyword(input: &str, keyword: Keyword) -> bool {
+    matches!(parse_keyword(input), Ok((_, found)) if found == keyword)
+}
+
+/// A failure, which stops the parser from trying anything else, e.g. a `def` with its
+/// parameters in the wrong order.
+fn failure(input: &str) -> nom::Err<ParseError<&str>> {
+    nom::Err::Failure(ParseError::new(input, nom::error::ErrorKind::Verify))
+}
+
+/// Parses a parameter: `name: Type`, `*name: Type`, `name: Type = default` or `**name: Type`.
+fn parse_parameter(input: &str) -> IResult<&str, Parameter> {
+    let (input, stars) = alt((tag("**"), tag("*"), tag(""))).parse(input)?;
+    let (input, name) = parse_binding_name(input)?;
+    let (input, _) = (multispace0_or_comment, tag(":"), multispace0_or_comment).parse(input)?;
+    let (input, r#type) = parse_type(input)?;
+    match stars {
+        "**" => Ok((input, Parameter::rest_keywords(name, r#type))),
+        "*" => Ok((input, Parameter::variadic(name, r#type))),
+        _ => {
+            let (input, default) = opt(preceded(
+                (multispace0_or_comment, tag("="), multispace0_or_comment),
+                parse_expr,
+            ))
+            .parse(input)?;
+            Ok(match default {
+                Some(default) => (input, Parameter::keyword(name, r#type, default)),
+                None => (input, Parameter::positional(name, r#type)),
+            })
+        }
+    }
+}
+
+/// Checks the parameters of a declaration: they come in the order positional, variadic,
+/// keyword, rest keywords, with at most one variadic and one rest keywords parameter, and no
+/// name occurs twice.
+fn params_are_valid(params: &[Parameter]) -> bool {
+    let in_order = params.windows(2).all(|pair| {
+        let (a, b) = (pair[0].order(), pair[1].order());
+        // Positional and keyword parameters can repeat; the other kinds occur once
+        a < b || (a == b && (a == 0 || a == 2))
+    });
+    let unique_names = params
+        .iter()
+        .enumerate()
+        .all(|(i, param)| params[..i].iter().all(|other| other.name != param.name));
+    in_order && unique_names
+}
+
+/// Parses a function declaration, `def name(params) -> type`, a body and `end`. The `-> type` is
+/// optional. The body is statements, separated by newlines or by `;`.
+fn parse_def(input: &str) -> IResult<&str, FunctionDeclaration> {
+    let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Def).parse(input)?;
+    // After `def`, nothing else can parse, so a mistake is a failure
+    cut(parse_def_rest).parse(input)
+}
+
+fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
+    let (input, _) = multispace0_or_comment(input)?;
+    let (input, name) = parse_binding_name(input)?;
+    let (input, _) = (multispace0_or_comment, tag("("), multispace0_or_comment).parse(input)?;
+    let (after_params, params) = separated_list0(
+        (multispace0_or_comment, tag(","), multispace0_or_comment),
+        parse_parameter,
+    )
+    .parse(input)?;
+    if !params_are_valid(&params) {
+        return Err(failure(input));
+    }
+    let (input, _) = (multispace0_or_comment, tag(")")).parse(after_params)?;
+    let (input, return_type) = opt(preceded(
+        (multispace0_or_comment, tag("->"), multispace0_or_comment),
+        parse_type,
+    ))
+    .parse(input)?;
+    let (input, body) = parse_body(input)?;
+    Ok((
+        input,
+        FunctionDeclaration {
+            name: Identifier(name.to_string()),
+            params,
+            return_type,
+            body,
+        },
+    ))
+}
+
+/// Parses the statements of a body, up to and including the `end` that closes it. As in a
+/// program, two statements on one line need a `;` between them.
+fn parse_body(input: &str) -> IResult<&str, Vec<Statement>> {
+    let mut statements = Vec::new();
+    let mut rest = input;
+    loop {
+        let (before_statement, _) = multispace0_or_comment(rest)?;
+        if starts_with_keyword(before_statement, Keyword::End) {
+            return Ok((&before_statement["end".len()..], statements));
+        }
+        let (remainder, statement) = parse_statement(before_statement)?;
+        let consumed = &before_statement[..before_statement.len() - remainder.len()];
+        let statement_end = consumed
+            .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
+            .len();
+        let separator = &consumed[statement_end..];
+        if !starts_with_keyword(remainder, Keyword::End) && !separator.contains([';', '\n']) {
+            return Err(failure(remainder));
+        }
+        statements.push(statement);
+        rest = remainder;
+    }
 }
 
 /// Parses all of `source` into its statements, which are separated by newlines or by `;`.
@@ -308,6 +427,176 @@ mod tests {
             assert!(rest.is_empty());
             assert_eq!(stmt, Statement::declare(name, Expr::literal_integer(1)));
             assert!(parses_as_binding(&format!("{name} = 1")));
+        }
+    }
+
+    /// Parses `source` as one `def` statement, which must use all of it.
+    fn parse_def(source: &str) -> Result<Statement, String> {
+        match parse_statement(source) {
+            Ok((rest, stmt)) if rest.trim().is_empty() && stmt.to_string().starts_with("def ") => {
+                Ok(stmt)
+            }
+            Ok((rest, stmt)) => Err(format!("not a def, or left {rest:?}: {stmt:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_parse_def_accepts_every_kind_of_parameter() {
+        for source in [
+            "def flip_a_coin() -> Boolean\n  true\nend",
+            "def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend",
+            "def greet(name: String, greeting: String = \"Hello\") -> String\n  greeting\nend",
+            "def log(label: String, *values: Any, level: Symbol = :info)\n  None\nend",
+            "def options(**opts: Any) -> Map\n  opts\nend",
+            "def all(a: Integer, *b: Any, c: Integer = 1, **d: Any) -> None\n  None\nend",
+            "def union(x: Number | None) -> (Number | None) x end",
+            "def one() 1 end",
+            "def nothing()\nend",
+            "def spaced ( n : Integer ) -> Integer n end",
+        ] {
+            assert!(
+                parse_def(source).is_ok(),
+                "{source:?}: {:?}",
+                parse_def(source)
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_def_display_parses_back_to_the_same_statement() {
+        for source in [
+            "def flip_a_coin() -> Boolean\n  true\nend",
+            "def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend",
+            "def log(label: String, *values: Any, level: Symbol = :info)\n  None\nend",
+            "def options(**opts: Any) -> Map\n  opts\nend",
+            "def two() -> Integer\n  1\n  2\nend",
+        ] {
+            let stmt = parse_def(source).unwrap();
+            let printed = stmt.to_string();
+            assert_eq!(parse_def(&printed), Ok(stmt), "{printed:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_rejects_parameters_in_the_wrong_order() {
+        for source in [
+            // A positional parameter after a keyword parameter
+            "def f(k: Integer = 1, n: Integer) -> Integer n end",
+            // A variadic parameter after a keyword parameter
+            "def f(k: Integer = 1, *rest: Any) -> Integer k end",
+            // A positional parameter after a variadic parameter
+            "def f(*rest: Any, n: Integer) -> Integer n end",
+            // Two variadic parameters
+            "def f(*a: Any, *b: Any) -> Integer 1 end",
+            // Two rest keywords parameters
+            "def f(**a: Any, **b: Any) -> Integer 1 end",
+            // Anything after the rest keywords parameter
+            "def f(**a: Any, k: Integer = 1) -> Integer 1 end",
+            "def f(n: Integer, **k: Any, j: Integer) -> Integer n end",
+        ] {
+            assert!(parse_def(source).is_err(), "{source:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_rejects_a_repeated_parameter_name() {
+        for source in [
+            "def f(n: Integer, n: Integer) -> Integer n end",
+            "def f(n: Integer, *n: Any) -> Integer 1 end",
+            "def f(n: Integer, n: Integer = 1) -> Integer 1 end",
+            "def f(n: Integer, **n: Any) -> Integer 1 end",
+        ] {
+            assert!(parse_def(source).is_err(), "{source:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_rejects_malformed_declarations() {
+        for source in [
+            // A parameter without a type
+            "def f(n) -> Integer n end",
+            "def f(*rest) 1 end",
+            // A variadic or rest keywords parameter with a default
+            "def f(*rest: Any = 1) 1 end",
+            "def f(**rest: Any = 1) 1 end",
+            // No body, or no `end`
+            "def f(n: Integer) -> Integer",
+            "def f(n: Integer) -> Integer n",
+            // No parentheses
+            "def f -> Integer 1 end",
+            // An arrow with no type
+            "def f() -> 1 end",
+            // No name
+            "def (n: Integer) 1 end",
+            // A trailing comma is not allowed
+            "def f(n: Integer,) 1 end",
+        ] {
+            assert!(parse_def(source).is_err(), "{source:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_rejects_a_keyword_as_the_function_name() {
+        for keyword in Keyword::iter() {
+            let source = format!("def {keyword}() 1 end");
+            assert!(parse_def(&source).is_err(), "{source:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_accepts_a_name_starting_with_a_keyword() {
+        for name in ["iffy", "ending", "define", "default", "do-it"] {
+            let source = format!("def {name}() 1 end");
+            assert!(parse_def(&source).is_ok(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_def_is_not_an_identifier_or_binding_name() {
+        assert!(!parses_as_binding("let def = 1"));
+        assert!(!parses_as_binding("def = 1"));
+        assert!(!parses_as_binding("let end = 1"));
+        assert!(!parses_as_binding("end = 1"));
+        // A word that only starts with `def` or `end` is still a name
+        assert!(parses_as_binding("define = 1"));
+        assert!(parses_as_binding("ending = 1"));
+    }
+
+    #[test]
+    fn test_parse_statements_reads_a_def_then_the_next_statement() {
+        let source = "def one() -> Integer\n  1\nend\none()";
+        let statements = parse_statements(source).unwrap();
+        assert_eq!(statements.len(), 2);
+        assert!(statements[0].to_string().starts_with("def one"));
+        assert_eq!(statements[1].to_string(), "one()");
+    }
+
+    #[test]
+    fn test_parse_statements_reads_a_def_with_comments_and_semicolons() {
+        let source = "# a function\ndef f() -> Integer # no parameters\n  1; 2 # last\nend\n";
+        let statements = parse_statements(source).unwrap();
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_statements_reads_two_defs() {
+        let source = "def a() 1 end\ndef b() 2 end";
+        assert_eq!(parse_statements(source).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_parse_statements_needs_a_separator_after_end() {
+        assert!(parse_statements("def a() 1 end def b() 2 end").is_err());
+    }
+
+    #[test]
+    fn test_parse_statements_fails_on_a_def_without_end() {
+        for source in ["def a() 1", "def a()\n  1\n", "def a() def b() 1 end"] {
+            assert!(
+                matches!(parse_statements(source), Err(Error::ParserError(_))),
+                "{source:?}"
+            );
         }
     }
 }

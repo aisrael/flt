@@ -125,6 +125,15 @@ pub enum RuntimeError {
     /// A native function was given a value of the wrong type, e.g. for a native or number argument
     #[error("Expected {expected}, found {found}")]
     UnexpectedType { expected: String, found: String },
+    /// A `def` declared an overload whose parameter types equal those of an existing overload
+    #[error("Function {name} already has the overload {overload}")]
+    DuplicateOverload { name: String, overload: String },
+    /// A `def` used a name that is already in use
+    #[error("Cannot define {name}: it's {reason}")]
+    NameAlreadyBound { name: String, reason: ProtectedName },
+    /// A host called a function declared in flt source directly, instead of through the runtime
+    #[error("Function {0} is declared in flt; call it through the runtime")]
+    DeclaredInFlt(String),
     /// A number doesn't fit the Rust number type a native function reads it as
     #[error("Cannot convert {number} to {target}")]
     CannotConvert {

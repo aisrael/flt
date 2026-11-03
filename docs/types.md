@@ -4,17 +4,17 @@ Types in `flt` are checked at runtime. Every value has exactly one concrete type
 
 ## Built-In Types
 
-| Type      | Example values     | Notes                                                                               |
-| --------- | ------------------ | ----------------------------------------------------------------------------------- |
-| `None`    | `None`             | The `None` type (and value); see [None](./types/none.md)                            |
-| `Boolean` | `true`, `false`    |                                                                                     |
-| `Integer` | `42`, `-7`         | Arbitrary-precision whole number; see [Integers and Numbers](#integers-and-numbers) |
-| `Number`  | `3.14`, `42.0`     | Arbitrary-precision decimal; also accepts an `Integer`, converting it               |
-| `String`  | `"hi"`             |                                                                                     |
-| `Symbol`  | `:id`              |                                                                                     |
-| `Array`   | `[1, 2, 3]`        |                                                                                     |
-| `Map`     | `{ foo: 1 }`       |                                                                                     |
-| `Type`    | `Number`, `String` | The type of a type value; see [Types as Values](#types-as-values)                   |
+| Type | Example values | Notes |
+| --- | --- | --- |
+| `None` | `None` | The `None` type (and value); see [None](./types/none.md) |
+| `Boolean` | `true`, `false` |  |
+| `Integer` | `42`, `-7` | Arbitrary-precision whole number; see [Integers and Numbers](#integers-and-numbers) |
+| `Number` | `3.14`, `42.0` | Arbitrary-precision decimal; also accepts an `Integer`, converting it |
+| `String` | `"hi"` |  |
+| `Symbol` | `:id` |  |
+| `Array` | `[1, 2, 3]` |  |
+| `Map` | `{ foo: 1 }` |  |
+| `Type` | `Number`, `String` | The type of a type value; see [Types as Values](#types-as-values) |
 
 ## More About Types
 
@@ -87,6 +87,8 @@ let a: Any = 1
 ```
 
 The value must be of that type, by the same rules as a function's arguments, or the binding raises `Variable <name> expects <type>, found <type>`. It's converted by the same rules too, so `let n: Number = 1` binds `1.0` ([`Number` Accepts an `Integer`](#number-accepts-an-integer)). A later assignment, `n = …`, is checked against the declared type too, until the variable is declared again with `let`. See [Statements](./syntax.md#statements).
+
+A `def` declaration writes a type for each parameter and for its result in the same way ([Declaring Functions](./functions-and-pipe.md#declaring-functions)).
 
 A type is a built-in type name, including `Any` and `None`, a [native type](./native-functions-and-values.md#native-types-and-values)'s name, a union `A | B`, or a type in parentheses. Function types and `Option<T>` can't be written yet; write `T | None` for `Option<T>`. Any other name raises `Unknown type: <name>`, before the value is evaluated:
 

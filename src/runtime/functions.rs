@@ -2,10 +2,13 @@
 
 use std::cmp::Reverse;
 use std::fmt;
+use std::sync::Arc;
 
 use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
 
+use crate::ast::Expr;
+use crate::ast::Statement;
 use crate::errors::ArgumentCount;
 use crate::errors::ArgumentCounts;
 use crate::errors::HandlerError;
@@ -20,12 +23,12 @@ use crate::Error;
 
 /// The handler backing a native function: a Rust closure, which may capture host state. It
 /// gets the call's [`Arguments`], and reads them by name.
-pub type NativeFn = Box<dyn Fn(&Arguments) -> Result<Value, Error> + Send + Sync>;
+pub type NativeFunctionHandler = Box<dyn Fn(&Arguments) -> Result<Value, Error> + Send + Sync>;
 
 /// A native function pairs a type signature with a Rust implementation.
 pub struct NativeFunction {
     pub definition: FunctionDefinition,
-    handler: NativeFn,
+    handler: NativeFunctionHandler,
 }
 
 impl NativeFunction {
@@ -39,6 +42,15 @@ impl NativeFunction {
             definition,
             handler: Box::new(handler),
         }
+    }
+
+    /// Whether the function was declared in flt source with `def`, so that only the runtime can
+    /// call it.
+    pub fn is_declared_in_flt(&self) -> bool {
+        self.definition
+            .overloads
+            .iter()
+            .any(|overload| overload.body.is_some())
     }
 
     /// The name the function is registered under.
@@ -65,27 +77,13 @@ impl NativeFunction {
     /// runs, and the result after, so a `Number` argument or result is never an `Integer`.
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
         let signature = self.definition.resolve(args, &keywords)?;
+        if signature.body.is_some() {
+            return Err(Error::RuntimeError(RuntimeError::DeclaredInFlt(
+                self.definition.name.clone(),
+            )));
+        }
         let keywords = signature.bind_keywords(&self.definition.name, keywords)?;
-        let args: Vec<Value> = args
-            .iter()
-            .enumerate()
-            .map(|(i, value)| match signature.argument_type(i) {
-                Some(r#type) => r#type.coerce(value.clone()),
-                None => value.clone(),
-            })
-            .collect();
-        let keywords: Map = keywords
-            .into_iter()
-            .map(
-                |(key, value)| match signature.keyword_type(key_name(&key)) {
-                    Some(r#type) => {
-                        let value = r#type.coerce(value);
-                        (key, value)
-                    }
-                    None => (key, value),
-                },
-            )
-            .collect();
+        let (args, keywords) = signature.coerce_call(args, keywords);
         let result = (self.handler)(&Arguments {
             function_name: &self.definition.name,
             signature,
@@ -525,7 +523,20 @@ struct Mismatch {
     error: RuntimeError,
 }
 
+/// The body of a function declared in flt source with `def`: what a call runs.
+#[derive(Debug, PartialEq)]
+pub struct FunctionBody {
+    /// The statements of the body
+    pub statements: Vec<Statement>,
+    /// The default expression of each keyword parameter, by name, evaluated for each call that
+    /// leaves the keyword out
+    pub defaults: Vec<(String, Expr)>,
+    /// The name of the rest keywords parameter, if there is one
+    pub rest_keywords: Option<String>,
+}
+
 /// A function signature is a single function definition with a name, arguments, and return type
+#[derive(Clone)]
 pub struct FunctionSignature {
     pub arguments: Vec<Argument>,
     /// The optional keyword arguments, in declaration order
@@ -533,6 +544,9 @@ pub struct FunctionSignature {
     /// The type of any other keyword arguments the signature accepts, if it accepts them
     pub rest_keywords: Option<Type>,
     pub return_type: Type,
+    /// The body, if a `def` in flt source declared the overload. A native function's overloads
+    /// have none.
+    pub body: Option<Arc<FunctionBody>>,
 }
 
 impl FunctionSignature {
@@ -543,7 +557,53 @@ impl FunctionSignature {
             keywords: Vec::new(),
             rest_keywords: None,
             return_type,
+            body: None,
         }
+    }
+
+    /// Whether the two signatures have equal parameter signatures (ADR 018): the same positional
+    /// types in order, the same variadic type, the same keywords by name and type, in any
+    /// order, and the same rest keywords type. Names of positional parameters, defaults and
+    /// the return type don't count.
+    pub fn same_parameters(&self, other: &Self) -> bool {
+        self.arguments.len() == other.arguments.len()
+            && self
+                .arguments
+                .iter()
+                .zip(&other.arguments)
+                .all(|(a, b)| a.variadic == b.variadic && a.r#type == b.r#type)
+            && self.keywords.len() == other.keywords.len()
+            && self.keywords.iter().all(|keyword| {
+                other
+                    .keywords
+                    .iter()
+                    .any(|that| that.name == keyword.name && that.r#type == keyword.r#type)
+            })
+            && self.rest_keywords == other.rest_keywords
+    }
+
+    /// The call's positional values and bound keywords, each converted for the type this
+    /// signature declares for it, e.g. an `Integer` to a `Number`
+    pub fn coerce_call(&self, args: &[Value], keywords: Map) -> (Vec<Value>, Map) {
+        let args = args
+            .iter()
+            .enumerate()
+            .map(|(i, value)| match self.argument_type(i) {
+                Some(r#type) => r#type.coerce(value.clone()),
+                None => value.clone(),
+            })
+            .collect();
+        let keywords = keywords
+            .into_iter()
+            .map(|(key, value)| match self.keyword_type(key_name(&key)) {
+                Some(r#type) => {
+                    let value = r#type.coerce(value);
+                    (key, value)
+                }
+                None => (key, value),
+            })
+            .collect();
+        (args, keywords)
     }
 
     /// Whether the signature declares a keyword argument called `name`
@@ -552,7 +612,7 @@ impl FunctionSignature {
     }
 
     /// Whether the last argument is variadic
-    fn is_variadic(&self) -> bool {
+    pub(crate) fn is_variadic(&self) -> bool {
         self.arguments
             .last()
             .is_some_and(|argument| argument.variadic)
@@ -560,7 +620,7 @@ impl FunctionSignature {
 
     /// How many positional arguments a call needs at least: all of them, except a variadic
     /// last one
-    fn minimum_arguments(&self) -> usize {
+    pub(crate) fn minimum_arguments(&self) -> usize {
         self.arguments.len() - usize::from(self.is_variadic())
     }
 
@@ -634,7 +694,7 @@ impl FunctionSignature {
 
     /// The type of the `i`th positional value of a call, or `None` past the last argument of
     /// a signature without a variadic one
-    fn argument_type(&self, i: usize) -> Option<&Type> {
+    pub(crate) fn argument_type(&self, i: usize) -> Option<&Type> {
         match self.arguments.get(i) {
             Some(argument) => Some(&argument.r#type),
             None => self
@@ -647,7 +707,7 @@ impl FunctionSignature {
 
     /// The type of the keyword `name`: the declared keyword's, or else the rest keywords', if
     /// the signature takes rest keywords
-    fn keyword_type(&self, name: &str) -> Option<&Type> {
+    pub(crate) fn keyword_type(&self, name: &str) -> Option<&Type> {
         self.keywords
             .iter()
             .find(|keyword| keyword.name == name)
@@ -754,7 +814,7 @@ fn assert_variadic_last(function_name: &str, arguments: &[Argument]) {
 }
 
 /// An optional keyword argument, with a default value
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct KeywordArgument {
     pub name: String,
     pub r#type: Type,
@@ -762,7 +822,7 @@ pub struct KeywordArgument {
 }
 
 /// An argument is a single argument to a function
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Argument {
     pub name: String,
     pub r#type: Type,
