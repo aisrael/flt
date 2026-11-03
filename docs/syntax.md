@@ -107,4 +107,13 @@ Examples:
 1 + 2
 ```
 
-Comments are allowed where whitespace is allowed, including between function arguments.
+Comments are allowed where whitespace is allowed, including between the arguments of a call. One exception: a call without parentheses takes its first argument from the same line as the name, so a comment can follow that call but not sit between the name and its first argument:
+
+```flt
+add(1, # first
+    2)           # ok
+add 1, # first
+    2            # ok
+add # name
+  1              # not a call: `add` and `1` are two statements
+```
