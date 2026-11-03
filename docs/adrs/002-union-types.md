@@ -37,33 +37,25 @@ A function type is written `fn(P1, P2) -> R`. `fn() -> T` takes no parameters.
 
 flt is dynamically typed: `typeof(x)` returns the type of the value `x` holds when it runs.
 
-Inferred types are left to future static analysis, for example an flt language server. After
-`let result = if flip_a_coin() 0 else "zero"`:
+Inferred types are left to future static analysis, for example an flt language server. After `let result = if flip_a_coin() 0 else "zero"`:
 
 - at run time, `typeof(result)` is `Number` or `String`, depending on the branch taken;
 - a static analyzer would annotate `result` as `Number | String`.
 
 ### 4. Function overloading is deferred
 
-When overloading is added, the type of an overloaded function will be the union of its signatures,
-e.g. `fn(String) -> String | fn(String, Number) -> String`. It is out of scope for now.
+When overloading is added, the type of an overloaded function will be the union of its signatures, e.g. `fn(String) -> String | fn(String, Number) -> String`. It is out of scope for now.
 
 ### 5. Type inference for `if` is deferred
 
-When static type inference is added, an `if` whose branches have types `T` and `F` will have the
-inferred type `T | F`. An `if` with no `else` evaluates to `None` when its condition is `false` (see
-[ADR 001](001-none-types.md)), so its inferred type is `T | None`. Until then, types are only
-checked at run time (decision 3).
+When static type inference is added, an `if` whose branches have types `T` and `F` will have the inferred type `T | F`. An `if` with no `else` evaluates to `None` when its condition is `false` (see [ADR 001](001-none-types.md)), so its inferred type is `T | None`. Until then, types are only checked at run time (decision 3).
 
 ## Alternatives Considered
 
-- **Make `->` bind more loosely than `|`**, or **use a different symbol for unions of function
-  types.** Both were superseded by requiring brackets around a union return type, which keeps `|`
-  as the only union operator.
+- **Make `->` bind more loosely than `|`**, or **use a different symbol for unions of function types.** Both were superseded by requiring brackets around a union return type, which keeps `|` as the only union operator.
 - **Infer `typeof` statically.** Rejected. flt is dynamically typed.
 
 ## Consequences
 
 - `Type::Union` is added. It is built with `Type::union`, which keeps unions simplified.
-- The spec (`docs/spec.md`) and the union type docs (`docs/types/union_types.md`) describe these
-  rules.
+- The spec (`docs/spec.md`) and the union type docs (`docs/types/union_types.md`) describe these rules.

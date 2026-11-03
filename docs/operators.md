@@ -10,27 +10,27 @@
 
 ## Binary Operators
 
-| Operator | Category               | Example                                       |
-| -------- | ---------------------- | --------------------------------------------- |
-| `+`      | arithmetic add         | `1 + 2`                                       |
-| `-`      | arithmetic subtract    | `10 - 3`                                      |
-| `*`      | arithmetic multiply    | `4 * 5`                                       |
-| `/`      | arithmetic divide      | `20 / 4`                                      |
-| `//`     | integer floor division | `7 // 2`                                      |
-| `<>`     | string concat          | `"foo" <> "bar"`                              |
-| `&&`     | logical and            | `true && false`                               |
-| `        |                        | `                                             | logical or | `true |     | false` |
-| `^^`     | logical xor            | `true ^^ false`                               |
-| `&`      | bitwise and (parsed)   | `a & b`                                       |
-| `        | `                      | bitwise or (parsed)                           | `a         | b`    |
-| `^`      | bitwise xor (parsed)   | `a ^ b`                                       |
-| `        | >`                     | [pipe](./functions-and-pipe.md#pipe-operator) | `x         | > f`  |
-| `==`     | equality               | `x == 1`                                      |
-| `!=`     | inequality             | `x != 0`                                      |
-| `<`      | less than              | `a < b`                                       |
-| `>`      | greater than           | `a > b`                                       |
-| `<=`     | less than or equal     | `a <= b`                                      |
-| `>=`     | greater than or equal  | `a >= b`                                      |
+| Operator | Category | Example |
+| --- | --- | --- |
+| `+` | arithmetic add | `1 + 2` |
+| `-` | arithmetic subtract | `10 - 3` |
+| `*` | arithmetic multiply | `4 * 5` |
+| `/` | arithmetic divide | `20 / 4` |
+| `//` | integer floor division | `7 // 2` |
+| `<>` | string concat | `"foo" <> "bar"` |
+| `&&` | logical and | `true && false` |
+| ` |  | ` | logical or | `true |  | false` |
+| `^^` | logical xor | `true ^^ false` |
+| `&` | bitwise and (parsed) | `a & b` |
+| ` | ` | bitwise or (parsed) | `a | b` |
+| `^` | bitwise xor (parsed) | `a ^ b` |
+| ` | >` | [pipe](./functions-and-pipe.md#pipe-operator) | `x | > f` |
+| `==` | equality | `x == 1` |
+| `!=` | inequality | `x != 0` |
+| `<` | less than | `a < b` |
+| `>` | greater than | `a > b` |
+| `<=` | less than or equal | `a <= b` |
+| `>=` | greater than or equal | `a >= b` |
 
 ## Precedence (Low to High)
 
@@ -48,26 +48,20 @@
 
 All binary levels are left-associative, so `7 // 2 * 2` is `(7 // 2) * 2`.
 
-Comparisons bind looser than arithmetic, string concatenation and the bitwise
-operators, so `1 + 2 == 3` is `true` and `x & 1 == 0` is `(x & 1) == 0`.
-The [pipe](./functions-and-pipe.md#pipe-operator) sits directly below `+`,
-`-` and `<>`, as in Elixir, so `1 + 1 |> f` is `(1 + 1) |> f` and
-`x |> f == 3` is `(x |> f) == 3`.
+Comparisons bind looser than arithmetic, string concatenation and the bitwise operators, so `1 + 2 == 3` is `true` and `x & 1 == 0` is `(x & 1) == 0`. The [pipe](./functions-and-pipe.md#pipe-operator) sits directly below `+`, `-` and `<>`, as in Elixir, so `1 + 1 |> f` is `(1 + 1) |> f` and `x |> f == 3` is `(x |> f) == 3`.
 
-`.` ([field access](./field-access.md)) is a tight postfix operator that
-binds even tighter than the unary operators above — it applies directly to
-the primary expression before any unary or binary operator sees it.
+`.` ([field access](./field-access.md)) is a tight postfix operator that binds even tighter than the unary operators above — it applies directly to the primary expression before any unary or binary operator sees it.
 
 ## Integer and Number Arithmetic
 
 flt has two numeric types, `Integer` and `Number` ([Integers and Numbers](./types.md#integers-and-numbers), [ADR 017](./adrs/017-integers.md)). The type of an arithmetic result depends on its operands' types:
 
-| Operation      | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number` |
-| -------------- | -------------------- | ---------------------------------------- | ------------------ |
-| `+`, `-`, `*`  | `Integer`            | `Number`                                 | `Number`           |
-| `/`            | `Integer`, floored   | `Number`                                 | `Number`           |
-| `//`           | `Integer`, floored   | error                                    | error              |
-| unary `-`, `+` | `Integer`            |                                          | `Number`           |
+| Operation | `Integer`, `Integer` | `Integer` and `Number`, either way round | `Number`, `Number` |
+| --- | --- | --- | --- |
+| `+`, `-`, `*` | `Integer` | `Number` | `Number` |
+| `/` | `Integer`, floored | `Number` | `Number` |
+| `//` | `Integer`, floored | error | error |
+| unary `-`, `+` | `Integer` |  | `Number` |
 
 ```flt
 1 + 2              # 3

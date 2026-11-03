@@ -203,9 +203,7 @@ options(b: 1, a: 2)            # {b: 1, a: 2}
 
 ### Variadic Arguments
 
-A native function's last positional argument can be variadic, made with `Argument::variadic`
-([ADR 011](./adrs/011-variadic-arguments.md)). It takes zero or more values, which the handler
-gets from `args.rest()`, as a slice:
+A native function's last positional argument can be variadic, made with `Argument::variadic` ([ADR 011](./adrs/011-variadic-arguments.md)). It takes zero or more values, which the handler gets from `args.rest()`, as a slice:
 
 ```rust
 /// count_args(*args) returns how many arguments it was given

@@ -50,7 +50,7 @@ impl NativeFunction {
         self.definition
             .overloads
             .iter()
-            .any(|overload| overload.body.is_some())
+            .any(|overload| overload.implementation.is_declared())
     }
 
     /// The name the function is registered under.
@@ -77,7 +77,7 @@ impl NativeFunction {
     /// runs, and the result after, so a `Number` argument or result is never an `Integer`.
     pub fn call_with_keywords(&self, args: &[Value], keywords: Map) -> Result<Value, Error> {
         let signature = self.definition.resolve(args, &keywords)?;
-        if signature.body.is_some() {
+        if signature.implementation.is_declared() {
             return Err(Error::RuntimeError(RuntimeError::DeclaredInFlt(
                 self.definition.name.clone(),
             )));
@@ -544,9 +544,24 @@ pub struct FunctionSignature {
     /// The type of any other keyword arguments the signature accepts, if it accepts them
     pub rest_keywords: Option<Type>,
     pub return_type: Type,
-    /// The body, if a `def` in flt source declared the overload. A native function's overloads
-    /// have none.
-    pub body: Option<Arc<FunctionBody>>,
+    /// Who implements the overload: the host, or a `def` in flt source
+    pub implementation: FunctionImplementation,
+}
+
+/// What runs when a call matches an overload
+#[derive(Clone)]
+pub enum FunctionImplementation {
+    /// The host's handler, which a native function registers
+    Native,
+    /// The body of a `def` in flt source, which only the runtime can run
+    Declared(Arc<FunctionBody>),
+}
+
+impl FunctionImplementation {
+    /// Whether a `def` in flt source declared the overload
+    pub fn is_declared(&self) -> bool {
+        matches!(self, Self::Declared(_))
+    }
 }
 
 impl FunctionSignature {
@@ -557,7 +572,7 @@ impl FunctionSignature {
             keywords: Vec::new(),
             rest_keywords: None,
             return_type,
-            body: None,
+            implementation: FunctionImplementation::Native,
         }
     }
 

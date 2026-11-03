@@ -1,9 +1,7 @@
 flt
 ====
 
-[![CI Tests](https://github.com/aisrael/flt/actions/workflows/ci.yml/badge.svg)](https://github.com/aisrael/flt/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/flt.svg)](https://crates.io/crates/flt)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/aisrael/flt/blob/main/LICENSE)
+[![CI Tests](https://github.com/aisrael/flt/actions/workflows/ci.yml/badge.svg)](https://github.com/aisrael/flt/actions/workflows/ci.yml) [![Crates.io](https://img.shields.io/crates/v/flt.svg)](https://crates.io/crates/flt) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/aisrael/flt/blob/main/LICENSE)
 
 A lightweight functional language with a parser, REPL, and a rudimentary interpreter/runtime.
 
