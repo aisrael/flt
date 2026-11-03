@@ -88,6 +88,8 @@ let a: Any = 1
 
 The value must be of that type, by the same rules as a function's arguments, or the binding raises `Variable <name> expects <type>, found <type>`. It's converted by the same rules too, so `let n: Number = 1` binds `1.0` ([`Number` Accepts an `Integer`](#number-accepts-an-integer)). A later assignment, `n = …`, is checked against the declared type too, until the variable is declared again with `let`. See [Statements](./syntax.md#statements).
 
+A `def` declaration writes a type for each parameter and for its result in the same way ([Declaring Functions](./functions-and-pipe.md#declaring-functions)).
+
 A type is a built-in type name, including `Any` and `None`, a [native type](./native-functions-and-values.md#native-types-and-values)'s name, a union `A | B`, or a type in parentheses. Function types and `Option<T>` can't be written yet; write `T | None` for `Option<T>`. Any other name raises `Unknown type: <name>`, before the value is evaluated:
 
 ```flt

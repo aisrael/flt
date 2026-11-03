@@ -112,6 +112,7 @@ The evaluator currently supports:
 These constructs parse successfully but are not fully supported by the current evaluator:
 
 - Bitwise operators (`&`, `|`, `^`)
+- Function declarations (`def`), described in [Declaring Functions](./functions-and-pipe.md#declaring-functions) ([ADR 019](./adrs/019-def-function-declarations.md)). They also add the errors `DuplicateOverload` and `NameAlreadyBound`
 - Standalone keyword expressions (e.g. `return`, `fn`) - they parse as expressions but have no evaluation behavior yet
 
 ## Practical Guidance

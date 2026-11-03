@@ -42,7 +42,17 @@ n = "two"            # error: Variable n expects Integer, found String
 let n = "two"        # ok: declares n again, without a type
 ```
 
-Only `let` takes a type, so `x: Integer = 1` is a parse error.
+An assignment can't declare a type, so `x: Integer = 1` is a parse error. Use `let x: Integer = 1`.
+
+A **function declaration** starts with `def`, and its body ends with `end` ([ADR 019](./adrs/019-def-function-declarations.md)):
+
+```flt
+def greet(name: String, greeting: String = "Hello") -> String
+  greeting <> ", " <> name
+end
+```
+
+A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions). Declaring functions in flt source is not implemented yet.
 
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
@@ -60,8 +70,9 @@ The following words are reserved and recognized with word boundaries (e.g. `if` 
 | `and`   | `or`    | `not`    |
 | `for`   | `in`    | `let`    |
 | `while` | `do`    | `fn`     |
+| `def`   | `end`   |          |
 
-A reserved keyword can't be the name in a binding, so `let if = 1` and `fn = 1` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
+A reserved keyword can't be the name in a binding or in a `def`, so `let if = 1`, `fn = 1` and `def end() end` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
 
 ## Identifiers
 
