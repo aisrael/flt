@@ -96,7 +96,7 @@ fn failure(input: &str) -> nom::Err<ParseError<&str>> {
 }
 
 /// Parses a parameter: `name: Type`, `*name: Type`, `name: Type = default` or `**name: Type`.
-fn parse_param(input: &str) -> IResult<&str, Parameter> {
+fn parse_parameter(input: &str) -> IResult<&str, Parameter> {
     let (input, stars) = alt((tag("**"), tag("*"), tag(""))).parse(input)?;
     let (input, name) = parse_binding_name(input)?;
     let (input, _) = (multispace0_or_comment, tag(":"), multispace0_or_comment).parse(input)?;
@@ -148,7 +148,7 @@ fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
     let (input, _) = (multispace0_or_comment, tag("("), multispace0_or_comment).parse(input)?;
     let (after_params, params) = separated_list0(
         (multispace0_or_comment, tag(","), multispace0_or_comment),
-        parse_param,
+        parse_parameter,
     )
     .parse(input)?;
     if !params_are_valid(&params) {
