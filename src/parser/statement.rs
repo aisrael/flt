@@ -12,7 +12,7 @@ use nom::Parser;
 use crate::ast::FunctionDecl;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
-use crate::ast::Param;
+use crate::ast::Parameter;
 use crate::ast::Statement;
 use crate::parser::IResult;
 use crate::parser::ParseError;
@@ -96,14 +96,14 @@ fn failure(input: &str) -> nom::Err<ParseError<&str>> {
 }
 
 /// Parses a parameter: `name: Type`, `*name: Type`, `name: Type = default` or `**name: Type`.
-fn parse_param(input: &str) -> IResult<&str, Param> {
+fn parse_param(input: &str) -> IResult<&str, Parameter> {
     let (input, stars) = alt((tag("**"), tag("*"), tag(""))).parse(input)?;
     let (input, name) = parse_binding_name(input)?;
     let (input, _) = (multispace0_or_comment, tag(":"), multispace0_or_comment).parse(input)?;
     let (input, r#type) = parse_type(input)?;
     match stars {
-        "**" => Ok((input, Param::rest_keywords(name, r#type))),
-        "*" => Ok((input, Param::variadic(name, r#type))),
+        "**" => Ok((input, Parameter::rest_keywords(name, r#type))),
+        "*" => Ok((input, Parameter::variadic(name, r#type))),
         _ => {
             let (input, default) = opt(preceded(
                 (multispace0_or_comment, tag("="), multispace0_or_comment),
@@ -111,8 +111,8 @@ fn parse_param(input: &str) -> IResult<&str, Param> {
             ))
             .parse(input)?;
             Ok(match default {
-                Some(default) => (input, Param::keyword(name, r#type, default)),
-                None => (input, Param::positional(name, r#type)),
+                Some(default) => (input, Parameter::keyword(name, r#type, default)),
+                None => (input, Parameter::positional(name, r#type)),
             })
         }
     }
@@ -121,7 +121,7 @@ fn parse_param(input: &str) -> IResult<&str, Param> {
 /// Checks the parameters of a declaration: they come in the order positional, variadic,
 /// keyword, rest keywords, with at most one variadic and one rest keywords parameter, and no
 /// name occurs twice.
-fn params_are_valid(params: &[Param]) -> bool {
+fn params_are_valid(params: &[Parameter]) -> bool {
     let in_order = params.windows(2).all(|pair| {
         let (a, b) = (pair[0].order(), pair[1].order());
         // Positional and keyword parameters can repeat; the other kinds occur once

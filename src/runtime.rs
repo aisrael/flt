@@ -22,7 +22,7 @@ use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::FunctionDecl;
 use crate::ast::Literal;
-use crate::ast::ParamKind;
+use crate::ast::ParameterKind;
 use crate::ast::Statement;
 use crate::ast::TypeExpr;
 use crate::ast::UnaryOp;
@@ -642,9 +642,9 @@ impl SimpleRuntime {
             self.global_scope.check_bindable(&param_name)?;
             let r#type = self.resolve_type(&param.r#type)?;
             match &param.kind {
-                ParamKind::Positional => arguments.push(Argument::new(param_name, r#type)),
-                ParamKind::Variadic => arguments.push(Argument::variadic(param_name, r#type)),
-                ParamKind::Keyword(default) => {
+                ParameterKind::Positional => arguments.push(Argument::new(param_name, r#type)),
+                ParameterKind::Variadic => arguments.push(Argument::variadic(param_name, r#type)),
+                ParameterKind::Keyword(default) => {
                     defaults.push((param_name.clone(), default.clone()));
                     keywords.push(KeywordArgument {
                         name: param_name,
@@ -652,7 +652,7 @@ impl SimpleRuntime {
                         default: Value::None,
                     });
                 }
-                ParamKind::RestKeywords => {
+                ParameterKind::RestKeywords => {
                     rest_keywords = Some(r#type);
                     rest_name = Some(param_name);
                 }

@@ -51,7 +51,7 @@ impl Display for FunctionCall {
 
 /// The kind of a parameter in a function declaration
 #[derive(Clone, Debug, PartialEq)]
-pub enum ParamKind {
+pub enum ParameterKind {
     /// `name: Type`, filled by the position of an argument
     Positional,
     /// `*name: Type`, which takes zero or more trailing positional arguments
@@ -64,34 +64,34 @@ pub enum ParamKind {
 
 /// A parameter in a function declaration. Every parameter has a type.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Param {
+pub struct Parameter {
     pub name: Identifier,
-    pub kind: ParamKind,
+    pub kind: ParameterKind,
     pub r#type: TypeExpr,
 }
 
-impl Param {
+impl Parameter {
     /// A positional parameter, `name: type`
     pub fn positional<S: Into<String>>(name: S, r#type: TypeExpr) -> Self {
-        Self::new(name, ParamKind::Positional, r#type)
+        Self::new(name, ParameterKind::Positional, r#type)
     }
 
     /// A variadic parameter, `*name: type`
     pub fn variadic<S: Into<String>>(name: S, r#type: TypeExpr) -> Self {
-        Self::new(name, ParamKind::Variadic, r#type)
+        Self::new(name, ParameterKind::Variadic, r#type)
     }
 
     /// A keyword parameter, `name: type = default`
     pub fn keyword<S: Into<String>>(name: S, r#type: TypeExpr, default: Expr) -> Self {
-        Self::new(name, ParamKind::Keyword(default), r#type)
+        Self::new(name, ParameterKind::Keyword(default), r#type)
     }
 
     /// A rest keywords parameter, `**name: type`
     pub fn rest_keywords<S: Into<String>>(name: S, r#type: TypeExpr) -> Self {
-        Self::new(name, ParamKind::RestKeywords, r#type)
+        Self::new(name, ParameterKind::RestKeywords, r#type)
     }
 
-    fn new<S: Into<String>>(name: S, kind: ParamKind, r#type: TypeExpr) -> Self {
+    fn new<S: Into<String>>(name: S, kind: ParameterKind, r#type: TypeExpr) -> Self {
         Self {
             name: Identifier(name.into()),
             kind,
@@ -103,24 +103,24 @@ impl Param {
     /// first, then the variadic one, then keywords, then the rest keywords.
     pub fn order(&self) -> u8 {
         match self.kind {
-            ParamKind::Positional => 0,
-            ParamKind::Variadic => 1,
-            ParamKind::Keyword(_) => 2,
-            ParamKind::RestKeywords => 3,
+            ParameterKind::Positional => 0,
+            ParameterKind::Variadic => 1,
+            ParameterKind::Keyword(_) => 2,
+            ParameterKind::RestKeywords => 3,
         }
     }
 }
 
 /// Displays the parameter as written, e.g. `*values: Any` or `level: Symbol = :info`.
-impl Display for Param {
+impl Display for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            ParamKind::Positional => write!(f, "{}: {}", self.name, self.r#type),
-            ParamKind::Variadic => write!(f, "*{}: {}", self.name, self.r#type),
-            ParamKind::Keyword(default) => {
+            ParameterKind::Positional => write!(f, "{}: {}", self.name, self.r#type),
+            ParameterKind::Variadic => write!(f, "*{}: {}", self.name, self.r#type),
+            ParameterKind::Keyword(default) => {
                 write!(f, "{}: {} = {default}", self.name, self.r#type)
             }
-            ParamKind::RestKeywords => write!(f, "**{}: {}", self.name, self.r#type),
+            ParameterKind::RestKeywords => write!(f, "**{}: {}", self.name, self.r#type),
         }
     }
 }
@@ -129,7 +129,7 @@ impl Display for Param {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDecl {
     pub name: Identifier,
-    pub params: Vec<Param>,
+    pub params: Vec<Parameter>,
     /// The return type, or `None` if the declaration has no `->`, which means `-> None`
     pub return_type: Option<TypeExpr>,
     pub body: Vec<Statement>,
@@ -192,10 +192,10 @@ mod tests {
         let declaration = FunctionDecl {
             name: Identifier("log".to_string()),
             params: vec![
-                Param::positional("label", TypeExpr::name("String")),
-                Param::variadic("values", TypeExpr::name("Any")),
-                Param::keyword("level", TypeExpr::name("Symbol"), Expr::literal_none()),
-                Param::rest_keywords("extra", TypeExpr::name("Any")),
+                Parameter::positional("label", TypeExpr::name("String")),
+                Parameter::variadic("values", TypeExpr::name("Any")),
+                Parameter::keyword("level", TypeExpr::name("Symbol"), Expr::literal_none()),
+                Parameter::rest_keywords("extra", TypeExpr::name("Any")),
             ],
             return_type: Some(TypeExpr::Union(vec![
                 TypeExpr::name("Integer"),
@@ -223,14 +223,14 @@ mod tests {
     #[test]
     fn test_param_order() {
         let t = || TypeExpr::name("Any");
-        assert!(Param::positional("a", t()).order() < Param::variadic("a", t()).order());
+        assert!(Parameter::positional("a", t()).order() < Parameter::variadic("a", t()).order());
         assert!(
-            Param::variadic("a", t()).order()
-                < Param::keyword("a", t(), Expr::literal_none()).order()
+            Parameter::variadic("a", t()).order()
+                < Parameter::keyword("a", t(), Expr::literal_none()).order()
         );
         assert!(
-            Param::keyword("a", t(), Expr::literal_none()).order()
-                < Param::rest_keywords("a", t()).order()
+            Parameter::keyword("a", t(), Expr::literal_none()).order()
+                < Parameter::rest_keywords("a", t()).order()
         );
     }
 }
