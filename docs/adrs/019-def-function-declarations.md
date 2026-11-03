@@ -137,6 +137,7 @@ A later ADR can add them.
 - The `Runtime` trait ([ADR 008](008-the-runtime-trait.md)) does not change. A host can call a flt function like any other function.
 - Because the body of a function can read global variables, a function can give different results for the same arguments. This is intended.
 - Two parser rules came with the implementation. The arguments of a call in the whitespace form must be on the same line as its name, so `n` followed by a statement on the next line is two statements. A `-` followed by a space is a subtraction in `n - (n // d)`, not the start of an argument. The keyword `end` is never an argument.
+- A function value should be a reference to the declared function, so `let f = show` and `show` share one list of overloads. `SimpleRuntime` does not do this yet: an overload added after the binding is seen through `show` only. A later change can fix it.
 - Open questions for review:
   - A body value other than `None` in a function without `->` raises `ReturnTypeMismatch`. Is this too strict? The alternative is to discard the value.
   - Can `def` add an overload to a native function? Decision 7 says no.

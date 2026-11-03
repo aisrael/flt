@@ -121,6 +121,8 @@ A `def` binds its name globally and gives `None`. The name is bound before the b
 
 A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
 
+Known limitation: `SimpleRuntime` does not yet share overloads with a name that is bound to the function. After `let f = show`, a later `def show(…)` adds an overload to `show` but not to `f`. Declare every overload before you bind the function to another name.
+
 ## Pipe Operator
 
 The pipe operator `|>` passes the value on its left as the **first** argument of the function on its right, as in [Elixir](https://elixirschool.com/en/lessons/basics/pipe_operator).
