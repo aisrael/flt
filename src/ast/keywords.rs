@@ -21,6 +21,8 @@ pub enum Keyword {
     While,
     Do,
     Fn,
+    Def,
+    End,
 }
 
 impl Keyword {
@@ -42,7 +44,10 @@ mod tests {
         let spellings: Vec<String> = Keyword::iter().map(|k| k.to_string()).collect();
         assert_eq!(
             spellings,
-            ["if", "else", "return", "and", "or", "not", "for", "in", "let", "while", "do", "fn"]
+            [
+                "if", "else", "return", "and", "or", "not", "for", "in", "let", "while", "do",
+                "fn", "def", "end"
+            ]
         );
     }
 

@@ -139,7 +139,7 @@ Feature: Declaring functions with def
       options(color: :red, size: 3)
       """
     When I evaluate the input
-    Then the result should be "{ color: :red, size: 3 }"
+    Then the result should be "{color: :red, size: 3}"
 
   Scenario: A parameter in the wrong order is a parse error
     Given the input 'def f(k: Integer = 1, n: Integer) -> Integer n end'
@@ -470,7 +470,7 @@ Feature: Declaring functions with def
     Given the multiline input
       """
       def depth(n: Integer) -> Integer
-        let here = n
+        let here = n + 0
         if n == 0 { 0 } else { depth(n - 1) + here }
       end
       depth(3)
@@ -522,7 +522,7 @@ Feature: Declaring functions with def
     When I evaluate the input
     Then the result should be '["none", "one"]'
 
-  Scenario: An overload with equal parameter types is a DuplicateOverload error
+  Scenario: An overload with equal parameter types raises an error
     Given the multiline input
       """
       def foo(s: String) -> Number
@@ -533,7 +533,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "DuplicateOverload"
+    Then the evaluation should fail with "Function foo already has the overload"
 
   Scenario: Overloads that differ only in a positional name are duplicates
     Given the multiline input
@@ -546,7 +546,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "DuplicateOverload"
+    Then the evaluation should fail with "Function foo already has the overload"
 
   Scenario: Overloads that differ only in a default are duplicates
     Given the multiline input
@@ -559,7 +559,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "DuplicateOverload"
+    Then the evaluation should fail with "Function foo already has the overload"
 
   Scenario: A def can't use the name of a built-in type
     Given the multiline input
@@ -569,7 +569,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "NameAlreadyBound"
+    Then the evaluation should fail with "Cannot define Number: it's a built-in type"
 
   Scenario: A def can't use the name of a variable
     Given the multiline input
@@ -580,7 +580,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "NameAlreadyBound"
+    Then the evaluation should fail with "Cannot define x: it's a variable"
 
   Scenario: A def can't add an overload to a native function
     Given the native function "identity(v: Any) -> Any"
@@ -591,7 +591,7 @@ Feature: Declaring functions with def
       end
       """
     When I evaluate the input
-    Then the evaluation should fail with "NameAlreadyBound"
+    Then the evaluation should fail with "Cannot define identity: it's a function"
 
   Scenario: A function's name can't be bound as a variable
     Given the multiline input

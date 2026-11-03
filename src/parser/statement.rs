@@ -1,16 +1,21 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::combinator::cut;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::verify;
+use nom::multi::separated_list0;
 use nom::sequence::preceded;
 use nom::sequence::terminated;
 use nom::Parser;
 
+use crate::ast::FunctionDecl;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
+use crate::ast::Param;
 use crate::ast::Statement;
 use crate::parser::IResult;
+use crate::parser::ParseError;
 use crate::Error;
 
 use super::comment::multispace0_or_comment;
@@ -67,7 +72,9 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         ),
     ));
 
-    let (input, stmt) = if input.starts_with("let") {
+    let (input, stmt) = if starts_with_keyword(input, Keyword::Def) {
+        map(parse_def, Statement::Def).parse(input)?
+    } else if input.starts_with("let") {
         parse_let_or_assign.parse(input)?
     } else {
         alt((parse_let_or_assign, map(parse_expr, Statement::Expr))).parse(input)?
@@ -75,6 +82,118 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
+}
+
+/// Whether `input` starts with the reserved word `keyword`, as a whole word.
+fn starts_with_keyword(input: &str, keyword: Keyword) -> bool {
+    matches!(parse_keyword(input), Ok((_, found)) if found == keyword)
+}
+
+/// A failure, which stops the parser from trying anything else, e.g. a `def` with its
+/// parameters in the wrong order.
+fn failure(input: &str) -> nom::Err<ParseError<&str>> {
+    nom::Err::Failure(ParseError::new(input, nom::error::ErrorKind::Verify))
+}
+
+/// Parses a parameter: `name: Type`, `*name: Type`, `name: Type = default` or `**name: Type`.
+fn parse_param(input: &str) -> IResult<&str, Param> {
+    let (input, stars) = alt((tag("**"), tag("*"), tag(""))).parse(input)?;
+    let (input, name) = parse_binding_name(input)?;
+    let (input, _) = (multispace0_or_comment, tag(":"), multispace0_or_comment).parse(input)?;
+    let (input, r#type) = parse_type(input)?;
+    match stars {
+        "**" => Ok((input, Param::rest_keywords(name, r#type))),
+        "*" => Ok((input, Param::variadic(name, r#type))),
+        _ => {
+            let (input, default) = opt(preceded(
+                (multispace0_or_comment, tag("="), multispace0_or_comment),
+                parse_expr,
+            ))
+            .parse(input)?;
+            Ok(match default {
+                Some(default) => (input, Param::keyword(name, r#type, default)),
+                None => (input, Param::positional(name, r#type)),
+            })
+        }
+    }
+}
+
+/// Checks the parameters of a declaration: they come in the order positional, variadic,
+/// keyword, rest keywords, with at most one variadic and one rest keywords parameter, and no
+/// name occurs twice.
+fn params_are_valid(params: &[Param]) -> bool {
+    let in_order = params.windows(2).all(|pair| {
+        let (a, b) = (pair[0].order(), pair[1].order());
+        // Positional and keyword parameters can repeat; the other kinds occur once
+        a < b || (a == b && (a == 0 || a == 2))
+    });
+    let unique_names = params
+        .iter()
+        .enumerate()
+        .all(|(i, param)| params[..i].iter().all(|other| other.name != param.name));
+    in_order && unique_names
+}
+
+/// Parses a function declaration, `def name(params) -> type`, a body and `end`. The `-> type` is
+/// optional. The body is statements, separated by newlines or by `;`.
+fn parse_def(input: &str) -> IResult<&str, FunctionDecl> {
+    let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Def).parse(input)?;
+    // After `def`, nothing else can parse, so a mistake is a failure
+    cut(parse_def_rest).parse(input)
+}
+
+fn parse_def_rest(input: &str) -> IResult<&str, FunctionDecl> {
+    let (input, _) = multispace0_or_comment(input)?;
+    let (input, name) = parse_binding_name(input)?;
+    let (input, _) = (multispace0_or_comment, tag("("), multispace0_or_comment).parse(input)?;
+    let (after_params, params) = separated_list0(
+        (multispace0_or_comment, tag(","), multispace0_or_comment),
+        parse_param,
+    )
+    .parse(input)?;
+    if !params_are_valid(&params) {
+        return Err(failure(input));
+    }
+    let (input, _) = (multispace0_or_comment, tag(")")).parse(after_params)?;
+    let (input, return_type) = opt(preceded(
+        (multispace0_or_comment, tag("->"), multispace0_or_comment),
+        parse_type,
+    ))
+    .parse(input)?;
+    let (input, body) = parse_body(input)?;
+    Ok((
+        input,
+        FunctionDecl {
+            name: Identifier(name.to_string()),
+            params,
+            return_type,
+            body,
+        },
+    ))
+}
+
+/// Parses the statements of a body, up to and including the `end` that closes it. As in a
+/// program, two statements on one line need a `;` between them.
+fn parse_body(input: &str) -> IResult<&str, Vec<Statement>> {
+    let mut statements = Vec::new();
+    let mut rest = input;
+    loop {
+        let (before_statement, _) = multispace0_or_comment(rest)?;
+        if starts_with_keyword(before_statement, Keyword::End) {
+            return Ok((&before_statement["end".len()..], statements));
+        }
+        let (remainder, statement) = parse_statement(before_statement)?;
+        let consumed = &before_statement[..before_statement.len() - remainder.len()];
+        let statement_end = consumed
+            .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
+            .len();
+        let separator = &consumed[statement_end..];
+        if !starts_with_keyword(remainder, Keyword::End) && !separator.contains([';', '\n']) {
+            return Err(failure(remainder));
+        }
+        statements.push(statement);
+        rest = remainder;
+    }
 }
 
 /// Parses all of `source` into its statements, which are separated by newlines or by `;`.

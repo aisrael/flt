@@ -35,6 +35,8 @@ mod tests {
         assert_eq!(parse_keyword("do"), Ok(("", Keyword::Do)));
         assert_eq!(parse_keyword("fn"), Ok(("", Keyword::Fn)));
         assert_eq!(parse_keyword("let"), Ok(("", Keyword::Let)));
+        assert_eq!(parse_keyword("def"), Ok(("", Keyword::Def)));
+        assert_eq!(parse_keyword("end"), Ok(("", Keyword::End)));
     }
 
     #[test]

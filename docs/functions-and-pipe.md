@@ -50,11 +50,13 @@ add 1
 add 1, 2
 ```
 
+The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument.
+
 This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
 
 ## Declaring Functions
 
-flt source can declare a function with `def` ([ADR 019](./adrs/019-def-function-declarations.md)). Declaring functions is not implemented yet. This section describes the language.
+flt source can declare a function with `def` ([ADR 019](./adrs/019-def-function-declarations.md)). The examples use `end` to close the body.
 
 ```flt
 def mod(n: Integer, d: Integer) -> Integer
@@ -117,7 +119,7 @@ Each call has its own scope:
 
 A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
 
-A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
+A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
 
 ## Pipe Operator
 

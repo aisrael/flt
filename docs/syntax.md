@@ -52,13 +52,13 @@ def greet(name: String, greeting: String = "Hello") -> String
 end
 ```
 
-A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions). Declaring functions in flt source is not implemented yet.
+A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
 - Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
 
-The REPL parses one statement per line (an expression or a `let` / assignment binding).
+The REPL parses one statement per line (an expression, a `let` / assignment binding or a `def`). A `def` must be written on one line in the REPL, e.g. `def double(n: Number) -> Number n * 2 end`.
 
 ## Reserved Keywords
 

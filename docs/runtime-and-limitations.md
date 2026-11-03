@@ -75,6 +75,7 @@ The evaluator currently supports:
 - `let` bindings (`let x = expr`), optionally [typed](./types.md#type-annotations) (`let x: Number = expr`), and plain assignment (`x = expr`), checked against the variable's declared type, stored in the global scope; evaluation returns the bound value (what the REPL prints)
 - Identifier lookup against the global scope: variables, then [native functions](./native-functions-and-values.md#native-functions) (e.g. `typeof` evaluates to `<fn typeof>`), then [built-in type names](./types.md#types-as-values) (e.g. `Number` evaluates to the `Number` type), then [native type names](./native-functions-and-values.md#native-types-and-values) registered by the host
 - [Pipes](./functions-and-pipe.md#pipe-operator): `x |> f(a)` evaluates as `f(x, a)`, and `x |> f` as `f(x)`
+- [Function declarations](./functions-and-pipe.md#declaring-functions) (`def`) ([ADR 019](./adrs/019-def-function-declarations.md)): calls bind their parameters in a scope of their own, which holds the variables the body declares. Only the innermost call's scope and the global scope are visible
 - Calls to [native functions](./native-functions-and-values.md#native-functions), both [built-ins](./functions-and-pipe.md#built-in-functions) (currently `typeof`) and host-registered ones, including through any name a function value is bound to
 - [Native values](./native-functions-and-values.md#native-types-and-values), created by the host's functions: binding, passing, piping, printing, `typeof`, and `==`/`!=` with the host's equality
 
@@ -96,6 +97,9 @@ The evaluator currently supports:
 - `Keyword argument <key> of <name> expects <type>, found <type>` - calling a function with a keyword argument of the wrong type
 - `No overload of <name> accepts (<type>, …)` - calling an overloaded function with arguments none of its signatures of that arity accepts, when none of them is [closest](./functions-and-pipe.md#overloads), e.g. `No overload of describe accepts (Boolean)`. If one is closest, the error is that overload's, e.g. `Argument n of head expects Number, found String`
 - `Function <name> returned <type>, expected <type>` - a native function whose result isn't of its signature's return type
+- `Function <name> already has the overload <type>` (`DuplicateOverload`) - a `def` whose parameter types equal those of an existing overload, e.g. `fn(String) -> Number`
+- `Cannot define <name>: it's <a built-in type|a native type|a variable|a function>` (`NameAlreadyBound`) - a `def` using a name that is in use. A function that a host registered can't get an overload from flt source
+- `Function <name> is declared in flt; call it through the runtime` - a host calling a function that `def` declared directly, with `NativeFunction::call`, instead of through the runtime
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`
 - `Cannot bind <name>: it's a native type` - binding the name of a [native type](./native-functions-and-values.md#native-types-and-values) registered by the host
@@ -112,7 +116,6 @@ The evaluator currently supports:
 These constructs parse successfully but are not fully supported by the current evaluator:
 
 - Bitwise operators (`&`, `|`, `^`)
-- Function declarations (`def`), described in [Declaring Functions](./functions-and-pipe.md#declaring-functions) ([ADR 019](./adrs/019-def-function-declarations.md)). They also add the errors `DuplicateOverload` and `NameAlreadyBound`
 - Standalone keyword expressions (e.g. `return`, `fn`) - they parse as expressions but have no evaluation behavior yet
 
 ## Practical Guidance

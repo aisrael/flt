@@ -1,5 +1,6 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::character::complete::space1;
 use nom::combinator::map;
 use nom::combinator::verify;
 use nom::error::ErrorKind;
@@ -13,11 +14,13 @@ use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
 use crate::ast::Identifier;
+use crate::ast::Keyword;
 use crate::ast::KeywordArgs;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 
-use super::comment::{multispace0_or_comment, multispace1_or_comment};
+use super::comment::multispace0_or_comment;
+use super::keyword::parse_keyword;
 use super::map::parse_kv_pair;
 use super::parse_identifier;
 
@@ -44,7 +47,8 @@ fn parse_arg<'a>(
     }
 }
 
-/// Reject arguments that start with unary `+` in parenless calls like `f + 1`.
+/// Reject arguments that start with unary `+` in parenless calls like `f + 1`, and the keyword
+/// `end`.
 ///
 /// Without this, expressions such as `x + 1` become ambiguous with the grammar
 /// `Identifier <whitespace> args` and get parsed as a function call.
@@ -54,6 +58,15 @@ fn parse_arg_disallow_unary_plus<'a>(
     let mut inner = parse_arg(expr_parser);
     move |input: &'a str| {
         if input.starts_with('+') {
+            return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
+        }
+        // `f - 1` is a subtraction, and `f -1` a call, so a `-` followed by a space isn't the
+        // start of an argument
+        if input.starts_with("- ") {
+            return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
+        }
+        // `end` closes a function body, so it's never an argument: in `n\nend`, `n` is a name
+        if matches!(parse_keyword(input), Ok((_, Keyword::End))) {
             return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
         inner(input)
@@ -141,7 +154,9 @@ pub fn parse_function_call(
                 ),
             ),
             preceded(
-                multispace1_or_comment,
+                // The arguments are on the same line as the name: `n` and `f()` on two lines
+                // are two statements, not the call `n(f())`
+                space1,
                 verify(
                     call_args(
                         &name,
@@ -243,6 +258,25 @@ mod tests {
     use crate::ast::KeywordArgs;
     use crate::ast::Numeric;
     use crate::parser::expr::parse_expr;
+
+    #[test]
+    fn test_a_minus_followed_by_a_space_is_not_the_start_of_an_argument() {
+        // `n - (n // d)` is a subtraction, but `n -1` is a call
+        for source in ["n - (n // d) * d", "n - 1", "n - x"] {
+            let (rest, expr) = parse_expr(source).unwrap();
+            assert!(rest.is_empty(), "{source:?}");
+            assert!(matches!(expr, Expr::BinaryExpr(..)), "{source:?}: {expr:?}");
+        }
+        let (_, expr) = parse_expr("n -1").unwrap();
+        assert!(matches!(expr, Expr::FunctionCall(_)));
+    }
+
+    #[test]
+    fn test_end_is_not_an_argument() {
+        let (rest, expr) = parse_expr("n\nend").unwrap();
+        assert_eq!(rest.trim(), "end");
+        assert_eq!(expr, Expr::ident("n"));
+    }
 
     #[test]
     fn test_parse_trim() {
