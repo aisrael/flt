@@ -9,7 +9,7 @@ use nom::sequence::preceded;
 use nom::sequence::terminated;
 use nom::Parser;
 
-use crate::ast::FunctionDecl;
+use crate::ast::FunctionDeclaration;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::Parameter;
@@ -136,13 +136,13 @@ fn params_are_valid(params: &[Parameter]) -> bool {
 
 /// Parses a function declaration, `def name(params) -> type`, a body and `end`. The `-> type` is
 /// optional. The body is statements, separated by newlines or by `;`.
-fn parse_def(input: &str) -> IResult<&str, FunctionDecl> {
+fn parse_def(input: &str) -> IResult<&str, FunctionDeclaration> {
     let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Def).parse(input)?;
     // After `def`, nothing else can parse, so a mistake is a failure
     cut(parse_def_rest).parse(input)
 }
 
-fn parse_def_rest(input: &str) -> IResult<&str, FunctionDecl> {
+fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, name) = parse_binding_name(input)?;
     let (input, _) = (multispace0_or_comment, tag("("), multispace0_or_comment).parse(input)?;
@@ -163,7 +163,7 @@ fn parse_def_rest(input: &str) -> IResult<&str, FunctionDecl> {
     let (input, body) = parse_body(input)?;
     Ok((
         input,
-        FunctionDecl {
+        FunctionDeclaration {
             name: Identifier(name.to_string()),
             params,
             return_type,

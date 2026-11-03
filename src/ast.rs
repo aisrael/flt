@@ -13,7 +13,7 @@ mod type_expr;
 pub use expr::Expr;
 pub use expr::KeyValue;
 pub use function::FunctionCall;
-pub use function::FunctionDecl;
+pub use function::FunctionDeclaration;
 pub use function::KeywordArgs;
 pub use function::Parameter;
 pub use function::ParameterKind;

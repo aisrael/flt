@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use super::expr::Expr;
-use super::function::FunctionDecl;
+use super::function::FunctionDeclaration;
 use super::identifier::Identifier;
 use super::type_expr::TypeExpr;
 
@@ -17,7 +17,7 @@ pub enum Statement {
     /// An assignment: `name = expr`.
     Assign(Identifier, Expr),
     /// A function declaration: `def name(params) -> type … end`.
-    Def(FunctionDecl),
+    Def(FunctionDeclaration),
     /// A bare expression used as a statement.
     Expr(Expr),
 }

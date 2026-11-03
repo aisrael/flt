@@ -20,7 +20,7 @@ use num_integer::Integer as _;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
-use crate::ast::FunctionDecl;
+use crate::ast::FunctionDeclaration;
 use crate::ast::Literal;
 use crate::ast::ParameterKind;
 use crate::ast::Statement;
@@ -607,7 +607,7 @@ impl SimpleRuntime {
     /// Raises `NameAlreadyBound` if the name is a built-in type, a native type, a variable or a
     /// function the host registered, and `DuplicateOverload` if an overload with equal
     /// parameter types exists.
-    fn define_function(&mut self, declaration: &FunctionDecl) -> Result<(), Error> {
+    fn define_function(&mut self, declaration: &FunctionDeclaration) -> Result<(), Error> {
         let name = declaration.name.0.as_str();
         let existing = self.global_scope.get_function(name).cloned();
         let reason = if Type::is_builtin_name(name) {

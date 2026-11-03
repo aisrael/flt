@@ -127,7 +127,7 @@ impl Display for Parameter {
 
 /// A function declaration: `def name(params) -> type`, a body of statements, and `end`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDecl {
+pub struct FunctionDeclaration {
     pub name: Identifier,
     pub params: Vec<Parameter>,
     /// The return type, or `None` if the declaration has no `->`, which means `-> None`
@@ -137,7 +137,7 @@ pub struct FunctionDecl {
 
 /// Displays the declaration over several lines, with each statement of the body indented, in
 /// a form that parses back to the same declaration.
-impl Display for FunctionDecl {
+impl Display for FunctionDeclaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "def {}(", self.name)?;
         for (i, param) in self.params.iter().enumerate() {
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_display_declaration() {
-        let declaration = FunctionDecl {
+        let declaration = FunctionDeclaration {
             name: Identifier("log".to_string()),
             params: vec![
                 Parameter::positional("label", TypeExpr::name("String")),
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_display_declaration_without_a_body_or_return_type() {
-        let declaration = FunctionDecl {
+        let declaration = FunctionDeclaration {
             name: Identifier("nothing".to_string()),
             params: vec![],
             return_type: None,
