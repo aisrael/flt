@@ -23,12 +23,12 @@ use crate::Error;
 
 /// The handler backing a native function: a Rust closure, which may capture host state. It
 /// gets the call's [`Arguments`], and reads them by name.
-pub type NativeFn = Box<dyn Fn(&Arguments) -> Result<Value, Error> + Send + Sync>;
+pub type NativeFunctionHandler = Box<dyn Fn(&Arguments) -> Result<Value, Error> + Send + Sync>;
 
 /// A native function pairs a type signature with a Rust implementation.
 pub struct NativeFunction {
     pub definition: FunctionDefinition,
-    handler: NativeFn,
+    handler: NativeFunctionHandler,
 }
 
 impl NativeFunction {
