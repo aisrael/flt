@@ -43,5 +43,6 @@ The language does not say which names a block can see or declare. That is a deci
 
 - This is a breaking change for `if c {}`: its arm was an empty map, and is now an empty block. To get an empty map as an arm, write `({})`.
 - The AST of a brace arm changes. `{ 1 }` was `Literal(Integer(1))`. It is now a block that holds one statement.
+- In a call without parentheses, a `{` starts an argument only if it starts a map. Thus in `if x { 1 }` the braces are the arm of the `if`, not an argument of `x`.
 - The spec grammar gets a `block` primary, and its `if` grammar changes for brace arms.
 - A later ADR can add a block form of `if` (`if` ... `else` ... `end`). `elsif` is also deferred.

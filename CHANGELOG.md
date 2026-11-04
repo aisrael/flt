@@ -4,7 +4,7 @@
 
 ### Breaking Changes
 
-- **Braces around an `if` arm make a block**: `if c { 1 }` now has an `Expr::Block` as its arm, not the expression inside the braces, so code that matches `Expr::IfExpr` sees `Block([Statement::Expr(…)])`. `if c {}` has an empty block as its arm, and gives `None`; it used to have an empty map. Write `if c ({})` for an empty map. A brace block is never an argument of a call without parentheses, so `f { 1 }` is the name `f` and a block ([ADR 020](https://github.com/aisrael/flt/blob/main/docs/adrs/020-brace-blocks.md)).
+- **Braces around an `if` arm make a block**: `if c { 1 }` now has an `Expr::Block` as its arm, not the expression inside the braces, so code that matches `Expr::IfExpr` sees `Block([Statement::Expr(…)])`. `if c {}` has an empty block as its arm, and gives `None`; it used to have an empty map. Write `if c ({})` for an empty map. In a call without parentheses, a `{` starts an argument only if it starts a map, so `f { 1 }` is the name `f` followed by a block, and `f { a: 1 }` still passes a map ([ADR 020](https://github.com/aisrael/flt/blob/main/docs/adrs/020-brace-blocks.md)).
 
 - **Whitespace-form calls stay on one line**: In `f 1, 2` the arguments must be on the line of the name, so `n` alone on a line is no longer the start of a call that takes the next line. A `-` followed by a space is a subtraction, so `n - (a + b)` is no longer the call `n(-(a + b))`. `end` is never an argument.
 

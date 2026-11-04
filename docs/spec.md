@@ -211,6 +211,8 @@ mod 3, 2         # the same call in whitespace form
 mod(2, 3)        # 2, the order of the arguments matters
 ```
 
+In the whitespace form, a `{` starts an argument only if it starts a map. Thus `f { a: 1 }` passes a map, but in `if x { 1 }` the braces are the arm of the `if`, not an argument of `x`.
+
 Wrong calls raise errors:
 
 ```flt

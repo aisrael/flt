@@ -50,7 +50,7 @@ add 1
 add 1, 2
 ```
 
-The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument.
+The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument. A `{` starts an argument only if it starts a map: `f { a: 1 }` passes a map, but `f { 1 }` is the name `f` followed by a block.
 
 This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
 
