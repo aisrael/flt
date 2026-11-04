@@ -8,8 +8,8 @@ Feature: Brace blocks
   Scenario: A block with one expression
     Given the input "{ 1 }"
     When I parse the input
-    Then the output should be 'Block([Expr(Literal(Integer(1)))])'
-    And the output should print as "{ 1 }"
+    Then the output should print as "{ 1 }"
+    And the output should be 'Block([Expr(Literal(Integer(1)))])'
 
   Scenario: A block with an identifier is a block, not a map
     Given the input "{ a }"
