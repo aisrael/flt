@@ -214,6 +214,12 @@ A `def` has the same parameter types as an existing overload of the same name. S
 
 A `def` uses a name that is a built-in type, a native type, a variable, or a function that a host registered.
 
+### `DefNotAtTopLevel`
+
+**Message:** `Cannot define <name> here: a function can only be declared at the top level`
+
+A `def` is inside a block or inside the body of a function. See [ADR 021](adrs/021-block-scopes.md).
+
 ## Host API
 
 These errors come from code that a Rust host writes. flt source cannot cause them.

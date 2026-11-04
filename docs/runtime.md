@@ -90,7 +90,7 @@ A host sees only the global scope. The `Runtime` trait does not change.
 
 A `def` statement binds its name in the global scope to a function value, and gives `None`. The name is bound before the body runs, so a function can call itself.
 
-A `def` inside a block also binds its name in the global scope. The function stays after the block ends. This rule is a proposal, and [ADR 021](adrs/021-block-scopes.md) lists it as an open question.
+A `def` is allowed only at the top level. A `def` inside a block or inside the body of a function raises a `DefNotAtTopLevel` error ([ADR 021](adrs/021-block-scopes.md)). A later change can allow it.
 
 A second `def` with the same name adds an overload. It raises a `DuplicateOverload` error if its parameters have the same types as an existing overload (see [ADR 018](adrs/018-distinct-overload-signatures.md)). A `def` raises a `NameAlreadyBound` error if its name is a built-in type or a variable. It also raises this error if the name is a function that a host registered.
 

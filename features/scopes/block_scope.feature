@@ -220,7 +220,9 @@ Feature: Block scope
     When I evaluate the input
     Then the evaluation should fail with "Number"
 
-  Scenario: A def in a block binds its name globally
+  # Declarations of functions
+
+  Scenario: A def in a block is not allowed
     Given the multiline input
       """
       {
@@ -228,6 +230,43 @@ Feature: Block scope
           1
         end
       }
+      """
+    When I evaluate the input
+    Then the evaluation should fail with "Cannot define one here: a function can only be declared at the top level"
+
+  Scenario: A def in the arm of an if is not allowed
+    Given the multiline input
+      """
+      if true {
+        def one() -> Integer
+          1
+        end
+      }
+      """
+    When I evaluate the input
+    Then the evaluation should fail with "Cannot define one here"
+
+  Scenario: A def in the body of a function is not allowed
+    Given the multiline input
+      """
+      def outer() -> Integer
+        def inner() -> Integer
+          1
+        end
+        inner()
+      end
+      outer()
+      """
+    When I evaluate the input
+    Then the evaluation should fail with "Cannot define inner here: a function can only be declared at the top level"
+
+  Scenario: A def at the top level is allowed after a block
+    Given the multiline input
+      """
+      { 1 }
+      def one() -> Integer
+        1
+      end
       one()
       """
     When I evaluate the input

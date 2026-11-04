@@ -118,7 +118,7 @@ Each call has its own scope:
 
 ### Names and Overloads
 
-A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
+A `def` is allowed only at the top level, not in a block or in the body of a function: that raises `DefNotAtTopLevel`. A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
 
 A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
 

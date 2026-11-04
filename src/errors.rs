@@ -131,6 +131,9 @@ pub enum RuntimeError {
     /// A `def` used a name that is already in use
     #[error("Cannot define {name}: it's {reason}")]
     NameAlreadyBound { name: String, reason: ProtectedName },
+    /// A `def` inside a block or inside the body of a function
+    #[error("Cannot define {name} here: a function can only be declared at the top level")]
+    DefNotAtTopLevel { name: String },
     /// A host called a function declared in flt source directly, instead of through the runtime
     #[error("Function {0} is declared in flt; call it through the runtime")]
     DeclaredInFlt(String),

@@ -100,6 +100,7 @@ The evaluator currently supports:
 - `Function <name> returned <type>, expected <type>` - a native function whose result isn't of its signature's return type
 - `Function <name> already has the overload <type>` (`DuplicateOverload`) - a `def` whose parameter types equal those of an existing overload, e.g. `fn(String) -> Number`
 - `Cannot define <name>: it's <a built-in type|a native type|a variable|a function>` (`NameAlreadyBound`) - a `def` using a name that is in use. A function that a host registered can't get an overload from flt source
+- `Cannot define <name> here: a function can only be declared at the top level` (`DefNotAtTopLevel`) - a `def` inside a block or inside the body of a function
 - `Function <name> is declared in flt; call it through the runtime` - a host calling a function that `def` declared directly, with `NativeFunction::call`, instead of through the runtime
 - `Cannot bind <name>: it's a built-in type` - binding a built-in type name, e.g. `let Number = 5` or `let None = 1`
 - `Cannot bind <name>: it's a function` - binding the name of a function, built-in or registered by the host, e.g. `let typeof = 1`

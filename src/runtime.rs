@@ -631,21 +631,23 @@ impl SimpleRuntime {
     }
 
     /// Declares a function with `def`, or adds an overload to a function declared in flt.
-    /// Raises `NameAlreadyBound` if the name is a built-in type, a native type, a variable or a
-    /// function the host registered, and `DuplicateOverload` if an overload with equal
-    /// parameter types exists.
+    /// Raises `DefNotAtTopLevel` inside a block or a function body, `NameAlreadyBound` if the
+    /// name is a built-in type, a native type, a variable or a function the host registered,
+    /// and `DuplicateOverload` if an overload with equal parameter types exists.
     fn define_function(&mut self, declaration: &FunctionDeclaration) -> Result<(), Error> {
         let name = declaration.name.0.as_str();
+        // Local scopes exist only inside a block or the body of a function
+        if !self.frames.is_empty() {
+            return Err(Error::RuntimeError(RuntimeError::DefNotAtTopLevel {
+                name: name.to_string(),
+            }));
+        }
         let existing = self.global_scope.get_function(name).cloned();
         let reason = if Type::is_builtin_name(name) {
             Some(ProtectedName::BuiltinType)
         } else if self.get_native_type(name).is_some() {
             Some(ProtectedName::NativeType)
-        } else if self.global_scope.has_variable(name)
-            || self.frames[self.call_base..]
-                .iter()
-                .any(|frame| frame.variables.contains_key(name))
-        {
+        } else if self.global_scope.has_variable(name) {
             Some(ProtectedName::Variable)
         } else if existing.as_ref().is_some_and(|f| !f.is_declared_in_flt()) {
             Some(ProtectedName::Function)
@@ -3425,15 +3427,32 @@ mod tests {
     }
 
     #[test]
-    fn test_def_in_a_block_binds_its_name_globally() {
-        let source = "{\n  def one() -> Integer\n    1\n  end\n}\none()";
-        assert_eq!(run(source), "1");
+    fn test_def_in_a_block_is_not_allowed() {
+        let (debug, message) = run_error("{\n  def one() -> Integer\n    1\n  end\n}");
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
+        assert_eq!(
+            message,
+            "Cannot define one here: a function can only be declared at the top level"
+        );
+        let (debug, _) = run_error("if true {\n  def one() -> Integer\n    1\n  end\n}");
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
     }
 
     #[test]
-    fn test_def_cannot_use_the_name_of_a_variable_in_a_block() {
-        let (debug, _) = run_error("{ let one = 1; def one() -> Integer\n  1\nend }");
-        assert!(debug.contains("NameAlreadyBound"), "{debug}");
+    fn test_def_in_a_function_body_is_not_allowed() {
+        let source = "def outer() -> Integer\n  def inner() -> Integer\n    1\n  end\n  inner()\nend\nouter()";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
+        assert!(message.starts_with("Cannot define inner here"), "{message}");
+    }
+
+    #[test]
+    fn test_def_at_the_top_level_is_allowed_after_a_block_and_after_an_error() {
+        let mut runtime = SimpleRuntime::default();
+        assert!(runtime.eval("{ def one() -> Integer\n 1\nend }").is_err());
+        // The failed block left no scope behind, so a `def` is allowed again
+        runtime.eval("def one() -> Integer\n  1\nend").unwrap();
+        assert_eq!(runtime.eval("{ one() }").unwrap().to_string(), "1");
     }
 
     #[test]

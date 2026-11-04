@@ -27,13 +27,19 @@ A block scope follows the rules of a function scope:
 - The condition of an `if` is evaluated in the enclosing scope.
 - `SimpleRuntime` closes every block it opened when an error stops the block.
 
-### 3. The host sees only the global scope
+### 3. No `def` in a block or a function body
+
+For now, `SimpleRuntime` does not allow a `def` inside a block or inside the body of a function. Such a `def` raises a `DefNotAtTopLevel` error. A `def` is allowed only at the top level, where its name is bound in the global scope ([ADR 019](019-def-function-declarations.md)). A later ADR can change this, for example to give a `def` in a block a name in the scope of that block.
+
+### 4. The host sees only the global scope
 
 The `Runtime` trait ([ADR 008](008-the-runtime-trait.md)) does not change. A host sees only the global scope.
 
 ## Alternatives Considered
 
 - **No scope for a block.** Rejected: a `let` in an arm would leak into the code after the `if`.
+- **Binding the name of a `def` in a block globally.** Rejected for now: the function would stay after the block ends, which breaks the idea that a block keeps its names to itself.
+- **Binding the name of a `def` in the scope of the block.** Deferred: it needs a rule for a function value that outlives its block.
 - **Blocks that cannot shadow.** Rejected: a function scope can shadow, and one rule is simpler.
 
 ## Consequences
@@ -41,5 +47,5 @@ The `Runtime` trait ([ADR 008](008-the-runtime-trait.md)) does not change. A hos
 - A `let` in a block is not visible after the block.
 - `SimpleRuntime` keeps a stack of scopes for each call, and one for the top level.
 - Another runtime can choose differently, for example one scope for each function and none for a block.
-- Open questions for review:
-  - Does a `def` in a block bind its name globally (as now) or in the block?
+- A function body cannot declare a function. This is a change from the behavior of ADR 019 in `SimpleRuntime`, where a `def` in a body bound its name globally.
+- A new `RuntimeError` variant is needed: `DefNotAtTopLevel`.

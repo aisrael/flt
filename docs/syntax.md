@@ -75,7 +75,7 @@ def greet(name: String, greeting: String = "Hello") -> String
 end
 ```
 
-A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
+A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. In the reference runtime, a `def` is allowed only at the top level, not in a block or in a function body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
