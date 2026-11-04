@@ -19,12 +19,15 @@ use super::literal::parse_literal;
 use super::map::parse_map_literal;
 use super::operands::parse_binary_op;
 use super::operands::parse_unary_op;
+use super::statement::parse_arm;
 use super::statement::parse_block;
 use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::Keyword;
+use crate::ast::Statement;
 use crate::parser::IResult;
+use crate::parser::ParseError;
 
 /// Parses a brace block: `{`, statements and `}`. See [`parse_block`].
 fn parse_block_expr(input: &str) -> IResult<&str, Expr> {
@@ -42,11 +45,33 @@ fn parse_if_branch(input: &str) -> IResult<&str, Expr> {
 
 fn parse_if_then_branch(input: &str) -> IResult<&str, Expr> {
     verify(parse_if_branch, |e: &Expr| match e {
-        Expr::Keyword(Keyword::Else) => false,
-        Expr::FunctionCall(call) if call.name == "else" => false,
+        Expr::Keyword(Keyword::Else | Keyword::Elsif) => false,
+        Expr::FunctionCall(call) if call.name == "else" || call.name == "elsif" => false,
         _ => true,
     })
     .parse(input)
+}
+
+/// The two forms of an `if` (ADR 022).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum IfForm {
+    /// `if c { a } else { b }`, or `if c a else b`
+    Compact,
+    /// `if c`, statements, `else`, statements, `end`
+    Expanded,
+}
+
+/// Tells the form of an `if` from what follows its condition. A line break, a comment or a `;`
+/// before the first token of the arm means the expanded form. Otherwise it is the compact form.
+/// `consumed` is the condition with any whitespace the condition parser took after it.
+fn detect_if_form(consumed: &str, rest: &str) -> IfForm {
+    let gap = &consumed[consumed.trim_end().len()..];
+    let lead = rest.trim_start_matches([' ', '\t']);
+    if gap.contains('\n') || lead.starts_with(['\n', '\r', '#', ';']) {
+        IfForm::Expanded
+    } else {
+        IfForm::Compact
+    }
 }
 
 fn parse_if_else_clause(input: &str) -> IResult<&str, Expr> {
@@ -55,31 +80,109 @@ fn parse_if_else_clause(input: &str) -> IResult<&str, Expr> {
     parse_if_branch(input)
 }
 
+/// An else arm that holds one nested `if`: what `elsif` stands for.
+fn elsif_arm(nested: Expr) -> Expr {
+    Expr::block(vec![Statement::Expr(nested)])
+}
+
+/// Parses the keyword `keyword` and the whitespace after it, if `input` starts with it.
+fn parse_keyword_then_space(input: &str, keyword: Keyword) -> Option<IResult<&str, ()>> {
+    let (rest, found) = parse_keyword(input).ok()?;
+    (found == keyword).then(|| multispace0_or_comment(rest).map(|(rest, _)| (rest, ())))
+}
+
+/// After the arm of a compact `if`: an `elsif` (a nested `if` in the else arm), an `else`, or
+/// nothing.
+fn parse_compact_else(input: &str) -> IResult<&str, Option<Expr>> {
+    if let Some(after) = parse_keyword_then_space(input, Keyword::Elsif) {
+        let (rest, _) = after?;
+        let (rest, (nested, _)) = cut(|i| parse_if_tail(i, Some(IfForm::Compact))).parse(rest)?;
+        return Ok((rest, Some(elsif_arm(nested))));
+    }
+    opt(parse_if_else_clause).parse(input)
+}
+
+/// After the arm of an expanded `if`, where `else`, `elsif` or `end` follows. Gives the else
+/// arm, and leaves the `end` in the input.
+fn parse_expanded_else(input: &str) -> IResult<&str, Option<Expr>> {
+    if let Some(after) = parse_keyword_then_space(input, Keyword::Elsif) {
+        let (rest, _) = after?;
+        let (rest, (nested, _)) = cut(|i| parse_if_tail(i, Some(IfForm::Expanded))).parse(rest)?;
+        return Ok((rest, Some(elsif_arm(nested))));
+    }
+    if let Some(after) = parse_keyword_then_space(input, Keyword::Else) {
+        let (rest, _) = after?;
+        let (rest, _) = opt(tag(";")).parse(rest)?;
+        let (rest, statements) = cut(parse_arm).parse(rest)?;
+        return Ok((rest, Some(Expr::block(statements))));
+    }
+    Ok((input, None))
+}
+
+/// Parses an `if` after the keyword (or an `elsif` after its keyword): the condition and the
+/// arms. For the expanded form it stops before the `end`, which closes the whole chain. An
+/// `elsif` must be in the form of its `if`, `required`.
+fn parse_if_tail(input: &str, required: Option<IfForm>) -> IResult<&str, (Expr, IfForm)> {
+    // The condition first allows a call without parentheses, as in `if f x { 1 }`. If the arms
+    // then fail, it does not, as in `if success "Ok" else ":("`.
+    alt((
+        |i| parse_if_tail_with(i, parse_or, required),
+        |i| parse_if_tail_with(i, parse_if_condition_or, required),
+    ))
+    .parse(input)
+}
+
+fn parse_if_tail_with(
+    input: &str,
+    condition: fn(&str) -> IResult<&str, Expr>,
+    required: Option<IfForm>,
+) -> IResult<&str, (Expr, IfForm)> {
+    let (rest, condition) = cut(condition).parse(input)?;
+    let consumed = &input[..input.len() - rest.len()];
+    let form = detect_if_form(consumed, rest);
+    if required.is_some_and(|required| required != form) {
+        return Err(nom::Err::Failure(ParseError::new(
+            rest,
+            nom::error::ErrorKind::Verify,
+        )));
+    }
+    match form {
+        IfForm::Compact => {
+            let (rest, _) = multispace0_or_comment(rest)?;
+            let (rest, then_branch) = parse_if_then_branch.parse(rest)?;
+            let (rest, _) = multispace0_or_comment(rest)?;
+            let (rest, else_branch) = parse_compact_else(rest)?;
+            Ok((
+                rest,
+                (Expr::if_expr(condition, then_branch, else_branch), form),
+            ))
+        }
+        IfForm::Expanded => {
+            let (rest, _) = multispace0_or_comment(rest)?;
+            let (rest, _) = opt(tag(";")).parse(rest)?;
+            let (rest, statements) = cut(parse_arm).parse(rest)?;
+            let (rest, else_branch) = parse_expanded_else(rest)?;
+            Ok((
+                rest,
+                (
+                    Expr::if_expr(condition, Expr::block(statements), else_branch),
+                    form,
+                ),
+            ))
+        }
+    }
+}
+
 fn parse_if_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::If).parse(input)?;
     let (input, _) = multispace0_or_comment(input)?;
-
-    let (input, (condition, then_branch, else_branch)) = alt((
-        |input| {
-            let (input, condition) = cut(parse_or).parse(input)?;
-            let (input, _) = multispace0_or_comment(input)?;
-            let (input, then_branch) = parse_if_then_branch.parse(input)?;
-            let (input, _) = multispace0_or_comment(input)?;
-            let (input, else_branch) = opt(parse_if_else_clause).parse(input)?;
-            Ok((input, (condition, then_branch, else_branch)))
-        },
-        |input| {
-            let (input, condition) = cut(parse_if_condition_or).parse(input)?;
-            let (input, _) = multispace0_or_comment(input)?;
-            let (input, then_branch) = parse_if_then_branch.parse(input)?;
-            let (input, _) = multispace0_or_comment(input)?;
-            let (input, else_branch) = opt(parse_if_else_clause).parse(input)?;
-            Ok((input, (condition, then_branch, else_branch)))
-        },
-    ))
-    .parse(input)?;
-
-    Ok((input, Expr::if_expr(condition, then_branch, else_branch)))
+    let (input, (expr, form)) = parse_if_tail(input, None)?;
+    if form == IfForm::Compact {
+        return Ok((input, expr));
+    }
+    // An expanded `if` ends with `end`, which closes the whole chain of `elsif` arms
+    let (input, _) = cut(verify(parse_keyword, |k: &Keyword| *k == Keyword::End)).parse(input)?;
+    Ok((input, expr))
 }
 
 /// Parses a primary expression: literal, identifier, function call, or parenthesized expression.
@@ -667,6 +770,189 @@ mod tests {
         let (rest, expr) = parse_expr("f { a: 1 }").unwrap();
         assert_eq!(rest, "");
         assert_eq!(expr.to_string(), "f({ a: 1 })");
+    }
+
+    /// Parses `input` as an expression, and gives its compact printed form.
+    fn printed(input: &str) -> String {
+        let (rest, expr) = parse_expr(input).unwrap_or_else(|e| panic!("{input:?}: {e}"));
+        assert_eq!(rest.trim(), "", "{input:?} left input");
+        expr.to_string()
+    }
+
+    #[test]
+    fn test_parse_expanded_if_is_the_same_as_the_compact_if() {
+        let compact = parse_expr("if c { 1 } else { 2 }").unwrap();
+        for input in [
+            "if c\n  1\nelse\n  2\nend",
+            "if c; 1; else 2; end",
+            "if c # why\n  1\nelse 2\nend",
+            "if c\n\n  1\n\nelse\n\n  2\n\nend",
+        ] {
+            assert_eq!(parse_expr(input), Ok(("", compact.1.clone())), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_expanded_if_with_statements() {
+        assert_eq!(
+            printed("if x\n  let a = 1\n  a * 2\nelse\n  0\nend"),
+            "if x { let a = 1; a * 2 } else { 0 }"
+        );
+        assert_eq!(
+            printed("if x; let a = 1; a * 2; else 0; end"),
+            "if x { let a = 1; a * 2 } else { 0 }"
+        );
+    }
+
+    #[test]
+    fn test_parse_expanded_if_without_else() {
+        assert_eq!(printed("if x\n  1\nend"), "if x { 1 }");
+        assert_eq!(printed("if x; 1; end"), "if x { 1 }");
+    }
+
+    #[test]
+    fn test_parse_expanded_if_with_empty_arms() {
+        assert_eq!(printed("if x\nelse\n  1\nend"), "if x {} else { 1 }");
+        assert_eq!(printed("if x\nend"), "if x {}");
+        assert_eq!(
+            parse_expr("if x\nelse\nend"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::ident("x"),
+                    Expr::block(vec![]),
+                    Some(Expr::block(vec![]))
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_expanded_if_leaves_what_follows_end() {
+        let (rest, expr) = parse_expr("if x\n  1\nend\nfoo").unwrap();
+        assert_eq!(expr.to_string(), "if x { 1 }");
+        assert_eq!(rest.trim(), "foo");
+    }
+
+    #[test]
+    fn test_parse_nested_expanded_ifs() {
+        assert_eq!(
+            printed("if a\n  if b\n    1\n  else\n    2\n  end\nelse\n  3\nend"),
+            "if a { if b { 1 } else { 2 } } else { 3 }"
+        );
+    }
+
+    #[test]
+    fn test_parse_expanded_if_inside_a_brace_block() {
+        assert_eq!(
+            printed("{\n  if a\n    1\n  end\n  2\n}"),
+            "{ if a { 1 }; 2 }"
+        );
+    }
+
+    #[test]
+    fn test_parse_expanded_if_needs_end() {
+        for input in [
+            "if x; a; else b",
+            "if x; a",
+            "if x\n  1\nelse\n  2",
+            "if x; a; elsif y; b",
+            "if x; a; else b; elsif y; c; end",
+        ] {
+            assert!(parse_expr(input).is_err(), "{input:?} should fail");
+        }
+    }
+
+    #[test]
+    fn test_parse_expanded_statements_need_a_separator() {
+        assert!(parse_expr("if x; 1 2; end").is_err());
+    }
+
+    #[test]
+    fn test_parse_compact_if_does_not_take_end() {
+        let (rest, expr) = parse_expr("if x { 1 } end").unwrap();
+        assert_eq!(expr.to_string(), "if x { 1 }");
+        assert_eq!(rest.trim(), "end");
+    }
+
+    #[test]
+    fn test_parse_elsif_is_a_nested_if_in_the_else_arm() {
+        let nested = Expr::if_expr(
+            Expr::ident("b"),
+            Expr::block(vec![Statement::Expr(Expr::literal_integer(2))]),
+            Some(Expr::block(vec![Statement::Expr(Expr::literal_integer(3))])),
+        );
+        let expected = Expr::if_expr(
+            Expr::ident("a"),
+            Expr::block(vec![Statement::Expr(Expr::literal_integer(1))]),
+            Some(Expr::block(vec![Statement::Expr(nested)])),
+        );
+        for input in [
+            "if a { 1 } elsif b { 2 } else { 3 }",
+            "if a { 1 } else { if b { 2 } else { 3 } }",
+            "if a\n  1\nelsif b\n  2\nelse\n  3\nend",
+            "if a; 1; elsif b; 2; else 3; end",
+        ] {
+            assert_eq!(parse_expr(input), Ok(("", expected.clone())), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_elsif_chains() {
+        assert_eq!(
+            printed("if a { 1 } elsif b { 2 }"),
+            "if a { 1 } else { if b { 2 } }"
+        );
+        assert_eq!(
+            printed("if a { 1 } elsif b { 2 } elsif c { 3 } else { 4 }"),
+            "if a { 1 } else { if b { 2 } else { if c { 3 } else { 4 } } }"
+        );
+        assert_eq!(
+            printed("if a 1 elsif b 2 else 3"),
+            "if a 1 else { if b 2 else 3 }"
+        );
+        assert_eq!(
+            printed("if a\n  1\nelsif b\n  2\nelsif c\n  3\nend"),
+            "if a { 1 } else { if b { 2 } else { if c { 3 } } }"
+        );
+    }
+
+    #[test]
+    fn test_parse_elsif_condition_is_an_expression() {
+        assert_eq!(
+            printed("if n < 0 { 1 } elsif n == 0 { 2 } else { 3 }"),
+            "if n < 0 { 1 } else { if n == 0 { 2 } else { 3 } }"
+        );
+    }
+
+    #[test]
+    fn test_parse_elsif_printed_form_parses_back() {
+        for input in [
+            "if a { 1 } elsif b { 2 } else { 3 }",
+            "if a\n  1\nelsif b\n  2\nend",
+        ] {
+            let (_, expr) = parse_expr(input).unwrap();
+            assert_eq!(parse_expr(&expr.to_string()), Ok(("", expr)), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_elsif_misuse_fails() {
+        for input in [
+            "if a { 1 } else { 2 } elsif b { 3 }",
+            "if a; 1; else 2; elsif b; 3; end",
+            "if a { 1 } elsif { 2 }",
+            "if a; 1; elsif; 2; end",
+        ] {
+            let result = parse_expr(input);
+            assert!(
+                result
+                    .as_ref()
+                    .map_or(true, |(rest, _)| !rest.trim().is_empty()),
+                "{input:?} should not parse in full: {result:?}"
+            );
+        }
+        assert!(parse_expr("elsif").is_ok(), "elsif is a keyword expression");
     }
 
     #[test]

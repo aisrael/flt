@@ -57,6 +57,11 @@ fn parse_arg_disallow_unary_plus<'a>(
 ) -> impl FnMut(&'a str) -> IResult<&'a str, ParsedArg> {
     let mut inner = parse_arg(expr_parser);
     move |input: &'a str| {
+        // A comment ends the line, so what follows it is not an argument: in `f # note`
+        // and a line break, the next line is a new statement, or the body of an `if`
+        if input.starts_with('#') {
+            return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
+        }
         if input.starts_with('+') {
             return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
@@ -65,8 +70,12 @@ fn parse_arg_disallow_unary_plus<'a>(
         if input.starts_with("- ") {
             return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
-        // `end` closes a function body, so it's never an argument: in `n\nend`, `n` is a name
-        if matches!(parse_keyword(input), Ok((_, Keyword::End))) {
+        // `end` closes a function body, and `else` and `elsif` end an arm of an `if`, so none of
+        // them is an argument: in `n\nend`, `n` is a name
+        if matches!(
+            parse_keyword(input),
+            Ok((_, Keyword::End | Keyword::Else | Keyword::Elsif))
+        ) {
             return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
         // In a call without parentheses, a `{` starts an argument only if it starts a map: in
@@ -456,6 +465,28 @@ mod tests {
                 parse_function_call(parse_expr)(input).is_err(),
                 "{input} should fail to parse"
             );
+        }
+    }
+
+    #[test]
+    fn test_parse_else_elsif_and_end_do_not_start_an_argument() {
+        for input in [
+            "f else",
+            "f elsif",
+            "f end",
+            "f\nelse",
+            "f\nelsif x",
+            "f\nend",
+        ] {
+            let (rest, call) = match parse_function_call(parse_expr)(input) {
+                Ok(parsed) => parsed,
+                Err(_) => continue,
+            };
+            assert!(
+                call.positional_args.is_empty(),
+                "{input:?} took an argument: {call}"
+            );
+            assert!(!rest.trim().is_empty(), "{input:?} took all the input");
         }
     }
 

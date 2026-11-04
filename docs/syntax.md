@@ -13,7 +13,7 @@ This page covers the core surface syntax supported by the parser.
 - [Field access](./field-access.md) (`u.foo`)
 - Function calls (including [keyword arguments](./functions-and-pipe.md#keyword-arguments))
 - Parenthesized expressions
-- `if` expressions
+- [`if` expressions](#if-expressions), compact and expanded, with `elsif`
 - [Brace blocks](#brace-blocks) (`{ let a = 1; a + 1 }`)
 - Reserved keywords as expressions (e.g. `return`, `fn`)
 
@@ -38,6 +38,40 @@ if true ({})         # {}: parentheses make the arm a plain expression
 ```
 
 Each brace arm of an `if` is a block. An arm without braces is a plain expression. A block has its own scope. See [block scope](./runtime.md#block-scope).
+
+## If Expressions
+
+An `if` has two forms ([ADR 022](./adrs/022-expanded-if.md)). The **compact form** has braces or one expression per arm. The **expanded form** has statements in each arm and ends with `end`. Both are expressions:
+
+```flt
+if ready { "yes" } else { "no" }
+if ready "yes" else "no"
+
+if ready
+  let n = 2
+  n * 3
+else
+  0
+end
+```
+
+`if c { 1 } else { 2 }` and the expanded `if c`, `1`, `else`, `2`, `end` give the same AST. A `{` after the condition starts the compact form. A line break, a comment or a `;` after the condition starts the expanded form, which needs `end`. So `if x; a; else b; end` is valid on one line. An arm with no statements gives `None`, and so does an `if` without `else` when no condition is true.
+
+`elsif` adds more conditions. It is sugar for `else` followed by a nested `if`, and one `end` closes the whole chain:
+
+```flt
+if n < 0 { "negative" } elsif n == 0 { "zero" } else { "positive" }
+
+if n < 0
+  "negative"
+elsif n == 0
+  "zero"
+else
+  "positive"
+end
+```
+
+A `let` in an arm is gone after the `if`. See [block scope](./runtime.md#block-scope).
 
 ## Statements
 
@@ -81,19 +115,19 @@ A declaration has a name, the parameters in parentheses, an optional `-> type`, 
 - If a statement ends on a newline, the semicolon is not required.
 - Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
 
-The REPL parses one statement per line (an expression, a `let` / assignment binding or a `def`). A `def` must be written on one line in the REPL, e.g. `def double(n: Number) -> Number n * 2 end`.
+The REPL parses one statement per line (an expression, a `let` / assignment binding or a `def`). A `def` or an expanded `if` must be written on one line in the REPL, e.g. `def double(n: Number) -> Number n * 2 end` and `if x; a; elsif y; b; else c; end`.
 
 ## Reserved Keywords
 
 The following words are reserved and recognized with word boundaries (e.g. `if` is a keyword, but `iffy` is an identifier):
 
-| Keyword | Keyword | Keyword  |
-| ------- | ------- | -------- |
-| `if`    | `else`  | `return` |
-| `and`   | `or`    | `not`    |
-| `for`   | `in`    | `let`    |
-| `while` | `do`    | `fn`     |
-| `def`   | `end`   |          |
+| Keyword  | Keyword | Keyword |
+| -------- | ------- | ------- |
+| `if`     | `else`  | `elsif` |
+| `return` | `and`   | `or`    |
+| `not`    | `for`   | `in`    |
+| `let`    | `while` | `do`    |
+| `fn`     | `def`   | `end`   |
 
 A reserved keyword can't be the name in a binding or in a `def`, so `let if = 1`, `fn = 1` and `def end() end` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
 

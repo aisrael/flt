@@ -25,6 +25,8 @@ mod tests {
     fn test_parse_keywords() {
         assert_eq!(parse_keyword("if"), Ok(("", Keyword::If)));
         assert_eq!(parse_keyword("else"), Ok(("", Keyword::Else)));
+        assert_eq!(parse_keyword("elsif"), Ok(("", Keyword::Elsif)));
+        assert!(parse_keyword("elsifs").is_err());
         assert_eq!(parse_keyword("return"), Ok(("", Keyword::Return)));
         assert_eq!(parse_keyword("and"), Ok(("", Keyword::And)));
         assert_eq!(parse_keyword("or"), Ok(("", Keyword::Or)));
