@@ -1,8 +1,8 @@
 # ADR 018: Overloads Have Distinct Parameter Signatures
 
 - **Date:** 2026-10-31
-- **Applies to:** Language specification
-- **Status:** Proposed
+- **Scope:** Runtime
+- **Status:** Accepted
 
 ## Context
 
@@ -90,11 +90,11 @@ show(x: Number) -> String
 show(x: Any) -> String
 ```
 
-`show(1)` is still a tie that the spec does not resolve (ADR 013, decision 4). This ADR does not change that.
+`show(1)` is still a tie that ADR 013 does not resolve (decision 4). This ADR does not change that.
 
 ### 5. Native functions follow the same rule
 
-Every runtime must also enforce this rule for the native functions that a host registers. A host cannot register an overload with a parameter signature that is equal to the signature of another overload of the same function. A runtime rejects the registration. How a runtime reports the rejection is a matter for that runtime.
+The reference runtime also enforces this rule for the native functions that a host registers. A host cannot register an overload with a parameter signature that is equal to the signature of another overload of the same function. The runtime rejects the registration. How it reports the rejection is a matter for the runtime. The language specification does not require overloads, so another runtime can make other choices.
 
 ## Alternatives Considered
 
@@ -107,5 +107,5 @@ Every runtime must also enforce this rule for the native functions that a host r
 ## Consequences
 
 - Each overload of a function has a different parameter signature. So the displayed type of each overload is different, and a type maps back to one overload declaration. The notation for function types ([ADR 003](003-functions-as-values.md), [ADR 012](012-variadic-notation.md)) does not change. Keyword names stay in the type, so `fn(String, Integer)` and `fn(String, i: Integer)` stay different.
-- The spec names the `DuplicateOverload` error. A new `RuntimeError` variant is not needed until flt source can declare functions, because `SimpleRuntime` panics for now.
+- `SimpleRuntime` raises a `DuplicateOverload` error for a duplicate parameter signature. [`errors.md`](../errors.md) describes the error. The language specification does not name it. A later decision can let flt source declare overloads.
 - Hosts that declare two overloads with equal parameter signatures must merge them. They can use a union in the return type, or a union in a parameter type.

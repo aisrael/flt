@@ -1,7 +1,7 @@
 # ADR 019: Declaring Functions in flt with `def`
 
 - **Date:** 2026-10-31
-- **Applies to:** Language specification
+- **Scope:** Language specification, runtime
 - **Status:** Accepted
 
 ## Context

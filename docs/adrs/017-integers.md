@@ -1,8 +1,8 @@
 # ADR 017: Integers
 
 - **Date:** 2026-10-28
-- **Applies to:** Language specification
-- **Status:** Proposed
+- **Scope:** Language specification
+- **Status:** Accepted
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR 013: Type-Checked Function Calls
 
 - **Date:** 2026-10-27
-- **Applies to:** Runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context

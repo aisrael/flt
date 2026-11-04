@@ -1,7 +1,7 @@
 # ADR 007: Native Types and Values
 
 - **Date:** 2026-10-25
-- **Applies to:** Runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context

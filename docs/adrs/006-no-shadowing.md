@@ -1,7 +1,7 @@
 # ADR 006: Bindings Can't Shadow Types, Functions or Keywords
 
 - **Date:** 2026-10-24
-- **Applies to:** Runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context

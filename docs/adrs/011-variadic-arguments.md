@@ -1,7 +1,7 @@
 # ADR 011: Variadic Arguments
 
 - **Date:** 2026-10-26
-- **Applies to:** Language specification
+- **Scope:** Language specification
 - **Status:** Accepted
 
 ## Context

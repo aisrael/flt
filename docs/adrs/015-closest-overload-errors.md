@@ -1,7 +1,7 @@
 # ADR 015: Errors Name the Closest Overload
 
 - **Date:** 2026-10-28
-- **Applies to:** Runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context

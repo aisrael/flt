@@ -1,7 +1,7 @@
 # ADR 008: The `Runtime` Trait
 
 - **Date:** 2026-10-25
-- **Applies to:** Runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context
