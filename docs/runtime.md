@@ -45,6 +45,10 @@ greet: fn(String, greeting: String) -> String    # greeting defaults to "Hello"
 
 ## Scopes
 
+The reference runtime has three kinds of scope: global, function and block ([ADR 021](adrs/021-block-scopes.md)). Outside a function body, a binding is global. It is visible to every statement after it.
+
+### Function scope
+
 A call to a function declared with `def` creates a scope for its body:
 
 - Each parameter is bound in this scope, with its declared type. A variadic parameter is bound to an `Array`. A rest keywords parameter is bound to a `Map`.
@@ -54,11 +58,39 @@ A call to a function declared with `def` creates a scope for its body:
 
 A default of a keyword parameter can use global bindings, but not other parameters.
 
-Outside a function body, a binding is global. It is visible to every statement after it. The scope of a function call is the only other scope.
+A called function does not see the blocks of its caller. It sees only its own scopes and the global scope.
+
+### Block scope
+
+Each [brace block](spec.md#blocks) has a scope of its own. This includes each brace arm of an `if` ([ADR 020](adrs/020-brace-blocks.md)). A block scope follows the rules of a function scope:
+
+- A `let` declares a variable in the block only. It can hide a name from an outer scope. The outer binding returns when the block ends.
+- A lookup goes from the innermost block outward through the enclosing blocks. Then it goes to the scope of the call, and last to the global scope.
+- An assignment `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the innermost block.
+- The condition of an `if` is evaluated in the enclosing scope, not in a block of the `if`.
+- The scope of a block is gone when the block ends. It is also gone when an error stops the block.
+
+```flt
+let x = 1
+let r = {
+  let x = 10         # hides the global x in this block
+  x + 1
+}
+r                    # 11
+x                    # 1
+{ let y = 2 }
+y                    # error: y is not bound
+```
+
+An arm without braces (`if c 1 else 2`) is a plain expression. It has no scope of its own.
+
+A host sees only the global scope. The `Runtime` trait does not change.
 
 ## Declaring functions
 
 A `def` statement binds its name in the global scope to a function value, and gives `None`. The name is bound before the body runs, so a function can call itself.
+
+A `def` is allowed only at the top level. A `def` inside a block or inside the body of a function raises a `DefNotAtTopLevel` error ([ADR 021](adrs/021-block-scopes.md)). A later change can allow it.
 
 A second `def` with the same name adds an overload. It raises a `DuplicateOverload` error if its parameters have the same types as an existing overload (see [ADR 018](adrs/018-distinct-overload-signatures.md)). A `def` raises a `NameAlreadyBound` error if its name is a built-in type or a variable. It also raises this error if the name is a function that a host registered.
 

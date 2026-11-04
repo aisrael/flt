@@ -9,6 +9,7 @@ use super::keywords::Keyword;
 use super::literal::Literal;
 use super::operands::BinaryOp;
 use super::operands::UnaryOp;
+use super::statement::Statement;
 use crate::utils::escape_string;
 use crate::utils::is_bare_name;
 
@@ -44,6 +45,9 @@ pub enum Expr {
         then_branch: Box<Expr>,
         else_branch: Option<Box<Expr>>,
     },
+    /// A brace block: `{ statement; statement }`. It evaluates to its last statement, and to
+    /// `None` when it has none (only an empty arm of an `if`, `{}`, parses to that).
+    Block(Vec<Statement>),
 }
 
 impl Display for Expr {
@@ -91,6 +95,19 @@ impl Display for Expr {
                     write!(f, " else {else_branch}")?;
                 }
                 Ok(())
+            }
+            Expr::Block(statements) => {
+                if statements.is_empty() {
+                    return write!(f, "{{}}");
+                }
+                write!(f, "{{ ")?;
+                for (i, statement) in statements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    statement.fmt(f)?;
+                }
+                write!(f, " }}")
             }
         }
     }
@@ -199,6 +216,11 @@ impl Expr {
         Expr::Keyword(kw)
     }
 
+    /// Constructs a brace block.
+    pub fn block(statements: Vec<Statement>) -> Self {
+        Expr::Block(statements)
+    }
+
     /// Constructs an if expression with optional else branch.
     pub fn if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> Self {
         Expr::IfExpr {
@@ -236,6 +258,7 @@ mod tests {
     use super::super::operands::UnaryOp;
     use super::Expr;
     use super::KeyValue;
+    use super::Statement;
 
     fn n(s: &str) -> BigDecimal {
         BigDecimal::from_str(s).unwrap()
@@ -448,5 +471,36 @@ mod tests {
             Some(Expr::literal_integer(2)),
         );
         assert_eq!(expr.to_string(), "if false 1 else 2");
+    }
+
+    #[test]
+    fn test_display_block() {
+        let block = Expr::block(vec![Statement::Expr(Expr::literal_integer(1))]);
+        assert_eq!(block.to_string(), "{ 1 }");
+
+        let block = Expr::block(vec![
+            Statement::declare("a", Expr::literal_integer(1)),
+            Statement::Expr(Expr::binary_expr(
+                Expr::ident("a"),
+                BinaryOp::Mul,
+                Expr::literal_integer(2),
+            )),
+        ]);
+        assert_eq!(block.to_string(), "{ let a = 1; a * 2 }");
+    }
+
+    #[test]
+    fn test_display_empty_block() {
+        assert_eq!(Expr::block(vec![]).to_string(), "{}");
+    }
+
+    #[test]
+    fn test_display_if_expr_with_block_branches() {
+        let expr = Expr::if_expr(
+            Expr::literal_boolean(true),
+            Expr::block(vec![Statement::Expr(Expr::literal_integer(1))]),
+            Some(Expr::block(vec![Statement::Expr(Expr::literal_integer(2))])),
+        );
+        assert_eq!(expr.to_string(), "if true { 1 } else { 2 }");
     }
 }

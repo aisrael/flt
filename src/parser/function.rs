@@ -69,7 +69,15 @@ fn parse_arg_disallow_unary_plus<'a>(
         if matches!(parse_keyword(input), Ok((_, Keyword::End))) {
             return Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)));
         }
-        inner(input)
+        // In a call without parentheses, a `{` starts an argument only if it starts a map: in
+        // `if x { 1 }`, the braces are the arm of the `if`, not an argument of `x`. A map is
+        // still an argument: `f { a: 1 }`.
+        match inner(input) {
+            Ok((_, ParsedArg::Positional(Expr::Block(_)))) => {
+                Err(nom::Err::Error(ParseError::new(input, ErrorKind::Tag)))
+            }
+            other => other,
+        }
     }
 }
 

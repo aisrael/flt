@@ -19,24 +19,25 @@ use super::literal::parse_literal;
 use super::map::parse_map_literal;
 use super::operands::parse_binary_op;
 use super::operands::parse_unary_op;
+use super::statement::parse_block;
 use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::Keyword;
 use crate::parser::IResult;
 
-/// Parses a `{ expr }` block used by control-flow expressions.
+/// Parses a brace block: `{`, statements and `}`. See [`parse_block`].
 fn parse_block_expr(input: &str) -> IResult<&str, Expr> {
-    delimited(
-        (multispace0_or_comment, tag("{"), multispace0_or_comment),
-        parse_or,
-        (multispace0_or_comment, tag("}"), multispace0_or_comment),
-    )
-    .parse(input)
+    map(parse_block, Expr::block).parse(input)
 }
 
+/// Parses an arm of an `if`: a brace block, or an expression. A pair of braces is an empty
+/// block here, but an empty map anywhere else. A `{` and a key and a `:` is a map: the block
+/// fails on it, so the expression parser gets it.
 fn parse_if_branch(input: &str) -> IResult<&str, Expr> {
-    alt((parse_block_expr, parse_or)).parse(input)
+    let (input, branch) = alt((parse_block_expr, parse_or)).parse(input)?;
+    let (input, _) = multispace0_or_comment(input)?;
+    Ok((input, branch))
 }
 
 fn parse_if_then_branch(input: &str) -> IResult<&str, Expr> {
@@ -92,6 +93,7 @@ fn parse_primary(input: &str) -> IResult<&str, Expr> {
         map(parse_identifier, Expr::ident),
         parse_array_literal(parse_or),
         parse_map_literal(parse_or),
+        parse_block_expr,
         map(
             delimited(
                 (multispace0_or_comment, tag("("), multispace0_or_comment),
@@ -388,6 +390,7 @@ mod tests {
     use crate::ast::BinaryOp;
     use crate::ast::Expr;
     use crate::ast::Numeric;
+    use crate::ast::Statement;
     use crate::ast::UnaryOp;
 
     use super::*;
@@ -448,8 +451,8 @@ mod tests {
                 "",
                 Expr::if_expr(
                     Expr::literal_boolean(true),
-                    Expr::literal_integer(1),
-                    Some(Expr::literal_integer(2))
+                    Expr::block(vec![Statement::Expr(Expr::literal_integer(1))]),
+                    Some(Expr::block(vec![Statement::Expr(Expr::literal_integer(2))]))
                 )
             ))
         );
@@ -460,11 +463,210 @@ mod tests {
                 "",
                 Expr::if_expr(
                     Expr::literal_boolean(false),
-                    Expr::function_call("do", vec![]),
+                    Expr::block(vec![Statement::Expr(Expr::function_call("do", vec![]))]),
                     None
                 )
             ))
         );
+    }
+
+    #[test]
+    fn test_parse_block() {
+        assert_eq!(
+            parse_expr("{ 1 }"),
+            Ok((
+                "",
+                Expr::block(vec![Statement::Expr(Expr::literal_integer(1))])
+            ))
+        );
+        assert_eq!(
+            parse_expr("{ a }"),
+            Ok(("", Expr::block(vec![Statement::Expr(Expr::ident("a"))])))
+        );
+    }
+
+    #[test]
+    fn test_parse_block_with_statements_on_one_line() {
+        let (rest, block) = parse_expr("{ let a = 1; a * 2 }").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(block.to_string(), "{ let a = 1; a * 2 }");
+        let Expr::Block(statements) = block else {
+            panic!("expected a block");
+        };
+        assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_block_with_statements_on_separate_lines() {
+        let (rest, block) = parse_expr("{\n  let a = 1\n  a + 1\n}").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(block.to_string(), "{ let a = 1; a + 1 }");
+    }
+
+    #[test]
+    fn test_parse_block_with_comments() {
+        let (rest, block) = parse_expr("{ # first\n  1 # one\n}").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(block.to_string(), "{ 1 }");
+    }
+
+    #[test]
+    fn test_parse_block_needs_a_separator_between_statements_on_one_line() {
+        assert!(parse_expr("{ let a = 1 a }").is_err());
+    }
+
+    #[test]
+    fn test_parse_nested_blocks() {
+        let (rest, block) = parse_expr("{ { 1 } }").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(block.to_string(), "{ { 1 } }");
+    }
+
+    #[test]
+    fn test_parse_block_as_an_operand() {
+        let (rest, expr) = parse_expr("{ 1 } + { 2 }").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(expr.to_string(), "{ 1 } + { 2 }");
+    }
+
+    #[test]
+    fn test_parse_block_as_an_argument() {
+        let (rest, expr) = parse_expr("typeof({ 1 })").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(expr.to_string(), "typeof({ 1 })");
+    }
+
+    #[test]
+    fn test_parse_unclosed_block_fails() {
+        assert!(parse_expr("{ 1").is_err());
+        assert!(parse_expr("{ let a = 1;").is_err());
+        assert!(parse_expr("{ { 1 }").is_err());
+    }
+
+    #[test]
+    fn test_parse_key_and_colon_starts_a_map() {
+        assert_eq!(
+            parse_expr("{ a: 1 }"),
+            Ok(("", Expr::map_literal(vec![("a", Expr::literal_integer(1))])))
+        );
+        assert_eq!(
+            parse_expr("{ \"a b\": 1 }"),
+            Ok((
+                "",
+                Expr::map_literal(vec![("a b", Expr::literal_integer(1))])
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_braces_is_an_empty_map() {
+        assert_eq!(
+            parse_expr("{}"),
+            Ok(("", Expr::map_literal(Vec::<(String, Expr)>::new())))
+        );
+        assert_eq!(
+            parse_expr("{ }"),
+            Ok(("", Expr::map_literal(Vec::<(String, Expr)>::new())))
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_braces_as_an_if_arm_is_an_empty_block() {
+        assert_eq!(
+            parse_expr("if true {}"),
+            Ok((
+                "",
+                Expr::if_expr(Expr::literal_boolean(true), Expr::block(vec![]), None)
+            ))
+        );
+        assert_eq!(
+            parse_expr("if true 1 else {}"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(true),
+                    Expr::literal_integer(1),
+                    Some(Expr::block(vec![]))
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expr("if true { } else { }"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(true),
+                    Expr::block(vec![]),
+                    Some(Expr::block(vec![]))
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_parenthesized_braces_as_an_if_arm_is_an_empty_map() {
+        assert_eq!(
+            parse_expr("if true ({})"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(true),
+                    Expr::parenthesized(Expr::map_literal(Vec::<(String, Expr)>::new())),
+                    None
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_map_as_an_if_arm_is_a_map() {
+        assert_eq!(
+            parse_expr("if true { a: 1 }"),
+            Ok((
+                "",
+                Expr::if_expr(
+                    Expr::literal_boolean(true),
+                    Expr::map_literal(vec![("a", Expr::literal_integer(1))]),
+                    None
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_if_arms_with_statements() {
+        let (rest, expr) =
+            parse_expr("if x {let a = 1; a * 2} else {0}").expect("the arms should parse");
+        assert_eq!(rest, "");
+        assert_eq!(expr.to_string(), "if x { let a = 1; a * 2 } else { 0 }");
+    }
+
+    #[test]
+    fn test_parse_if_arms_on_separate_lines() {
+        let (rest, expr) = parse_expr("if x {\n  let a = 1\n  a * 2\n} else {\n  0\n}").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(expr.to_string(), "if x { let a = 1; a * 2 } else { 0 }");
+    }
+
+    #[test]
+    fn test_parse_if_with_a_block_arm_does_not_take_the_next_line_as_its_arm() {
+        let (rest, expr) = parse_expr("if x { 1 }\nfoo").unwrap();
+        assert_eq!(rest.trim(), "foo");
+        assert_eq!(expr.to_string(), "if x { 1 }");
+    }
+
+    #[test]
+    fn test_parse_block_is_not_an_argument_without_parentheses() {
+        let (rest, expr) = parse_expr("f { 1 }").unwrap();
+        assert_eq!(expr, Expr::ident("f"));
+        assert_eq!(rest.trim(), "{ 1 }");
+    }
+
+    #[test]
+    fn test_parse_map_is_an_argument_without_parentheses() {
+        let (rest, expr) = parse_expr("f { a: 1 }").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(expr.to_string(), "f({ a: 1 })");
     }
 
     #[test]

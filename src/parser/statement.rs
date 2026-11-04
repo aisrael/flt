@@ -172,15 +172,48 @@ fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
     ))
 }
 
+/// What ends a list of statements.
+#[derive(Clone, Copy)]
+enum Closer {
+    /// The keyword `end`, which closes the body of a `def`
+    End,
+    /// A `}`, which closes a brace block
+    Brace,
+}
+
+impl Closer {
+    /// The input after the closer, if `input` starts with it.
+    fn strip(self, input: &str) -> Option<&str> {
+        match self {
+            Closer::End if starts_with_keyword(input, Keyword::End) => Some(&input["end".len()..]),
+            Closer::Brace => input.strip_prefix('}'),
+            Closer::End => None,
+        }
+    }
+}
+
 /// Parses the statements of a body, up to and including the `end` that closes it. As in a
 /// program, two statements on one line need a `;` between them.
 fn parse_body(input: &str) -> IResult<&str, Vec<Statement>> {
+    parse_statements_until(input, Closer::End)
+}
+
+/// Parses a brace block, `{`, statements and `}`, and gives its statements. As in a body, two
+/// statements on one line need a `;` between them. The block can be empty. Unlike a body, a
+/// mistake in a block is an error, not a failure, so the parser can try a map instead: `{ a: 1 }`.
+pub fn parse_block(input: &str) -> IResult<&str, Vec<Statement>> {
+    let (input, _) = tag("{").parse(input)?;
+    parse_statements_until(input, Closer::Brace)
+}
+
+/// Parses statements up to and including `closer`.
+fn parse_statements_until(input: &str, closer: Closer) -> IResult<&str, Vec<Statement>> {
     let mut statements = Vec::new();
     let mut rest = input;
     loop {
         let (before_statement, _) = multispace0_or_comment(rest)?;
-        if starts_with_keyword(before_statement, Keyword::End) {
-            return Ok((&before_statement["end".len()..], statements));
+        if let Some(after) = closer.strip(before_statement) {
+            return Ok((after, statements));
         }
         let (remainder, statement) = parse_statement(before_statement)?;
         let consumed = &before_statement[..before_statement.len() - remainder.len()];
@@ -188,8 +221,14 @@ fn parse_body(input: &str) -> IResult<&str, Vec<Statement>> {
             .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
             .len();
         let separator = &consumed[statement_end..];
-        if !starts_with_keyword(remainder, Keyword::End) && !separator.contains([';', '\n']) {
-            return Err(failure(remainder));
+        let (remainder_start, _) = multispace0_or_comment(remainder)?;
+        if closer.strip(remainder_start).is_none() && !separator.contains([';', '\n']) {
+            return Err(match closer {
+                Closer::End => failure(remainder),
+                Closer::Brace => {
+                    nom::Err::Error(ParseError::new(remainder, nom::error::ErrorKind::Verify))
+                }
+            });
         }
         statements.push(statement);
         rest = remainder;

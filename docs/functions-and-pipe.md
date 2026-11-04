@@ -50,7 +50,7 @@ add 1
 add 1, 2
 ```
 
-The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument.
+The arguments must be on the same line as the name, so a name alone on a line, followed by a statement on the next line, is two statements. A `-` followed by a space is a subtraction, so `n - 1` is not the call `n(-1)`; write `n -1` for that call. The keyword `end` is never an argument. A `{` starts an argument only if it starts a map: `f { a: 1 }` passes a map, but `f { 1 }` is the name `f` followed by a block.
 
 This form parses exactly like the parenthesized one: `add 1, 2` and `add(1, 2)` give the same AST. It can't be used next to a [pipe](#calls-next-to-a-pipe).
 
@@ -114,10 +114,11 @@ Each call has its own scope:
 - Parameters and variables declared with `let` in the body exist only during the call.
 - A name that the scope does not bind is looked up in the global scope.
 - `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the call.
+- A [brace block](./syntax.md#brace-blocks) in the body has its own scope inside the call's scope. See [block scope](./runtime.md#block-scope).
 
 ### Names and Overloads
 
-A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
+A `def` is allowed only at the top level, not in a block or in the body of a function: that raises `DefNotAtTopLevel`. A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
 
 A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
 

@@ -419,9 +419,14 @@ pub trait Runtime {
 /// flt source.
 pub struct SimpleRuntime {
     global_scope: GlobalScope,
-    /// The scopes of the calls to functions declared in flt, innermost last. A call sees only
-    /// its own scope and the global scope.
+    /// The local scopes, innermost last: the scope of each call to a function declared in flt,
+    /// and the scope of each brace block that is running. A name is looked up in the scopes
+    /// from `call_base` on, innermost first, then in the global scope.
     frames: Vec<Frame>,
+    /// The index in `frames` of the scope of the innermost call, or of the outermost block when
+    /// no call is running. A call sees its own scopes and the global scope, not the scopes of
+    /// its caller.
+    call_base: usize,
     /// Native types registered by the host, by name
     native_types: HashMap<&'static str, NativeTypeInfo>,
 }
@@ -434,6 +439,7 @@ impl Default for SimpleRuntime {
         Self {
             global_scope,
             frames: Vec::new(),
+            call_base: 0,
             native_types: HashMap::new(),
         }
     }
@@ -471,25 +477,28 @@ impl Runtime for SimpleRuntime {
                     .map(|r#type| self.resolve_type(r#type))
                     .transpose()?;
                 let value = self.eval_expr(expr)?;
-                match self.frames.last_mut() {
+                match self.local_scopes_mut().last_mut() {
                     Some(frame) => frame.declare(name, r#type, value),
                     None => self.global_scope.declare_variable(name, r#type, value),
                 }
             }
-            // An assignment changes the nearest binding of the name: in the scope of the call,
-            // else global. With neither, it declares the name, in the scope of the call if
-            // there is one.
+            // An assignment changes the nearest binding of the name: in a block or the scope of
+            // the call, innermost first, else global. With none, it declares the name, in the
+            // innermost block or the scope of the call if there is one.
             Statement::Assign(name, expr) => {
                 self.global_scope.check_bindable(name)?;
                 let value = self.eval_expr(expr)?;
-                match self.frames.last_mut() {
-                    Some(frame) if frame.variables.contains_key(name.0.as_str()) => {
-                        frame.set(name, value)
-                    }
-                    Some(frame) if !self.global_scope.has_variable(name) => {
-                        frame.declare(name, None, value)
-                    }
-                    _ => self.global_scope.set_variable(name, value),
+                let global = self.global_scope.has_variable(name);
+                let scopes = self.local_scopes_mut();
+                match scopes
+                    .iter()
+                    .rposition(|frame| frame.variables.contains_key(name.0.as_str()))
+                {
+                    Some(index) => scopes[index].set(name, value),
+                    None => match scopes.last_mut() {
+                        Some(frame) if !global => frame.declare(name, None, value),
+                        _ => self.global_scope.set_variable(name, value),
+                    },
                 }
             }
             Statement::Def(declaration) => {
@@ -547,13 +556,30 @@ impl Runtime for SimpleRuntime {
 }
 
 impl SimpleRuntime {
+    /// The scopes that the running code sees besides the global scope, outermost first: those
+    /// of the innermost call, and the blocks inside it.
+    fn local_scopes_mut(&mut self) -> &mut [Frame] {
+        &mut self.frames[self.call_base..]
+    }
+
+    /// Evaluates `statements` in order, in the current scope, and gives the value of the last
+    /// one, or `None` if there are none. The first error stops it.
+    fn eval_statements(&mut self, statements: &[Statement]) -> Result<Value, Error> {
+        let mut value = Value::None;
+        for statement in statements {
+            value = self.eval_statement(statement)?;
+        }
+        Ok(value)
+    }
+
     /// Looks up `name` as a variable, then a global function, then a built-in type name, then
     /// a native type name. A name is never more than one of these, since a binding can't
     /// shadow a function or a type, so the order doesn't change the result.
     fn lookup(&self, name: &str) -> Option<Value> {
-        self.frames
-            .last()
-            .and_then(|frame| frame.variables.get(name))
+        self.frames[self.call_base..]
+            .iter()
+            .rev()
+            .find_map(|frame| frame.variables.get(name))
             .or_else(|| self.global_scope.get_variable(name))
             .cloned()
             .or_else(|| {
@@ -605,22 +631,23 @@ impl SimpleRuntime {
     }
 
     /// Declares a function with `def`, or adds an overload to a function declared in flt.
-    /// Raises `NameAlreadyBound` if the name is a built-in type, a native type, a variable or a
-    /// function the host registered, and `DuplicateOverload` if an overload with equal
-    /// parameter types exists.
+    /// Raises `DefNotAtTopLevel` inside a block or a function body, `NameAlreadyBound` if the
+    /// name is a built-in type, a native type, a variable or a function the host registered,
+    /// and `DuplicateOverload` if an overload with equal parameter types exists.
     fn define_function(&mut self, declaration: &FunctionDeclaration) -> Result<(), Error> {
         let name = declaration.name.0.as_str();
+        // Local scopes exist only inside a block or the body of a function
+        if !self.frames.is_empty() {
+            return Err(Error::RuntimeError(RuntimeError::DefNotAtTopLevel {
+                name: name.to_string(),
+            }));
+        }
         let existing = self.global_scope.get_function(name).cloned();
         let reason = if Type::is_builtin_name(name) {
             Some(ProtectedName::BuiltinType)
         } else if self.get_native_type(name).is_some() {
             Some(ProtectedName::NativeType)
-        } else if self.global_scope.has_variable(name)
-            || self
-                .frames
-                .last()
-                .is_some_and(|frame| frame.variables.contains_key(name))
-        {
+        } else if self.global_scope.has_variable(name) {
             Some(ProtectedName::Variable)
         } else if existing.as_ref().is_some_and(|f| !f.is_declared_in_flt()) {
             Some(ProtectedName::Function)
@@ -720,8 +747,10 @@ impl SimpleRuntime {
                 continue;
             }
             let caller_frames = std::mem::take(&mut self.frames);
+            let caller_base = std::mem::take(&mut self.call_base);
             let value = self.eval_expr(default);
             self.frames = caller_frames;
+            self.call_base = caller_base;
             let value = value?;
             let expected = signature
                 .keyword_type(keyword)
@@ -763,15 +792,12 @@ impl SimpleRuntime {
             frame.bind(rest_name, Type::map(), Value::Map(rest));
         }
 
+        let caller_base = self.call_base;
+        self.call_base = self.frames.len();
         self.frames.push(frame);
-        let mut result = Ok(Value::None);
-        for statement in &body.statements {
-            result = self.eval_statement(statement);
-            if result.is_err() {
-                break;
-            }
-        }
-        self.frames.pop();
+        let result = self.eval_statements(&body.statements);
+        self.frames.truncate(self.call_base);
+        self.call_base = caller_base;
         let value = result?;
         if signature.return_type.accepts(&value) {
             Ok(signature.return_type.coerce(value))
@@ -828,6 +854,15 @@ impl SimpleRuntime {
                         None => Ok(Value::None),
                     }
                 }
+            }
+            // A block has a scope of its own, which is gone when the block ends, or when an
+            // error stops it.
+            Expr::Block(statements) => {
+                let depth = self.frames.len();
+                self.frames.push(Frame::default());
+                let result = self.eval_statements(statements);
+                self.frames.truncate(depth);
+                result
             }
             Expr::UnaryExpr(op, inner) => {
                 let val = self.eval_expr(inner)?;
@@ -3256,5 +3291,196 @@ mod tests {
     fn test_def_function_name_cannot_be_bound() {
         let (_, message) = run_error("def one() -> Integer\n  1\nend\nlet one = 2");
         assert_eq!(message, "Cannot bind one: it's a function");
+    }
+
+    // Brace blocks and block scopes, ADR 020 and ADR 021
+
+    #[test]
+    fn test_block_evaluates_to_its_last_statement() {
+        assert_eq!(run("{ 1 }"), "1");
+        assert_eq!(run("{ let a = 1; a * 2 }"), "2");
+        assert_eq!(run("{\n  let a = 1\n  a + 1\n}"), "2");
+        assert_eq!(run("{ let a = 3 }"), "3");
+        assert_eq!(run("{ 1 } + { 2 }"), "3");
+    }
+
+    #[test]
+    fn test_empty_block_evaluates_to_none() {
+        assert_eq!(run("if true {}"), "None");
+        assert_eq!(run("if false 1 else {}"), "None");
+    }
+
+    #[test]
+    fn test_parenthesized_braces_as_an_arm_is_an_empty_map() {
+        assert_eq!(run("if true ({})"), "{}");
+    }
+
+    #[test]
+    fn test_block_let_is_gone_after_the_block() {
+        let (_, message) = run_error("{ let a = 1 }\na");
+        assert_eq!(message, "Unbound identifier: a");
+    }
+
+    #[test]
+    fn test_block_reads_a_global_variable() {
+        assert_eq!(run("let g = 10\n{ g + 1 }"), "11");
+    }
+
+    #[test]
+    fn test_block_let_hides_an_outer_variable_until_the_block_ends() {
+        assert_eq!(
+            run("let x = 1\nlet inside = { let x = 10; x + 1 }\n[inside, x]"),
+            "[11, 1]"
+        );
+    }
+
+    #[test]
+    fn test_block_let_with_a_type_does_not_change_the_outer_type() {
+        assert_eq!(run("let n: Integer = 1\n{ let n = \"one\" }\nn"), "1");
+        let (_, message) = run_error("{ let n: Integer = 1.5 }");
+        assert_eq!(message, "Variable n expects Integer, found Number");
+    }
+
+    #[test]
+    fn test_block_assignment_changes_the_nearest_binding() {
+        assert_eq!(run("let x = 1\n{ x = 2 }\nx"), "2");
+        assert_eq!(run("let x = 1\n{ let x = 2; x = 3 }\nx"), "1");
+        assert_eq!(run("{ let a = 1; { a = 2 }; a }"), "2");
+    }
+
+    #[test]
+    fn test_block_assignment_keeps_to_the_declared_type() {
+        let (_, message) = run_error("let n: Integer = 1\n{ n = \"one\" }");
+        assert_eq!(message, "Variable n expects Integer, found String");
+    }
+
+    #[test]
+    fn test_block_assignment_to_an_unbound_name_declares_it_in_the_block() {
+        let (_, message) = run_error("{ z = 5 }\nz");
+        assert_eq!(message, "Unbound identifier: z");
+        assert_eq!(run("{ z = 5; z }"), "5");
+    }
+
+    #[test]
+    fn test_nested_blocks_see_outer_names_but_not_the_reverse() {
+        assert_eq!(run("{ let a = 1; { let b = a + 1; b + 1 } }"), "3");
+        let (_, message) = run_error("{ { let b = 1 }; b }");
+        assert_eq!(message, "Unbound identifier: b");
+    }
+
+    #[test]
+    fn test_if_arms_have_scopes_of_their_own() {
+        assert_eq!(run("if true { let a = 1; a * 2 } else { 0 }"), "2");
+        assert_eq!(run("if false { 0 } else { let b = 3; b }"), "3");
+        let (_, message) = run_error("if true { let a = 1 }\na");
+        assert_eq!(message, "Unbound identifier: a");
+        let (_, message) = run_error("if false 0 else { let b = 1 }\nb");
+        assert_eq!(message, "Unbound identifier: b");
+    }
+
+    #[test]
+    fn test_if_condition_is_evaluated_in_the_enclosing_scope() {
+        assert_eq!(
+            run("let c = true\nlet r = if c { let c = false; c } else { true }\n[r, c]"),
+            "[false, true]"
+        );
+    }
+
+    #[test]
+    fn test_block_in_a_function_body_sees_the_parameters() {
+        let source = "def inc(n: Integer) -> Integer\n  { let m = n + 1; m }\nend\ninc(1)";
+        assert_eq!(run(source), "2");
+        let source = "def f(n: Integer) -> Integer\n  { n = n + 1 }\n  n\nend\nf(1)";
+        assert_eq!(run(source), "2");
+    }
+
+    #[test]
+    fn test_block_let_in_a_function_body_is_gone_after_the_block() {
+        let (_, message) = run_error("def f() -> Integer\n  { let a = 1 }\n  a\nend\nf()");
+        assert_eq!(message, "Unbound identifier: a");
+    }
+
+    #[test]
+    fn test_function_does_not_see_the_blocks_of_its_caller() {
+        let source = "def show() -> Integer\n  a\nend\n{ let a = 1; show() }";
+        let (_, message) = run_error(source);
+        assert_eq!(message, "Unbound identifier: a");
+    }
+
+    #[test]
+    fn test_function_called_in_a_block_reads_globals() {
+        let source = "let g = 5\ndef get() -> Integer\n  g\nend\n{ let a = 1; get() + a }";
+        assert_eq!(run(source), "6");
+    }
+
+    #[test]
+    fn test_block_in_a_function_body_does_not_see_the_blocks_of_the_caller() {
+        let source = "def show() -> Integer\n  { a }\nend\n{ let a = 1; show() }";
+        let (_, message) = run_error(source);
+        assert_eq!(message, "Unbound identifier: a");
+    }
+
+    #[test]
+    fn test_block_cannot_bind_a_protected_name() {
+        let (_, message) = run_error("{ let Number = 1 }");
+        assert!(message.contains("Number"), "{message}");
+    }
+
+    #[test]
+    fn test_def_in_a_block_is_not_allowed() {
+        let (debug, message) = run_error("{\n  def one() -> Integer\n    1\n  end\n}");
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
+        assert_eq!(
+            message,
+            "Cannot define one here: a function can only be declared at the top level"
+        );
+        let (debug, _) = run_error("if true {\n  def one() -> Integer\n    1\n  end\n}");
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
+    }
+
+    #[test]
+    fn test_def_in_a_function_body_is_not_allowed() {
+        let source = "def outer() -> Integer\n  def inner() -> Integer\n    1\n  end\n  inner()\nend\nouter()";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("DefNotAtTopLevel"), "{debug}");
+        assert!(message.starts_with("Cannot define inner here"), "{message}");
+    }
+
+    #[test]
+    fn test_def_at_the_top_level_is_allowed_after_a_block_and_after_an_error() {
+        let mut runtime = SimpleRuntime::default();
+        assert!(runtime.eval("{ def one() -> Integer\n 1\nend }").is_err());
+        // The failed block left no scope behind, so a `def` is allowed again
+        runtime.eval("def one() -> Integer\n  1\nend").unwrap();
+        assert_eq!(runtime.eval("{ one() }").unwrap().to_string(), "1");
+    }
+
+    #[test]
+    fn test_error_in_a_block_closes_its_scope() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("let x = 1").unwrap();
+        assert!(runtime.eval("{ let x = 2; { let y = 3; 1 / 0 } }").is_err());
+        assert_eq!(runtime.eval("x").unwrap().to_string(), "1");
+        assert!(runtime.eval("y").is_err());
+        // A new declaration is global again, not left in a block that was never closed
+        runtime.eval("let z = 4").unwrap();
+        assert_eq!(runtime.get_variable("z"), Some(Value::Integer(4.into())));
+    }
+
+    #[test]
+    fn test_error_in_a_function_called_in_a_block_closes_both_scopes() {
+        let mut runtime = SimpleRuntime::default();
+        let source = "def boom() -> Integer\n  { 1 / 0 }\nend\n{ let a = 1; boom() }";
+        assert!(runtime.eval(source).is_err());
+        runtime.eval("let z = 4").unwrap();
+        assert!(runtime.get_variable("z").is_some());
+        assert!(runtime.eval("a").is_err());
+    }
+
+    #[test]
+    fn test_host_sees_only_the_global_scope() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval("{ let hidden = 1 }").unwrap();
+        assert_eq!(runtime.get_variable("hidden"), None);
     }
 }

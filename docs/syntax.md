@@ -14,7 +14,30 @@ This page covers the core surface syntax supported by the parser.
 - Function calls (including [keyword arguments](./functions-and-pipe.md#keyword-arguments))
 - Parenthesized expressions
 - `if` expressions
+- [Brace blocks](#brace-blocks) (`{ let a = 1; a + 1 }`)
 - Reserved keywords as expressions (e.g. `return`, `fn`)
+
+## Brace Blocks
+
+A **brace block** holds statements between `{` and `}`. It is an expression. It evaluates to its last statement. An empty block evaluates to `None` ([ADR 020](./adrs/020-brace-blocks.md)).
+
+```flt
+let r = {
+  let a = 1
+  a + 1
+}
+r                    # 2
+{ let a = 1; a * 2 } # 2
+```
+
+A `{` starts a map if the next token is `}`, or a key followed by `:`. Otherwise it starts a block. As an arm of an `if`, `{}` is an empty block. Everywhere else, `{}` is an empty map:
+
+```flt
+if true {}           # None
+if true ({})         # {}: parentheses make the arm a plain expression
+```
+
+Each brace arm of an `if` is a block. An arm without braces is a plain expression. A block has its own scope. See [block scope](./runtime.md#block-scope).
 
 ## Statements
 
@@ -52,7 +75,7 @@ def greet(name: String, greeting: String = "Hello") -> String
 end
 ```
 
-A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
+A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. In the reference runtime, a `def` is allowed only at the top level, not in a block or in a function body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
