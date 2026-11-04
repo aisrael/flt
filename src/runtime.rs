@@ -427,6 +427,8 @@ pub struct SimpleRuntime {
     /// no call is running. A call sees its own scopes and the global scope, not the scopes of
     /// its caller.
     call_base: usize,
+    /// The number of calls to functions declared in flt that are running. A `return` needs one.
+    calls: usize,
     /// Native types registered by the host, by name
     native_types: HashMap<&'static str, NativeTypeInfo>,
 }
@@ -440,6 +442,7 @@ impl Default for SimpleRuntime {
             global_scope,
             frames: Vec::new(),
             call_base: 0,
+            calls: 0,
             native_types: HashMap::new(),
         }
     }
@@ -504,6 +507,18 @@ impl Runtime for SimpleRuntime {
             Statement::Def(declaration) => {
                 self.define_function(declaration)?;
                 Ok(Value::None)
+            }
+            // The signal leaves the statements and expressions around the `return`, which
+            // close their scopes as an error does, up to `call_function`.
+            Statement::Return(expr) => {
+                if self.calls == 0 {
+                    return Err(Error::RuntimeError(RuntimeError::ReturnOutsideFunction));
+                }
+                let value = match expr {
+                    Some(expr) => self.eval_expr(expr)?,
+                    None => Value::None,
+                };
+                Err(Error::Return(Box::new(value)))
             }
         }
     }
@@ -795,10 +810,16 @@ impl SimpleRuntime {
         let caller_base = self.call_base;
         self.call_base = self.frames.len();
         self.frames.push(frame);
+        self.calls += 1;
         let result = self.eval_statements(&body.statements);
+        self.calls -= 1;
         self.frames.truncate(self.call_base);
         self.call_base = caller_base;
-        let value = result?;
+        // A `return` gives the value of the call. It is checked like the last statement's.
+        let value = match result {
+            Err(Error::Return(value)) => *value,
+            other => other?,
+        };
         if signature.return_type.accepts(&value) {
             Ok(signature.return_type.coerce(value))
         } else {
@@ -2991,6 +3012,95 @@ mod tests {
         let message = error.to_string();
         let message = message.strip_prefix("Runtime Error: ").unwrap_or(&message);
         (format!("{error:?}"), message.to_string())
+    }
+
+    #[test]
+    fn test_return_gives_the_value_of_the_call() {
+        assert_eq!(run("def f() -> Integer\n  return 1\n  2\nend\nf()"), "1");
+        assert_eq!(run("def f() -> Integer\n  1\nend\nf()"), "1");
+        assert_eq!(run("def f()\n  return\nend\nf()"), "None");
+    }
+
+    #[test]
+    fn test_return_leaves_blocks_and_expressions() {
+        let source =
+            "def f() -> Integer\n  let x = 1 + if true { return 5 } else { 2 }\n  7\nend\nf()";
+        assert_eq!(run(source), "5");
+    }
+
+    #[test]
+    fn test_return_closes_the_scopes_of_the_call() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("def f() -> Integer\n  let x = 1\n  { let y = 2; return y }\n  3\nend\nf()")
+            .unwrap();
+        assert!(runtime.frames.is_empty());
+        assert_eq!(runtime.call_base, 0);
+        assert_eq!(runtime.calls, 0);
+    }
+
+    #[test]
+    fn test_return_in_a_caller_scope_is_not_confused_with_the_callee() {
+        let source = "def inner() -> Integer\n  return 1\nend\ndef outer() -> Integer\n  let n = inner()\n  n + 1\nend\nouter()";
+        assert_eq!(run(source), "2");
+    }
+
+    #[test]
+    fn test_return_value_is_checked_against_the_return_type() {
+        let (variant, message) = run_error("def f() -> Integer\n  return \"one\"\nend\nf()");
+        assert!(
+            variant.starts_with("RuntimeError(ReturnTypeMismatch"),
+            "{variant}"
+        );
+        assert_eq!(message, "Function f returned String, expected Integer");
+        let (_, message) = run_error("def f() -> Integer\n  return\nend\nf()");
+        assert_eq!(message, "Function f returned None, expected Integer");
+        assert_eq!(run("def f() -> Number\n  return 1\nend\nf()"), "1.0");
+    }
+
+    #[test]
+    fn test_return_after_an_error_leaves_the_runtime_usable() {
+        let mut runtime = SimpleRuntime::default();
+        assert!(runtime
+            .eval("def f() -> Integer\n  return 1 / 0\nend\nf()")
+            .is_err());
+        assert_eq!(runtime.calls, 0);
+        assert_eq!(runtime.eval("1 + 1").unwrap().to_string(), "2");
+    }
+
+    #[test]
+    fn test_return_with_no_call_raises_return_outside_function() {
+        let mut runtime = SimpleRuntime::default();
+        let error = runtime
+            .eval_statement(&Statement::return_value(Expr::literal_integer(1)))
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::RuntimeError(RuntimeError::ReturnOutsideFunction)
+            ),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            "Runtime Error: Cannot return here: no function is running"
+        );
+        let error = runtime
+            .eval_statement(&Statement::Expr(Expr::Block(vec![Statement::Return(None)])))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::RuntimeError(RuntimeError::ReturnOutsideFunction)
+        ));
+        assert!(runtime.frames.is_empty());
+    }
+
+    #[test]
+    fn test_return_at_the_top_level_runs_nothing() {
+        let mut runtime = SimpleRuntime::default();
+        let result = runtime.eval("let c = 1\nreturn c");
+        assert!(matches!(result, Err(Error::ParserError(_))), "{result:?}");
+        assert_eq!(runtime.get_variable("c"), None);
     }
 
     const MOD: &str = "def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend\n";

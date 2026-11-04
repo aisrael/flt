@@ -23,6 +23,12 @@ pub enum Error {
     /// An error raised by a host's native function, shown unchanged
     #[error(transparent)]
     Native(Box<dyn std::error::Error + Send + Sync>),
+    /// Not an error. A `return` statement uses it to leave the statements and expressions
+    /// around it, up to the call of its function, which turns it into the value of the call.
+    /// It never leaves a call, so a host never sees it.
+    #[doc(hidden)]
+    #[error("Return outside a function call")]
+    Return(Box<crate::runtime::Value>),
 }
 
 impl Error {
@@ -134,6 +140,10 @@ pub enum RuntimeError {
     /// A `def` inside a block or inside the body of a function
     #[error("Cannot define {name} here: a function can only be declared at the top level")]
     DefNotAtTopLevel { name: String },
+    /// A `return` statement ran with no function call active. The parser rejects a `return`
+    /// outside a function, so only a host that builds statements itself can cause this.
+    #[error("Cannot return here: no function is running")]
+    ReturnOutsideFunction,
     /// A host called a function declared in flt source directly, instead of through the runtime
     #[error("Function {0} is declared in flt; call it through the runtime")]
     DeclaredInFlt(String),

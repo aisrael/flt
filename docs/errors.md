@@ -220,6 +220,12 @@ A `def` uses a name that is a built-in type, a native type, a variable, or a fun
 
 A `def` is inside a block or inside the body of a function. See [ADR 021](adrs/021-block-scopes.md).
 
+### `ReturnOutsideFunction`
+
+**Message:** `Cannot return here: no function is running`
+
+A `return` statement runs with no function call active. The parser rejects a `return` outside a `def` in source code, so only a host that builds statements itself can cause this. See [ADR 023](adrs/023-return-statement.md).
+
 ## Host API
 
 These errors come from code that a Rust host writes. flt source cannot cause them.

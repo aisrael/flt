@@ -114,6 +114,36 @@ impl Display for Expr {
 }
 
 impl Expr {
+    /// Whether this expression holds a `return` statement that would leave the function around
+    /// it, e.g. in a block or an arm of an `if`.
+    pub fn contains_return(&self) -> bool {
+        match self {
+            Expr::Literal(_) | Expr::Ident(_) | Expr::Keyword(_) => false,
+            Expr::UnaryExpr(_, expr) | Expr::Parenthesized(expr) | Expr::FieldAccess(expr, _) => {
+                expr.contains_return()
+            }
+            Expr::BinaryExpr(left, _, right) => left.contains_return() || right.contains_return(),
+            Expr::FunctionCall(call) => {
+                call.positional_args.iter().any(Expr::contains_return)
+                    || call.keyword_args.values().any(Expr::contains_return)
+            }
+            Expr::MapLiteral(entries) => entries.iter().any(|entry| entry.value.contains_return()),
+            Expr::ArrayLiteral(elements) => elements.iter().any(Expr::contains_return),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                condition.contains_return()
+                    || then_branch.contains_return()
+                    || else_branch
+                        .as_ref()
+                        .is_some_and(|expr| expr.contains_return())
+            }
+            Expr::Block(statements) => statements.iter().any(Statement::contains_return),
+        }
+    }
+
     /// Constructs a boolean literal expression.
     pub fn literal_boolean(b: bool) -> Self {
         Expr::Literal(Literal::boolean(b))

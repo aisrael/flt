@@ -18,6 +18,9 @@ pub enum Statement {
     Assign(Identifier, Expr),
     /// A function declaration: `def name(params) -> type … end`.
     Def(FunctionDeclaration),
+    /// A return: `return` or `return expr`. It stops the call of the enclosing function, and
+    /// gives `expr`, or `None` without one.
+    Return(Option<Expr>),
     /// A bare expression used as a statement.
     Expr(Expr),
 }
@@ -47,6 +50,25 @@ impl Statement {
     }
 }
 
+impl Statement {
+    /// A return with an expression: `return expr`.
+    pub fn return_value(expr: Expr) -> Self {
+        Statement::Return(Some(expr))
+    }
+
+    /// Whether this statement is, or holds, a `return` that would leave the function around
+    /// it. The body of a `def` is not searched: a `return` there leaves that function.
+    pub fn contains_return(&self) -> bool {
+        match self {
+            Statement::Return(_) => true,
+            Statement::Let { expr, .. } | Statement::Assign(_, expr) | Statement::Expr(expr) => {
+                expr.contains_return()
+            }
+            Statement::Def(_) => false,
+        }
+    }
+}
+
 impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -62,6 +84,8 @@ impl Display for Statement {
             } => write!(f, "let {name} = {expr}"),
             Statement::Assign(name, expr) => write!(f, "{name} = {expr}"),
             Statement::Def(decl) => write!(f, "{decl}"),
+            Statement::Return(Some(expr)) => write!(f, "return {expr}"),
+            Statement::Return(None) => write!(f, "return"),
             Statement::Expr(expr) => write!(f, "{expr}"),
         }
     }
@@ -82,6 +106,24 @@ mod tests {
         let statement =
             Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_integer(1));
         assert_eq!(statement.to_string(), "let x: Number = 1");
+    }
+
+    #[test]
+    fn test_display_return() {
+        let statement = Statement::return_value(Expr::literal_integer(1));
+        assert_eq!(statement.to_string(), "return 1");
+        assert_eq!(Statement::Return(None).to_string(), "return");
+    }
+
+    #[test]
+    fn test_contains_return() {
+        assert!(Statement::Return(None).contains_return());
+        assert!(!Statement::declare("x", Expr::literal_integer(1)).contains_return());
+        let block = Expr::Block(vec![Statement::Return(None)]);
+        assert!(Statement::Expr(block.clone()).contains_return());
+        assert!(Statement::declare("x", block.clone()).contains_return());
+        let nested = Expr::if_expr(Expr::literal_boolean(true), block, None);
+        assert!(Statement::Expr(nested).contains_return());
     }
 
     #[test]

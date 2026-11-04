@@ -13,6 +13,7 @@ use crate::ast::FunctionDeclaration;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::Parameter;
+use crate::ast::ParameterKind;
 use crate::ast::Statement;
 use crate::parser::IResult;
 use crate::parser::ParseError;
@@ -74,6 +75,8 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
 
     let (input, stmt) = if starts_with_keyword(input, Keyword::Def) {
         map(parse_def, Statement::Def).parse(input)?
+    } else if starts_with_keyword(input, Keyword::Return) {
+        parse_return(input)?
     } else if input.starts_with("let") {
         parse_let_or_assign.parse(input)?
     } else {
@@ -82,6 +85,24 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
+}
+
+/// Parses `return` and its expression, if any. The expression is on the same line as `return`:
+/// a line break, a `;`, a comment, or a `}`, `else`, `elsif` or `end` ends a bare `return`.
+fn parse_return(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Return).parse(input)?;
+    let after_blanks = input.trim_start_matches([' ', '\t']);
+    let is_bare = after_blanks.is_empty()
+        || after_blanks.starts_with(['\n', '\r', ';', '#', '}'])
+        || starts_with_keyword(after_blanks, Keyword::End)
+        || starts_with_keyword(after_blanks, Keyword::Else)
+        || starts_with_keyword(after_blanks, Keyword::Elsif);
+    if is_bare {
+        return Ok((input, Statement::Return(None)));
+    }
+    // After `return` and its blanks, an expression must follow
+    let (input, expr) = cut(parse_expr).parse(after_blanks)?;
+    Ok((input, Statement::return_value(expr)))
 }
 
 /// Whether `input` starts with the reserved word `keyword`, as a whole word.
@@ -134,6 +155,11 @@ fn params_are_valid(params: &[Parameter]) -> bool {
     in_order && unique_names
 }
 
+/// Whether the default of a keyword parameter holds a `return`, which has no function to leave.
+fn default_contains_return(param: &Parameter) -> bool {
+    matches!(&param.kind, ParameterKind::Keyword(default) if default.contains_return())
+}
+
 /// Parses a function declaration, `def name(params) -> type`, a body and `end`. The `-> type` is
 /// optional. The body is statements, separated by newlines or by `;`.
 fn parse_def(input: &str) -> IResult<&str, FunctionDeclaration> {
@@ -151,7 +177,7 @@ fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
         parse_parameter,
     )
     .parse(input)?;
-    if !params_are_valid(&params) {
+    if !params_are_valid(&params) || params.iter().any(default_contains_return) {
         return Err(failure(input));
     }
     let (input, _) = (multispace0_or_comment, tag(")")).parse(after_params)?;
@@ -278,6 +304,13 @@ pub fn parse_statements(source: &str) -> Result<Vec<Statement>, Error> {
         }
         statements.push(statement);
         (rest, _) = multispace0_or_comment(remainder).map_err(parse_error)?;
+    }
+    // At the top level, no function is around a `return`. The body of a `def` is not searched:
+    // its `return` leaves that function.
+    if statements.iter().any(Statement::contains_return) {
+        return Err(Error::ParserError(
+            "`return` is only allowed in the body of a function".to_string(),
+        ));
     }
     Ok(statements)
 }
@@ -473,6 +506,90 @@ mod tests {
                 "{source:?}: {result:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_parse_return() {
+        let (rest, stmt) = parse_statement("return 1").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(stmt, Statement::return_value(Expr::literal_integer(1)));
+    }
+
+    #[test]
+    fn test_parse_bare_return() {
+        for source in [
+            "return",
+            "return\n1",
+            "return; 1",
+            "return # done",
+            "return }",
+            "return end",
+            "return else",
+            "return elsif",
+        ] {
+            let (_, stmt) = parse_statement(source).unwrap();
+            assert_eq!(stmt, Statement::Return(None), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_return_expression_is_on_the_same_line() {
+        let (rest, stmt) = parse_statement("return\n1").unwrap();
+        assert_eq!(stmt, Statement::Return(None));
+        assert_eq!(rest.trim(), "1");
+    }
+
+    #[test]
+    fn test_return_of_a_pipe() {
+        let (_, stmt) = parse_statement("return 3 |> double").unwrap();
+        assert_eq!(stmt.to_string(), "return 3 |> double");
+    }
+
+    #[test]
+    fn test_return_in_a_function_body() {
+        let statements = parse_statements("def f() -> Integer\n  return 1\nend").unwrap();
+        let [Statement::Def(declaration)] = statements.as_slice() else {
+            panic!("expected one def, got {statements:?}");
+        };
+        assert_eq!(
+            declaration.body,
+            vec![Statement::return_value(Expr::literal_integer(1))]
+        );
+    }
+
+    #[test]
+    fn test_return_in_a_block_in_a_function_body() {
+        let source = "def f()\n  if true\n    return\n  end\nend";
+        assert!(parse_statements(source).is_ok());
+    }
+
+    #[test]
+    fn test_return_outside_a_function_is_a_parse_error() {
+        for source in [
+            "return",
+            "return 1",
+            "{ return 1 }",
+            "if true\n  return 1\nend",
+            "if true { return 1 }",
+            "1 + { return 2 }",
+            "f({ return 1 })",
+            "[{ return 1 }]",
+            "{ a: { return 1 } }",
+            "let x = { return 1 }",
+            "x = { return 1 }",
+            "def f()\n  1\nend\nreturn",
+        ] {
+            let result = parse_statements(source);
+            assert!(
+                matches!(result, Err(Error::ParserError(_))),
+                "{source:?}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_return_in_a_parameter_default_is_a_parse_error() {
+        assert!(parse_statement("def f(k: Integer = { return 1 }) -> Integer k end").is_err());
     }
 
     #[test]

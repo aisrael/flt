@@ -17,6 +17,7 @@ program    = { statement [ ";" ] } ;           (* ";" required only between stat
 statement  = "let" ident [ ":" type ] "=" expr  (* declaration *)
            | ident "=" expr                       (* assignment *)
            | "def" ident "(" [ params ] ")" [ "->" type ] body  (* function declaration *)
+           | "return" [ expr ]                    (* only in a function body *)
            | expr ;
 params     = param { "," param } ;
 param      = ident ":" type                       (* positional *)
@@ -235,7 +236,7 @@ Every parameter declares its type. Use `Any` to accept every value. The runtime 
 
 Every keyword parameter has a default expression. A call that omits the keyword evaluates the default expression for that call. The runtime checks the value of the default against the type of the keyword.
 
-The body is a sequence of statements. The value of the function is the value of the last statement. An empty body gives `None`. The result must be of the return type. If it is not, the call raises a [`ReturnTypeMismatch`](errors.md#returntypemismatch) error.
+The body is a sequence of statements. The value of the function is the value of the last statement, or the value of a `return` (see [Returning early](#returning-early)). An empty body gives `None`. The result must be of the return type. If it is not, the call raises a [`ReturnTypeMismatch`](errors.md#returntypemismatch) error.
 
 ```flt
 def greet(name: String, greeting: String = "Hello") -> String
@@ -321,6 +322,27 @@ join()                             # ArgumentCountMismatch: the separator is req
 sum(1, "two")                      # ArgumentTypeMismatch: "two" is not a Number
 sum(1, total: 2)                   # UnexpectedKeywordArgument: sum declares no keywords
 ```
+
+### Returning early
+
+`return expr` stops the call of the nearest enclosing function ([ADR 023](adrs/023-return-statement.md)). The value of the call is the value of `expr`. A `return` with no expression gives `None`. The expression is on the same line as `return`. A line break, a `;` or `end` after `return` ends it.
+
+```flt
+def check(x: Integer) -> String
+  if x // 2 * 2 == x
+    return "even"
+  end
+
+  check(x * 3 + 1)
+end
+```
+
+- A `return` at the end of a body is optional. A body that ends with `return e` gives the same value as one that ends with `e`. A body that ends with `return` alone gives `None`.
+- A `return` stops the call at once, also from inside a block or an arm of an `if`. The rest of the statement or expression that holds it is not evaluated.
+- The value of a `return` must be of the return type, as the value of the last statement must. If it is not, the call raises a [`ReturnTypeMismatch`](errors.md#returntypemismatch) error.
+- A `return` can occur only in the body of a `def`, and in the blocks inside it. A `return` at the top level, also inside a top-level block, is a syntax error. A `return` in a default of a parameter is a syntax error too.
+- Statements after a `return` in the same block are allowed. They never run.
+- A runtime that is given a `return` outside a call, for example by its host, raises a [`ReturnOutsideFunction`](errors.md#returnoutsidefunction) error.
 
 ### Calls
 

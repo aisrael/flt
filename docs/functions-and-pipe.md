@@ -107,6 +107,36 @@ end
 one()                 # error: the body gives an Integer, not None
 ```
 
+### Returning Early
+
+`return` stops the call and gives a value ([ADR 023](./adrs/023-return-statement.md)). A `return` as the last statement is optional, so these two functions are the same:
+
+```flt
+def foo() -> Boolean
+  true
+end
+
+def foo() -> Boolean
+  return true
+end
+```
+
+A `return` earlier in the body leaves the function at once, also from inside an `if` or a block:
+
+```flt
+def check(x: Integer) -> String
+  if x // 2 * 2 == x
+    return "even"
+  end
+
+  check(x * 3 + 1)
+end
+
+check(8)              # "even"
+```
+
+`return` alone gives `None`. The value of a `return` is checked against the return type, so `return "even"` in a function declared `-> Integer` raises `ReturnTypeMismatch`. A `return` outside a function body is a parse error. Statements after a `return` in the same block never run.
+
 ### Scope
 
 Each call has its own scope:
