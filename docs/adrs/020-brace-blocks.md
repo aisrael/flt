@@ -28,7 +28,7 @@ The context decides for `{}`. As an arm of an `if` (see decision 3), `{}` is an 
 
 ### 3. Every brace arm of an `if` is a block
 
-In `if c { 1 } else { 2 }`, each brace arm is a brace block. The parser does not remove the braces. Thus `if true {}` has an empty block as its arm, and it evaluates to `None`. An arm without braces (`if c 1 else 2`) is a plain expression.
+In `if c { 1 } else { 2 }`, each brace arm is a brace block. The parser does not remove the braces. Thus `if true {}` has an empty block as its arm. An arm without braces (`if c 1 else 2`) is a plain expression.
 
 ### 4. The language does not restrict scope
 
