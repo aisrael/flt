@@ -144,6 +144,48 @@ impl Expr {
         }
     }
 
+    /// The number of lists of statements inside this expression that have a statement after a
+    /// `return`. See [`unreachable_lists`](super::statement::unreachable_lists).
+    pub(super) fn unreachable_lists(&self) -> usize {
+        match self {
+            Expr::Literal(_) | Expr::Ident(_) | Expr::Keyword(_) => 0,
+            Expr::UnaryExpr(_, expr) | Expr::Parenthesized(expr) | Expr::FieldAccess(expr, _) => {
+                expr.unreachable_lists()
+            }
+            Expr::BinaryExpr(left, _, right) => {
+                left.unreachable_lists() + right.unreachable_lists()
+            }
+            Expr::FunctionCall(call) => {
+                call.positional_args
+                    .iter()
+                    .map(Expr::unreachable_lists)
+                    .sum::<usize>()
+                    + call
+                        .keyword_args
+                        .values()
+                        .map(Expr::unreachable_lists)
+                        .sum::<usize>()
+            }
+            Expr::MapLiteral(entries) => entries
+                .iter()
+                .map(|entry| entry.value.unreachable_lists())
+                .sum(),
+            Expr::ArrayLiteral(elements) => elements.iter().map(Expr::unreachable_lists).sum(),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                condition.unreachable_lists()
+                    + then_branch.unreachable_lists()
+                    + else_branch
+                        .as_ref()
+                        .map_or(0, |expr| expr.unreachable_lists())
+            }
+            Expr::Block(statements) => super::statement::unreachable_lists(statements),
+        }
+    }
+
     /// Constructs a boolean literal expression.
     pub fn literal_boolean(b: bool) -> Self {
         Expr::Literal(Literal::boolean(b))

@@ -6,11 +6,15 @@ Related pages:
 
 - [`errors.md`](errors.md) - the message text and the cause of each runtime error;
 - [`native-functions-and-values.md`](native-functions-and-values.md) - native functions, types and values;
-- [`runtime-and-limitations.md`](runtime-and-limitations.md) - the `Runtime` trait, evaluation and current limitations.
+- [`host-api.md`](host-api.md) - the `Runtime` trait: how a host works with a runtime.
 
 ## Numbers
 
 `Integer` and `Number` have arbitrary precision (see the spec). A `Number` with no digits after its decimal point prints with a trailing `.0`, for example `2.0`. Thus a printed `Number` never looks like an `Integer`.
+
+## String concatenation
+
+`<>` coerces its operands to strings. Numbers, booleans and symbols can be concatenated. A number becomes the text it prints as, so `"x" <> 2.0` is `"x2.0"`. Other values, including functions and native values, become the empty string.
 
 ## Native types
 
@@ -94,6 +98,20 @@ A `def` is allowed only at the top level. A `def` inside a block or inside the b
 
 A second `def` with the same name adds an overload. It raises a `DuplicateOverload` error if its parameters have the same types as an existing overload (see [ADR 018](adrs/018-distinct-overload-signatures.md)). A `def` raises a `NameAlreadyBound` error if its name is a built-in type or a variable. It also raises this error if the name is a function that a host registered.
 
+## Returning from a function
+
+A `return` leaves the call of the nearest enclosing function ([ADR 023](adrs/023-return-statement.md)). The reference runtime does this with an internal signal that passes through the statements and expressions around the `return`. Each block closes its scope on the way out, as it does for an error. The call turns the signal into its value, and then checks the value against the return type, so a `return` and a last statement are checked the same way.
+
+A `return` outside a function call raises a `ReturnOutsideFunction` error. The parser rejects a `return` outside a `def` in source code, so only a host that passes a `return` statement to `eval_statement` can cause it.
+
+## Warnings
+
+The reference runtime warns about code that is legal but probably a mistake ([ADR 024](adrs/024-unreachable-code-warning.md)). A warning does not stop a statement, and does not change its value. See [`errors.md`](errors.md#warnings) for the message of each warning.
+
+- The runtime collects the warnings that `eval` and `eval_statement` give. A host reads and clears them with `SimpleRuntime::take_warnings`. The `Runtime` trait has no method for warnings (see [`host-api.md`](host-api.md#warnings)).
+- The `flt` command and the REPL print each warning to standard error, as `Warning: <message>`, after the statement that gave it.
+- The only warning now is `UnreachableCode`. The runtime gives it when it runs a `def` whose body has a statement after a `return` in the same list of statements. It checks the syntax and does not follow the flow of the program.
+
 ## Type-checked calls
 
 A function can have several signatures, or **overloads**. The runtime checks each call against the signatures by type. A signature **matches** a call if all of these are true:
@@ -145,7 +163,11 @@ The runtime resolves identifiers and call names in this order:
 3. built-in type names
 4. native type names
 
-## Errors for calls
+## Errors
+
+Every error that the runtime raises, with its message and its cause, is in [`errors.md`](errors.md). That page also lists the other kinds of error that `eval` returns: parse errors, host errors and handler errors.
+
+### Errors for calls
 
 A call raises one of these errors. See [`errors.md`](errors.md) for the cause and the message of each.
 
@@ -161,3 +183,16 @@ A call raises one of these errors. See [`errors.md`](errors.md) for the cause an
   - If several signatures first fail at the same keyword, a signature that accepts the keyword but not its value is closer than one that does not accept it;
 - a `NoMatchingOverload` error when several signatures are equally close;
 - a `ReturnTypeMismatch` error when the result is not of the return type of the called signature.
+
+## Limitations
+
+These constructs parse, but the reference runtime does not fully support them:
+
+- Bitwise operators (`&`, `|`, `^`)
+- Standalone keyword expressions (e.g. `fn`) - they parse as expressions but have no evaluation behavior yet
+
+When you document the language:
+
+- Treat parser support and evaluator support as separate capabilities.
+- Use parser-focused tests when documenting syntax.
+- Use REPL behavior when documenting what executes today.

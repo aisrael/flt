@@ -18,7 +18,7 @@ This page lists the errors that the reference runtime (`SimpleRuntime`) raises, 
 
 ## Runtime errors
 
-Each section below is one `RuntimeError` variant. It gives the message and the cases in which the runtime raises the error. In a message, `<name>` is the name of a function or variable, and `<type>` is a type as flt prints it.
+Each section below is one `RuntimeError` variant. It gives the message and the cases in which the runtime raises the error. [Warnings](#warnings) are not errors. In a message, `<name>` is the name of a function or variable, and `<type>` is a type as flt prints it.
 
 ## Operators and expressions
 
@@ -253,6 +253,32 @@ A native function reads a number as a Rust number type that cannot hold it, for 
 **Message:** `Function <name> is declared in flt; call it through the runtime`
 
 A host calls a function that `def` declared with `NativeFunction::call`, not through the runtime.
+
+## Warnings
+
+A warning is not an error. The statement that gives it still runs, and `eval` still returns its value. `SimpleRuntime` collects warnings. A host reads and clears them with `SimpleRuntime::take_warnings`. The `flt` command and the REPL print each warning to standard error, as `Warning: <message>`.
+
+### `UnreachableCode`
+
+**Message:** `Unreachable code in <name>: statements after return never run`
+
+A `def` declares a function whose body has a statement after a `return` in the same list of statements: the body, a brace block, or an arm of an `if`. The runtime checks the body when it runs the `def`, not at each call. It gives one warning for each list of statements, for the first statement after the `return`. See [ADR 024](adrs/024-unreachable-code-warning.md).
+
+The check follows the syntax, not the flow of the program. A statement after an `if` that has a `return` in an arm is reachable, so it gets no warning.
+
+```flt
+def f() -> Integer
+  return 1
+  2                 # UnreachableCode
+end
+
+def g(c: Boolean) -> Integer
+  if c
+    return 1
+  end
+  2                 # no warning: the `if` may not run its arm
+end
+```
 
 ## Errors that are not runtime errors
 

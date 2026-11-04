@@ -9,6 +9,7 @@ use crate::parser::parse_statement;
 use crate::parser::ParseErrorKind;
 use crate::runtime::Runtime;
 use crate::runtime::SimpleRuntime;
+use crate::warning::Warning;
 use crate::Error;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -172,12 +173,15 @@ fn parse_full(line: &str) -> Result<Statement, String> {
 #[derive(Default)]
 pub struct FltRepl<R: Runtime = SimpleRuntime> {
     runtime: R,
+    /// Takes the warnings that the runtime gave, to print them. The `Runtime` trait has no
+    /// method for warnings ([ADR 024](https://github.com/aisrael/flt/blob/main/docs/adrs/024-unreachable-code-warning.md)).
+    take_warnings: Option<fn(&mut R) -> Vec<Warning>>,
 }
 
 impl FltRepl {
-    /// A REPL on a new `SimpleRuntime`
+    /// A REPL on a new `SimpleRuntime`, which prints the warnings that the runtime gives
     pub fn new() -> Self {
-        Self::default()
+        Self::with_runtime(SimpleRuntime::default()).with_warnings(SimpleRuntime::take_warnings)
     }
 }
 
@@ -185,7 +189,27 @@ impl<R: Runtime> FltRepl<R> {
     /// A REPL on `runtime`, which the host has already set up, e.g. with its native functions
     /// and types registered
     pub fn with_runtime(runtime: R) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            take_warnings: None,
+        }
+    }
+
+    /// Prints the warnings that `take_warnings` takes from the runtime, to standard error as
+    /// `Warning: <message>`, after each statement. A REPL on a `SimpleRuntime` can pass
+    /// `SimpleRuntime::take_warnings`. Without this, the REPL prints no warnings.
+    pub fn with_warnings(mut self, take_warnings: fn(&mut R) -> Vec<Warning>) -> Self {
+        self.take_warnings = Some(take_warnings);
+        self
+    }
+
+    /// Prints the warnings that the last statement gave
+    fn print_warnings(&mut self) {
+        if let Some(take_warnings) = self.take_warnings {
+            for warning in take_warnings(&mut self.runtime) {
+                eprintln!("Warning: {warning}");
+            }
+        }
     }
 
     /// Dispatches a slash command. Returns `false` if the REPL should exit.
@@ -304,6 +328,7 @@ impl<R: Runtime> FltRepl<R> {
             Ok(value) => println!("{}", value),
             Err(e) => eprintln!("eval error: {:?}", e),
         }
+        self.print_warnings();
     }
 }
 
@@ -316,6 +341,7 @@ impl<R: Runtime> ReplHandler for FltRepl<R> {
             },
             Err(msg) => eprintln!("{}", msg),
         }
+        self.print_warnings();
         Ok(())
     }
 
@@ -516,6 +542,30 @@ mod tests {
         let repl = FltRepl::with_runtime(runtime);
         assert_eq!(repl.inspect_identifier("Meters"), "(native type) Meters");
         assert_eq!(repl.inspect_identifier("x"), "(variable) 1");
+    }
+
+    const UNREACHABLE: &str = "def f() -> Integer return 1; 2 end";
+
+    #[test]
+    fn test_new_takes_the_warnings_after_a_statement() {
+        let mut repl = FltRepl::new();
+        ReplHandler::eval(&mut repl, UNREACHABLE).unwrap();
+        assert!(repl.runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_with_runtime_leaves_the_warnings_to_the_host() {
+        let mut repl = FltRepl::with_runtime(SimpleRuntime::default());
+        ReplHandler::eval(&mut repl, UNREACHABLE).unwrap();
+        assert_eq!(repl.runtime.take_warnings().len(), 1);
+    }
+
+    #[test]
+    fn test_with_warnings_takes_the_warnings_of_the_hosts_runtime() {
+        let mut repl = FltRepl::with_runtime(SimpleRuntime::default())
+            .with_warnings(SimpleRuntime::take_warnings);
+        ReplHandler::eval(&mut repl, UNREACHABLE).unwrap();
+        assert!(repl.runtime.take_warnings().is_empty());
     }
 
     #[test]

@@ -17,6 +17,7 @@ use bigdecimal::Zero;
 use indexmap::IndexMap;
 use num_integer::Integer as _;
 
+use crate::ast::unreachable_lists;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::FunctionCall;
@@ -44,6 +45,7 @@ use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::utils::write_name;
 use crate::utils::write_number;
+use crate::warning::Warning;
 use crate::Error;
 
 /// A map key. Keys written in flt source are symbols; only a host can create string keys. A
@@ -429,6 +431,8 @@ pub struct SimpleRuntime {
     call_base: usize,
     /// The number of calls to functions declared in flt that are running. A `return` needs one.
     calls: usize,
+    /// The warnings that `eval` and `eval_statement` gave since the host last took them
+    warnings: Vec<Warning>,
     /// Native types registered by the host, by name
     native_types: HashMap<&'static str, NativeTypeInfo>,
 }
@@ -443,6 +447,7 @@ impl Default for SimpleRuntime {
             frames: Vec::new(),
             call_base: 0,
             calls: 0,
+            warnings: Vec::new(),
             native_types: HashMap::new(),
         }
     }
@@ -571,6 +576,12 @@ impl Runtime for SimpleRuntime {
 }
 
 impl SimpleRuntime {
+    /// Takes the warnings that `eval` and `eval_statement` gave since the last call, oldest
+    /// first, and clears them ([ADR 024](https://github.com/aisrael/flt/blob/main/docs/adrs/024-unreachable-code-warning.md)).
+    pub fn take_warnings(&mut self) -> Vec<Warning> {
+        std::mem::take(&mut self.warnings)
+    }
+
     /// The scopes that the running code sees besides the global scope, outermost first: those
     /// of the innermost call, and the blocks inside it.
     fn local_scopes_mut(&mut self) -> &mut [Frame] {
@@ -738,6 +749,13 @@ impl SimpleRuntime {
                 )))
             },
         ));
+        // The function is declared, so warn about its body, once for each list of statements
+        // with a statement after a `return`
+        for _ in 0..unreachable_lists(&declaration.body) {
+            self.warnings.push(Warning::UnreachableCode {
+                function: name.to_string(),
+            });
+        }
         Ok(())
     }
 
@@ -3101,6 +3119,150 @@ mod tests {
         let result = runtime.eval("let c = 1\nreturn c");
         assert!(matches!(result, Err(Error::ParserError(_))), "{result:?}");
         assert_eq!(runtime.get_variable("c"), None);
+    }
+
+    /// The warnings that evaluating `source` gives, displayed.
+    fn warnings_of(source: &str) -> Vec<String> {
+        let mut runtime = SimpleRuntime::default();
+        runtime.eval(source).unwrap();
+        runtime
+            .take_warnings()
+            .iter()
+            .map(Warning::to_string)
+            .collect()
+    }
+
+    const UNREACHABLE_F: &str = "Unreachable code in f: statements after return never run";
+
+    #[test]
+    fn test_a_statement_after_a_return_gives_a_warning() {
+        let source = "def f() -> Integer\n  return 1\n  2\nend";
+        assert_eq!(warnings_of(source), vec![UNREACHABLE_F]);
+    }
+
+    #[test]
+    fn test_the_warning_is_the_unreachable_code_variant() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("def f() -> Integer\n  return 1\n  2\nend")
+            .unwrap();
+        assert_eq!(
+            runtime.take_warnings(),
+            vec![Warning::UnreachableCode {
+                function: "f".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn test_take_warnings_clears_the_warnings() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("def f() -> Integer\n  return 1\n  2\nend")
+            .unwrap();
+        assert_eq!(runtime.take_warnings().len(), 1);
+        assert!(runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_warnings_are_given_oldest_first() {
+        let source =
+            "def f() -> Integer\n  return 1\n  2\nend\ndef g() -> Integer\n  return 1\n  2\nend";
+        assert_eq!(
+            warnings_of(source),
+            vec![
+                UNREACHABLE_F.to_string(),
+                UNREACHABLE_F.replace(" f:", " g:")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_a_return_as_the_last_statement_gives_no_warning() {
+        assert!(warnings_of("def f() -> Integer\n  return 1\nend").is_empty());
+        assert!(warnings_of("def f() -> Integer\n  1\n  2\nend").is_empty());
+    }
+
+    #[test]
+    fn test_one_warning_for_each_list_of_statements() {
+        let several = "def f() -> Integer\n  return 1\n  2\n  3\nend";
+        assert_eq!(warnings_of(several).len(), 1);
+        let arm_and_body =
+            "def f(c: Boolean) -> Integer\n  if c\n    return 1\n    2\n  end\n  return 3\n  4\nend";
+        assert_eq!(warnings_of(arm_and_body).len(), 2);
+    }
+
+    #[test]
+    fn test_warnings_in_blocks_and_arms() {
+        for body in [
+            "{ return 1; 2 }\n  3",
+            "if true\n    return 1\n    2\n  end\n  3",
+            "if true { return 1; 2 }\n  3",
+            "if false\n    1\n  else\n    return 2\n    3\n  end",
+        ] {
+            let source = format!("def f() -> Integer\n  {body}\nend");
+            assert_eq!(warnings_of(&source), vec![UNREACHABLE_F], "{source}");
+        }
+    }
+
+    #[test]
+    fn test_the_check_follows_the_syntax_not_the_flow() {
+        let after_if = "def f(c: Boolean) -> Integer\n  if c\n    return 1\n  end\n  2\nend";
+        assert!(warnings_of(after_if).is_empty());
+        let always = "def f() -> Integer\n  if true { return 1 }\n  2\nend";
+        assert!(warnings_of(always).is_empty());
+    }
+
+    #[test]
+    fn test_the_unreachable_statements_are_not_searched() {
+        let source = "def f() -> Integer\n  return 1\n  { return 2; 3 }\nend";
+        assert_eq!(warnings_of(source).len(), 1);
+    }
+
+    #[test]
+    fn test_the_warning_comes_from_the_def_not_from_calls() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("def f() -> Integer\n  return 1\n  2\nend")
+            .unwrap();
+        runtime.take_warnings();
+        runtime.eval("f()\nf()").unwrap();
+        assert!(runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_each_overload_gives_its_own_warning() {
+        let source = "def f(n: Integer) -> Integer\n  return n\n  0\nend\ndef f(s: String) -> String\n  return s\n  \"\"\nend";
+        assert_eq!(warnings_of(source).len(), 2);
+    }
+
+    #[test]
+    fn test_a_warning_does_not_change_the_function() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime
+            .eval("def f() -> Integer\n  return 1\n  2\nend\nf()")
+            .unwrap();
+        assert_eq!(value.to_string(), "1");
+    }
+
+    #[test]
+    fn test_a_def_that_fails_gives_no_warning() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("def f(s: String) -> Integer\n  1\nend")
+            .unwrap();
+        let result = runtime.eval("def f(s: String) -> Integer\n  return 1\n  2\nend");
+        assert!(result.is_err());
+        assert!(runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_eval_statement_gives_warnings_too() {
+        let mut runtime = SimpleRuntime::default();
+        for statement in parse_statements("def f() -> Integer\n  return 1\n  2\nend").unwrap() {
+            runtime.eval_statement(&statement).unwrap();
+        }
+        assert_eq!(runtime.take_warnings().len(), 1);
     }
 
     const MOD: &str = "def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend\n";

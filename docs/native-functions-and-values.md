@@ -9,7 +9,7 @@ A native function can also fail with the host's own [error](#host-errors). A han
 
 ## Native Functions
 
-A host can register native functions, written in Rust, with `runtime.register_function`, a method of the [`Runtime` trait](./runtime-and-limitations.md#the-runtime-trait). The runtime keeps them in its global scope, alongside the built-ins. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
+A host can register native functions, written in Rust, with `runtime.register_function`, a method of the [`Runtime` trait](./host-api.md#the-runtime-trait). The runtime keeps them in its global scope, alongside the built-ins. A function's name then evaluates to a [function value](./types.md#function-types), which can be bound to another name and called through it.
 
 ```rust
 use std::sync::atomic::AtomicU64;
@@ -56,7 +56,7 @@ runtime.register_function(NativeFunction::new(
 
 Registering a function under a name that's already registered replaces it. That includes the [built-ins](./functions-and-pipe.md#built-in-functions): a host that registers its own `typeof` replaces the default one.
 
-A function's name can't be bound as a variable, whether the function is a built-in or the host's. Registration returns a `Result`. In `SimpleRuntime`, `register_function` fails with `Cannot register function <name>: …` if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `runtime.set_variable` refuses the same names as `let`, and returns an error. It assigns, as `name = value` does, so it also returns an error for a value that isn't of a variable's [declared type](./types.md#type-annotations). `runtime.check_bindable` reports whether a name can be bound without binding it. Other runtimes may have other rules ([Rules Belong to the Runtime](./runtime-and-limitations.md#rules-belong-to-the-runtime)).
+A function's name can't be bound as a variable, whether the function is a built-in or the host's. Registration returns a `Result`. In `SimpleRuntime`, `register_function` fails with `Cannot register function <name>: …` if the name is a built-in type name, such as `Number`, a native type's name, or is already bound as a variable, so register functions before evaluating any flt source. Binding a variable from Rust with `runtime.set_variable` refuses the same names as `let`, and returns an error. It assigns, as `name = value` does, so it also returns an error for a value that isn't of a variable's [declared type](./types.md#type-annotations). `runtime.check_bindable` reports whether a name can be bound without binding it. Other runtimes may have other rules ([Rules Belong to the Runtime](./host-api.md#rules-belong-to-the-runtime)).
 
 ```flt
 identity              # <fn identity>

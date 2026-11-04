@@ -69,6 +69,46 @@ impl Statement {
     }
 }
 
+/// The number of lists of statements in `statements` that have a statement after a `return`
+/// ([ADR 024](https://github.com/aisrael/flt/blob/main/docs/adrs/024-unreachable-code-warning.md)).
+///
+/// A list is `statements` itself and every brace block and arm of an `if` inside it. The count
+/// follows the syntax, not the flow of the program: only a `return` in the same list makes the
+/// statements after it unreachable. A list counts once, however many statements follow its
+/// `return`, and the unreachable statements are not searched. The body of a `def` is not
+/// searched either: it has its own count.
+pub fn unreachable_lists(statements: &[Statement]) -> usize {
+    match statements
+        .iter()
+        .position(|statement| matches!(statement, Statement::Return(_)))
+    {
+        Some(index) => {
+            let reachable = &statements[..=index];
+            let after = usize::from(index + 1 < statements.len());
+            after
+                + reachable
+                    .iter()
+                    .map(Statement::unreachable_lists)
+                    .sum::<usize>()
+        }
+        None => statements.iter().map(Statement::unreachable_lists).sum(),
+    }
+}
+
+impl Statement {
+    /// The number of lists of statements inside this statement that have a statement after a
+    /// `return`. See [`unreachable_lists`].
+    fn unreachable_lists(&self) -> usize {
+        match self {
+            Statement::Return(Some(expr))
+            | Statement::Let { expr, .. }
+            | Statement::Assign(_, expr)
+            | Statement::Expr(expr) => expr.unreachable_lists(),
+            Statement::Return(None) | Statement::Def(_) => 0,
+        }
+    }
+}
+
 impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -124,6 +164,103 @@ mod tests {
         assert!(Statement::declare("x", block.clone()).contains_return());
         let nested = Expr::if_expr(Expr::literal_boolean(true), block, None);
         assert!(Statement::Expr(nested).contains_return());
+    }
+
+    fn ret() -> Statement {
+        Statement::Return(None)
+    }
+
+    fn one() -> Statement {
+        Statement::Expr(Expr::literal_integer(1))
+    }
+
+    fn block(statements: Vec<Statement>) -> Statement {
+        Statement::Expr(Expr::Block(statements))
+    }
+
+    #[test]
+    fn test_unreachable_lists_of_a_list_without_a_return() {
+        assert_eq!(unreachable_lists(&[]), 0);
+        assert_eq!(unreachable_lists(&[one(), one()]), 0);
+    }
+
+    #[test]
+    fn test_unreachable_lists_of_a_return_at_the_end() {
+        assert_eq!(unreachable_lists(&[one(), ret()]), 0);
+        assert_eq!(unreachable_lists(&[ret()]), 0);
+    }
+
+    #[test]
+    fn test_unreachable_lists_of_statements_after_a_return() {
+        assert_eq!(unreachable_lists(&[ret(), one()]), 1);
+        assert_eq!(unreachable_lists(&[ret(), one(), one(), one()]), 1);
+        assert_eq!(unreachable_lists(&[one(), ret(), one()]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_counts_the_first_return_only() {
+        assert_eq!(unreachable_lists(&[ret(), ret(), one()]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_in_blocks_and_arms() {
+        assert_eq!(unreachable_lists(&[block(vec![ret(), one()])]), 1);
+        assert_eq!(unreachable_lists(&[block(vec![one(), ret()]), one()]), 0);
+        let arm = Expr::Block(vec![ret(), one()]);
+        let if_expr = Expr::if_expr(Expr::literal_boolean(true), arm, None);
+        assert_eq!(unreachable_lists(&[Statement::Expr(if_expr)]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_in_the_else_arm_and_the_condition() {
+        let then_arm = Expr::Block(vec![one()]);
+        let else_arm = Expr::Block(vec![ret(), one()]);
+        let if_expr = Expr::if_expr(Expr::literal_boolean(true), then_arm, Some(else_arm));
+        assert_eq!(unreachable_lists(&[Statement::Expr(if_expr)]), 1);
+        let condition = Expr::Block(vec![ret(), one()]);
+        let if_expr = Expr::if_expr(condition, Expr::literal_integer(1), None);
+        assert_eq!(unreachable_lists(&[Statement::Expr(if_expr)]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_adds_the_lists_of_a_body_and_its_blocks() {
+        let arm = Expr::Block(vec![ret(), one()]);
+        let if_expr = Statement::Expr(Expr::if_expr(Expr::literal_boolean(true), arm, None));
+        assert_eq!(unreachable_lists(&[if_expr, ret(), one()]), 2);
+    }
+
+    #[test]
+    fn test_unreachable_lists_does_not_search_unreachable_statements() {
+        let dead = block(vec![ret(), one()]);
+        assert_eq!(unreachable_lists(&[ret(), dead]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_searches_the_expression_of_a_return() {
+        let value = Expr::Block(vec![ret(), one()]);
+        assert_eq!(unreachable_lists(&[Statement::return_value(value)]), 1);
+    }
+
+    #[test]
+    fn test_unreachable_lists_ignores_a_return_in_another_list() {
+        let arm = Expr::Block(vec![ret()]);
+        let if_expr = Statement::Expr(Expr::if_expr(Expr::literal_boolean(true), arm, None));
+        assert_eq!(unreachable_lists(&[if_expr, one()]), 0);
+    }
+
+    #[test]
+    fn test_unreachable_lists_in_a_let_and_in_operands() {
+        let dead = Expr::Block(vec![ret(), one()]);
+        assert_eq!(
+            unreachable_lists(&[Statement::declare("x", dead.clone())]),
+            1
+        );
+        let sum = Expr::BinaryExpr(
+            Box::new(Expr::literal_integer(1)),
+            crate::ast::BinaryOp::Add,
+            Box::new(dead),
+        );
+        assert_eq!(unreachable_lists(&[Statement::Expr(sum)]), 1);
     }
 
     #[test]

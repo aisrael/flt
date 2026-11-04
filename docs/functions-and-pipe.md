@@ -135,7 +135,7 @@ end
 check(8)              # "even"
 ```
 
-`return` alone gives `None`. The value of a `return` is checked against the return type, so `return "even"` in a function declared `-> Integer` raises `ReturnTypeMismatch`. A `return` outside a function body is a parse error. Statements after a `return` in the same block never run.
+`return` alone gives `None`. The value of a `return` is checked against the return type, so `return "even"` in a function declared `-> Integer` raises `ReturnTypeMismatch`. A `return` outside a function body is a parse error. Statements after a `return` in the same block never run. The reference runtime warns about them when it declares the function ([ADR 024](./adrs/024-unreachable-code-warning.md)).
 
 ### Scope
 

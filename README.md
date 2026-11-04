@@ -36,7 +36,7 @@ fn main() {
 }
 ```
 
-A host works with a runtime only through the `Runtime` trait, and names `SimpleRuntime`, the reference implementation, only to create one. See [The `Runtime` Trait](https://github.com/aisrael/flt/blob/main/docs/runtime-and-limitations.md#the-runtime-trait), and [Native Functions, Types and Values](https://github.com/aisrael/flt/blob/main/docs/native-functions-and-values.md) for extending flt from Rust.
+A host works with a runtime only through the `Runtime` trait, and names `SimpleRuntime`, the reference implementation, only to create one. See [The `Runtime` Trait](https://github.com/aisrael/flt/blob/main/docs/host-api.md#the-runtime-trait), and [Native Functions, Types and Values](https://github.com/aisrael/flt/blob/main/docs/native-functions-and-values.md) for extending flt from Rust.
 
 ## Language syntax
 
@@ -146,7 +146,7 @@ cargo run -- version
 
 See the [Quickstart](https://github.com/aisrael/flt/blob/main/docs/quickstart.md).
 
-The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, field access, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [Runtime Behavior and Limitations](https://github.com/aisrael/flt/blob/main/docs/runtime-and-limitations.md).
+The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, field access, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [Runtime Behavior of the Reference Runtime](https://github.com/aisrael/flt/blob/main/docs/runtime.md).
 
 ## Public API
 

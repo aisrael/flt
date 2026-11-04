@@ -64,11 +64,7 @@ A `return` can occur only in the body of a `def`, and in any block of statements
 
 A runtime that is given a `return` statement by its host with no call active raises a `ReturnOutsideFunction` error. This protects a host that builds statements without the parser.
 
-### 5. Code after a `return`
-
-Statements after a `return` in the same block are allowed. They never run. There is no error and no warning.
-
-### 6. Calls and types do not change
+### 5. Calls and types do not change
 
 A `return` does not change how the runtime picks an overload ([ADR 018](018-distinct-overload-signatures.md)), and does not change the type of the function, as `typeof` shows it ([ADR 019](019-def-function-declarations.md), decision 7).
 
@@ -91,4 +87,3 @@ A `return` does not change how the runtime picks an overload ([ADR 018](018-dist
 - A `return` in a block leaves the call, not only the block. A function body cannot hold a `def` ([ADR 021](021-block-scopes.md), decision 3), so no `return` can leave a nested function.
 - Open questions for review:
   - Is it too strict that a function without `->` cannot return a value? The alternative is `Any`. It needs a change to ADR 019.
-  - Should the runtime warn about statements after a `return`?
