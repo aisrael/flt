@@ -41,6 +41,10 @@ pub struct AstWorld {
     pub last_parsed_expr: Option<Expr>,
     /// The displayed value of the last statement evaluated by "I evaluate the input".
     pub result: Option<Result<String, String>>,
+    /// The displayed warnings that "I evaluate the input" gave, oldest first.
+    pub warnings: Vec<String>,
+    /// Whether that evaluation succeeded. The result steps take `result`, so this stays.
+    pub evaluation_succeeded: bool,
     /// Fixture native functions registered by "the native function" before evaluating.
     pub natives: Vec<String>,
     /// The signatures those steps listed, which must cover every overload of each fixture.
@@ -751,7 +755,10 @@ impl NativeType for Time {
 fn when_i_evaluate_the_input(world: &mut AstWorld) {
     assert_every_overload_listed(world);
     let input = world.input.take().expect("input should be set");
-    world.result = Some(evaluate(&input, &world.natives));
+    let (result, warnings) = evaluate(&input, &world.natives);
+    world.evaluation_succeeded = result.is_ok();
+    world.result = Some(result);
+    world.warnings = warnings;
 }
 
 /// Registers the named fixture native functions, and the native types they use, through
@@ -766,14 +773,54 @@ fn install(runtime: &mut impl Runtime, natives: &[String]) -> Result<(), Error> 
 }
 
 /// Evaluates `input` in a fresh runtime with the named fixture native functions installed,
-/// returning the displayed value of its last statement.
-fn evaluate(input: &str, natives: &[String]) -> Result<String, String> {
+/// returning the displayed value of its last statement, and the displayed warnings it gave.
+fn evaluate(input: &str, natives: &[String]) -> (Result<String, String>, Vec<String>) {
     let mut runtime = SimpleRuntime::default();
     install(&mut runtime, natives).expect("fixtures should register");
-    runtime
+    let result = runtime
         .eval(input)
         .map(|value| value.to_string())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    let warnings = runtime
+        .take_warnings()
+        .iter()
+        .map(|warning| warning.to_string())
+        .collect();
+    (result, warnings)
+}
+
+/// The warnings of an evaluation that succeeded. A warning doesn't stop a statement.
+fn warnings_of_a_successful_evaluation(world: &AstWorld) -> &[String] {
+    assert!(
+        world.evaluation_succeeded,
+        "evaluation should succeed, got {:?}",
+        world.result
+    );
+    &world.warnings
+}
+
+#[then(expr = r#"the evaluation should warn with {string}"#)]
+fn then_the_evaluation_should_warn_with(world: &mut AstWorld, expected: String) {
+    let warnings = warnings_of_a_successful_evaluation(world);
+    assert!(
+        warnings.contains(&expected),
+        "expected the warning {expected:?}, got {warnings:?}"
+    );
+}
+
+#[then(expr = "the evaluation should give no warnings")]
+fn then_the_evaluation_should_give_no_warnings(world: &mut AstWorld) {
+    let warnings = warnings_of_a_successful_evaluation(world);
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings, got {warnings:?}"
+    );
+}
+
+#[then(expr = "the evaluation should give {int} warning(s)")]
+fn then_the_evaluation_should_give_n_warnings(world: &mut AstWorld, expected: usize) {
+    let warnings = warnings_of_a_successful_evaluation(world);
+    assert_eq!(warnings.len(), expected, "warnings: {warnings:?}");
 }
 
 #[then(expr = r#"the result should be {string}"#)]

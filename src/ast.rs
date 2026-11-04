@@ -24,5 +24,6 @@ pub use literal::Literal;
 pub use number::Numeric;
 pub use operands::BinaryOp;
 pub use operands::UnaryOp;
+pub use statement::unreachable_lists;
 pub use statement::Statement;
 pub use type_expr::TypeExpr;

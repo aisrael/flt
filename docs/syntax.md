@@ -111,6 +111,19 @@ end
 
 A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. In the reference runtime, a `def` is allowed only at the top level, not in a block or in a function body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
+A **return statement** is `return` with an optional expression. It stops the call of the enclosing function and gives its value. It is allowed only in the body of a `def` and the blocks inside it ([ADR 023](./adrs/023-return-statement.md)):
+
+```flt
+def sign(n: Integer) -> Integer
+  if n < 0
+    return -1
+  end
+  return 1
+end
+```
+
+See [Returning Early](./functions-and-pipe.md#returning-early).
+
 - A statement may be followed by an optional `;`.
 - If a statement ends on a newline, the semicolon is not required.
 - Two statements on the same line require `;` after the first: `let x = 1; let y = 2`.
