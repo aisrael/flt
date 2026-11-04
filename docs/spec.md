@@ -31,15 +31,35 @@ binary     = unary { binop unary } ;          (* precedence table below; all lef
 unary      = ( "!" | "+" | "-" ) unary         (* no space between operator and operand *)
            | postfix ;
 postfix    = primary { "." ident } ;          (* no space around "." *)
-primary    = literal | ident | call | if | "(" expr ")" | keyword ;
+primary    = literal | ident | call | if | block | "(" expr ")" | keyword ;
 call       = ident "(" [ args ] ")"
            | ident args ;                      (* whitespace form: at least one argument *)
 args       = expr { "," expr } [ "," kwargs ] | kwargs ;
 kwargs     = key ":" expr { "," key ":" expr } ;
 if         = "if" expr branch [ "else" branch ] ;
-branch     = "{" expr "}" | expr ;
+branch     = block | expr ;
+block      = "{" { statement [ ";" ] } "}" ;
 key        = ident | string ;
 ```
+
+### Blocks
+
+A **brace block** starts with `{` and ends with `}`. It holds statements, and it is an expression ([ADR 020](adrs/020-brace-blocks.md)). It evaluates to the value of its last statement. A block with no statements evaluates to `None`. As at the top level, a line break or a `;` ends a statement.
+
+```flt
+{ 1 }                          # 1
+{ let a = 1; a * 2 }           # 2
+{
+  let a = 1
+  a + 1
+}                              # 2
+```
+
+A `{` starts a map if the next token is `}`, or a key followed by `:`. Otherwise it starts a block. Thus `{ a: 1 }` is a map, and `{ a }` is a block. For `{}` the context decides: as an arm of an `if`, `{}` is an empty block, which evaluates to `None`. Anywhere else, `{}` is an empty map. An arm in parentheses is an expression, so `if true ({})` gives an empty map.
+
+Each brace arm of an `if` is a block. Thus `if c { 1 } else { 2 }` has two blocks, and `if true {}` has an empty block. An arm without braces (`if c 1 else 2`) is a plain expression.
+
+The language does not say which names a block can see or declare. A runtime decides (see [`runtime.md`](runtime.md#block-scope)).
 
 ## 3. Literals
 
@@ -303,7 +323,7 @@ A variable is a binding of an identifier. At run time, it binds the identifier t
 - **`x = expr` assigns.** If `x` was declared with a type, the value must be of that type. If it is not, the assignment raises a [`VariableTypeMismatch`](errors.md#variabletypemismatch) error, and `x` keeps its value. The runtime converts the value as in a declaration. If `x` has no declared type, the value replaces the binding, including its type. After `let x = 1` and then `x = "a"`, `x` has type `String`. An assignment to a name with no binding declares the name without a type.
 - **The runtime checks the name and the type before it evaluates the value.** A type name that the runtime does not know raises an [`UnknownType`](errors.md#unknowntype) error.
 - **A binding evaluates to the bound value.**
-- **Bindings are global, except in a function call.** A binding outside a function body is visible to every statement after it. A binding in the scope of a function call is limited to the call (§6). The runtime decides what other names a binding cannot use (see [`runtime.md`](runtime.md#scopes)).
+- **Bindings are global, except in a function call.** A binding outside a function body is visible to every statement after it. A binding in the scope of a function call is limited to the call (§6). A runtime decides whether a block has a scope of its own (§2). The runtime decides what other names a binding cannot use (see [`runtime.md`](runtime.md#scopes)).
 - A reference to an identifier with no binding raises an [`UnboundIdentifier`](errors.md#unboundidentifier) error.
 
 ```flt

@@ -114,6 +114,7 @@ Each call has its own scope:
 - Parameters and variables declared with `let` in the body exist only during the call.
 - A name that the scope does not bind is looked up in the global scope.
 - `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the call.
+- A [brace block](./syntax.md#brace-blocks) in the body has its own scope inside the call's scope. See [block scope](./runtime.md#block-scope).
 
 ### Names and Overloads
 
