@@ -179,6 +179,9 @@ enum Closer {
     End,
     /// A `}`, which closes a brace block
     Brace,
+    /// The keyword `else`, `elsif` or `end`, which ends an arm of an expanded `if`. It is not
+    /// part of the arm, so the parser leaves it in the input.
+    Arm,
 }
 
 impl Closer {
@@ -187,7 +190,14 @@ impl Closer {
         match self {
             Closer::End if starts_with_keyword(input, Keyword::End) => Some(&input["end".len()..]),
             Closer::Brace => input.strip_prefix('}'),
-            Closer::End => None,
+            Closer::Arm
+                if [Keyword::Else, Keyword::Elsif, Keyword::End]
+                    .into_iter()
+                    .any(|keyword| starts_with_keyword(input, keyword)) =>
+            {
+                Some(input)
+            }
+            Closer::End | Closer::Arm => None,
         }
     }
 }
@@ -204,6 +214,13 @@ fn parse_body(input: &str) -> IResult<&str, Vec<Statement>> {
 pub fn parse_block(input: &str) -> IResult<&str, Vec<Statement>> {
     let (input, _) = tag("{").parse(input)?;
     parse_statements_until(input, Closer::Brace)
+}
+
+/// Parses the statements of an arm of an expanded `if`, up to `else`, `elsif` or `end`. The
+/// keyword stays in the input. The arm can be empty. As in a body, two statements on one line
+/// need a `;` between them.
+pub fn parse_arm(input: &str) -> IResult<&str, Vec<Statement>> {
+    parse_statements_until(input, Closer::Arm)
 }
 
 /// Parses statements up to and including `closer`.
@@ -224,7 +241,7 @@ fn parse_statements_until(input: &str, closer: Closer) -> IResult<&str, Vec<Stat
         let (remainder_start, _) = multispace0_or_comment(remainder)?;
         if closer.strip(remainder_start).is_none() && !separator.contains([';', '\n']) {
             return Err(match closer {
-                Closer::End => failure(remainder),
+                Closer::End | Closer::Arm => failure(remainder),
                 Closer::Brace => {
                     nom::Err::Error(ParseError::new(remainder, nom::error::ErrorKind::Verify))
                 }
@@ -637,5 +654,59 @@ mod tests {
                 "{source:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_parse_arm_stops_at_else_elsif_and_end() {
+        for (input, rest) in [
+            ("1\nelse\n2", "else\n2"),
+            ("1; 2; elsif x", "elsif x"),
+            ("let a = 1\na\nend\nfoo", "end\nfoo"),
+            ("1 # one\n# two\nend", "end"),
+        ] {
+            let (remainder, statements) = parse_arm(input).unwrap();
+            assert_eq!(remainder, rest, "{input:?}");
+            assert!(!statements.is_empty(), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_arm_can_be_empty() {
+        assert_eq!(parse_arm("else"), Ok(("else", vec![])));
+        assert_eq!(parse_arm("\n  # nothing\nend"), Ok(("end", vec![])));
+    }
+
+    #[test]
+    fn test_parse_arm_gives_its_statements() {
+        let (rest, statements) = parse_arm("let a = 1; a * 2\nelse").unwrap();
+        assert_eq!(rest, "else");
+        assert_eq!(statements.len(), 2);
+        assert_eq!(
+            statements[0],
+            Statement::declare("a", Expr::literal_integer(1))
+        );
+    }
+
+    #[test]
+    fn test_parse_arm_needs_a_separator_between_statements() {
+        assert!(matches!(parse_arm("1 2\nend"), Err(nom::Err::Failure(_))));
+    }
+
+    #[test]
+    fn test_parse_arm_does_not_stop_at_a_longer_name() {
+        let (rest, statements) = parse_arm("ends\nelse").unwrap();
+        assert_eq!(rest, "else");
+        assert_eq!(statements, vec![Statement::Expr(Expr::ident("ends"))]);
+    }
+
+    #[test]
+    fn test_parse_arm_without_a_closer_fails() {
+        assert!(parse_arm("1\n2").is_err());
+    }
+
+    #[test]
+    fn test_parse_statements_with_an_expanded_if() {
+        let statements = parse_statements("let x = true\nif x\n  1\nelsif x\n  2\nend\nx").unwrap();
+        assert_eq!(statements.len(), 3);
     }
 }

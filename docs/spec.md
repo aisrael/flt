@@ -8,7 +8,7 @@ This page describes the syntax of flt and the semantics that every runtime must 
 
 - **Whitespace and comments**: `#` starts a comment. The comment continues to the end of the line. A comment can occur where whitespace can occur.
 - **Identifiers**: one or more of `A-Z a-z 0-9 _ -` (for example `x`, `user_name`, `foo-bar`). Literals have priority over identifiers. Thus `true`, `false`, `None` and names that start with a digit are not identifiers.
-- **Reserved keywords** (matched on word boundaries, so `iffy` is an identifier): `if else return and or not for in let while do fn def end`
+- **Reserved keywords** (matched on word boundaries, so `iffy` is an identifier): `if else elsif return and or not for in let while do fn def end`
 
 ## 2. Grammar
 
@@ -36,8 +36,12 @@ call       = ident "(" [ args ] ")"
            | ident args ;                      (* whitespace form: at least one argument *)
 args       = expr { "," expr } [ "," kwargs ] | kwargs ;
 kwargs     = key ":" expr { "," key ":" expr } ;
-if         = "if" expr branch [ "else" branch ] ;
+if         = "if" expr ( compact | expanded ) ;
+compact    = branch { "elsif" expr branch } [ "else" branch ] ;
+expanded   = sep statements { "elsif" expr sep statements } [ "else" statements ] "end" ;
 branch     = block | expr ;
+sep        = NEWLINE | ";" ;                  (* a comment can come before the line break *)
+statements = { statement [ ";" ] } ;
 block      = "{" { statement [ ";" ] } "}" ;
 key        = ident | string ;
 ```
@@ -60,6 +64,56 @@ A `{` starts a map if the next token is `}`, or a key followed by `:`. Otherwise
 Each brace arm of an `if` is a block. Thus `if c { 1 } else { 2 }` has two blocks, and `if true {}` has an empty block. An arm without braces (`if c 1 else 2`) is a plain expression.
 
 The language does not say which names a block can see or declare. A runtime decides (see [`runtime.md`](runtime.md#block-scope)).
+
+### The `if` expression
+
+An `if` has two forms, and both are expressions ([ADR 022](adrs/022-expanded-if.md)). The **compact form** has one arm in braces or one expression per arm. The **expanded form** has statements in each arm and ends with `end`:
+
+```flt
+if ready { "yes" } else { "no" }
+
+if ready
+  let n = 2
+  n * 3
+else
+  0
+end
+```
+
+An `if` evaluates to the value of the last statement of the arm that ran. An `if` without `else` evaluates to `None` when no condition is true. An arm with no statements is an empty block, and it evaluates to `None`.
+
+The form is chosen by the first token after the condition:
+
+- A `{` on the same line means the compact form with a brace block.
+- A line break, a comment, or a `;` before the first token of the arm means the expanded form. It must end with `end`.
+- Anything else means the compact form with a one-expression arm.
+
+A `;` is the same as a line break here, so `if x; a; else b; end` is valid. The first statement after `else` can follow it on the same line. A list of statements ends at `else`, `elsif` or `end`. The forms do not mix: an expanded `if` always ends with `end`, and a compact `if` never does. Both forms of `if c { 1 } else { 2 }` give the same AST.
+
+#### `elsif`
+
+`elsif` is sugar for an `else` arm that holds one nested `if`. Thus these two are the same:
+
+```flt
+if a { 1 } elsif b { 2 } else { 3 }
+if a { 1 } else { if b { 2 } else { 3 } }
+```
+
+An `elsif` has a condition and an arm in the form of the `if` it belongs to. There can be any number of `elsif` arms, and they come before `else`. The conditions are tested in order. The first true condition runs its arm, and the later conditions are not evaluated. In the expanded form, one `end` closes the whole chain:
+
+```flt
+if a
+  "first"
+elsif b
+  "second"
+else
+  "third"
+end
+```
+
+A written-out `else` followed by `if` needs its own `end` for the inner `if`. `elsif` does not.
+
+The keywords `else`, `elsif` and `end` never start an argument of a call in the whitespace form.
 
 ## 3. Literals
 

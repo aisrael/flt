@@ -11,6 +11,7 @@ use strum::EnumString;
 pub enum Keyword {
     If,
     Else,
+    Elsif,
     Return,
     And,
     Or,
@@ -45,8 +46,8 @@ mod tests {
         assert_eq!(
             spellings,
             [
-                "if", "else", "return", "and", "or", "not", "for", "in", "let", "while", "do",
-                "fn", "def", "end"
+                "if", "else", "elsif", "return", "and", "or", "not", "for", "in", "let", "while",
+                "do", "fn", "def", "end"
             ]
         );
     }

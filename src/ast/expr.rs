@@ -503,4 +503,22 @@ mod tests {
         );
         assert_eq!(expr.to_string(), "if true { 1 } else { 2 }");
     }
+
+    #[test]
+    fn test_display_elsif_chain_as_nested_if() {
+        let inner = Expr::if_expr(
+            Expr::ident("b"),
+            Expr::block(vec![Statement::Expr(Expr::literal_integer(2))]),
+            Some(Expr::block(vec![Statement::Expr(Expr::literal_integer(3))])),
+        );
+        let chain = Expr::if_expr(
+            Expr::ident("a"),
+            Expr::block(vec![Statement::Expr(Expr::literal_integer(1))]),
+            Some(Expr::block(vec![Statement::Expr(inner)])),
+        );
+        assert_eq!(
+            chain.to_string(),
+            "if a { 1 } else { if b { 2 } else { 3 } }"
+        );
+    }
 }
