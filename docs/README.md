@@ -21,25 +21,4 @@ This folder contains initial documentation for the `flt` language as it exists i
 
 ## Architecture Decision Records
 
-- [ADR 001: `None` Types](adrs/001-none-types.md)
-- [ADR 002: Union Types](adrs/002-union-types.md)
-- [ADR 003: Functions as Values](adrs/003-functions-as-values.md)
-- [ADR 004: The Pipe Operator](adrs/004-pipe-operator.md)
-- [ADR 005: `typeof` as a Native Function](adrs/005-typeof-native-function.md)
-- [ADR 006: Bindings Can't Shadow Types, Functions or Keywords](adrs/006-no-shadowing.md)
-- [ADR 007: Native Types and Values](adrs/007-native-types-and-values.md)
-- [ADR 008: The `Runtime` Trait](adrs/008-the-runtime-trait.md)
-- [ADR 009: Symbol Keys and Ordered Maps](adrs/009-symbol-keys-and-ordered-maps.md)
-- [ADR 010: Keyword Arguments](adrs/010-keyword-arguments.md)
-- [ADR 011: Variadic Arguments](adrs/011-variadic-arguments.md)
-- [ADR 012: Variadic Notation](adrs/012-variadic-notation.md)
-- [ADR 013: Type-Checked Function Calls](adrs/013-type-checked-function-calls.md)
-- [ADR 014: Native Function Arguments](adrs/014-native-function-arguments.md)
-- [ADR 015: Errors Name the Closest Overload](adrs/015-closest-overload-errors.md)
-- [ADR 016: Typed `let` Bindings](adrs/016-typed-let-bindings.md)
-- [ADR 017: Integers](adrs/017-integers.md)
-- [ADR 018: Overloads Have Distinct Parameter Signatures](adrs/018-distinct-overload-signatures.md)
-- [ADR 019: Declaring Functions in flt with `def`](adrs/019-def-function-declarations.md)
-- [ADR 020: Brace Blocks](adrs/020-brace-blocks.md)
-- [ADR 021: Block Scopes](adrs/021-block-scopes.md)
-- [ADR 022: The Expanded Form of `if`, and `elsif`](adrs/022-expanded-if.md)
+The decisions behind the language are in [`adrs/`](adrs/), one file for each ADR.
