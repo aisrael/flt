@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-03
 - **Scope:** Runtime
-- **Status:** Proposed
+- **Status:** Accepted
 
 ## Context
 
