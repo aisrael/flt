@@ -5,6 +5,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 ## Contents
 
 - [`spec.md`](spec.md) - One-page minimal language specification (grammar, types, operators, semantics).
+- [`runtime.md`](runtime.md) - What the reference runtime does where the spec leaves a choice: overloads, scopes, native types, built-ins, name resolution.
 - [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL.
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
 - [`literals.md`](literals.md) - Integers and numbers, strings and interpolation, booleans, `None`, symbols, arrays and maps.
@@ -16,6 +17,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments), declaring functions with `def`, and pipe chaining.
 - [`native-functions-and-values.md`](native-functions-and-values.md) - Native functions, types and values: extending flt from a Rust host.
 - [`runtime-and-limitations.md`](runtime-and-limitations.md) - Evaluation behavior, errors, and current limitations.
+- [`errors.md`](errors.md) - The errors that the runtime raises, and when it raises them.
 
 ## Architecture Decision Records
 

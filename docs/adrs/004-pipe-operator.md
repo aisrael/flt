@@ -1,7 +1,7 @@
 # ADR 004: The Pipe Operator
 
 - **Date:** 2026-10-23
-- **Applies to:** Language specification
+- **Scope:** Language specification
 - **Status:** Accepted
 
 ## Context

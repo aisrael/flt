@@ -1,7 +1,7 @@
 # ADR 002: Union Types
 
 - **Date:** 2026-10-22
-- **Applies to:** Language specification
+- **Scope:** Language specification
 - **Status:** Accepted
 
 ## Context

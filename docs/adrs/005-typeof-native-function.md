@@ -1,7 +1,7 @@
 # ADR 005: `typeof` as a Native Function
 
 - **Date:** 2026-10-24
-- **Applies to:** Language specification, runtime
+- **Scope:** Runtime
 - **Status:** Accepted
 
 ## Context
