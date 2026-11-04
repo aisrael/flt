@@ -104,11 +104,25 @@ let i: Integer = 1.0   # VariableTypeMismatch
 
 **Message:** `Cannot bind <name>: it's <reason>`
 
-A `let` or an assignment uses a name that is already a built-in type, a function or a native type. The reason is `a built-in type`, `a function` or `a native type`. See [ADR 006](adrs/006-no-shadowing.md).
+A `let`, a `const` or an assignment uses a name that is already a built-in type, a function or a native type. The reason is `a built-in type`, `a function` or `a native type`. See [ADR 006](adrs/006-no-shadowing.md).
 
 ```flt
 let Number = 5     # CannotBind: it's a built-in type
 let typeof = 1     # CannotBind: it's a function
+```
+
+### `ConstantRebound`
+
+**Message:** `Cannot rebind constant <name>`
+
+A program or a host binds a name that is a constant in the same scope: a `let`, an assignment, a `const`, or a host's `set_variable` or `declare_constant`. An assignment raises it when the nearest binding of the name is a constant. The runtime checks this before it evaluates the expression. The constant keeps its value. See [ADR 026](adrs/026-const-in-the-reference-runtime.md).
+
+```flt
+const LIMIT = 10
+LIMIT = 11            # ConstantRebound
+let LIMIT = 11        # ConstantRebound
+const LIMIT = 11      # ConstantRebound
+{ LIMIT = 11 }        # ConstantRebound
 ```
 
 ## Calls
@@ -278,6 +292,21 @@ def g(c: Boolean) -> Integer
   end
   2                 # no warning: the `if` may not run its arm
 end
+```
+
+### `ConstantHidden`
+
+**Message:** `Constant <name> is hidden by a new binding`
+
+A `let` or a `const` in an inner scope, a block or a function call, uses the name of a constant in an outer scope. The new binding hides the constant until the inner scope ends. The constant keeps its value. A parameter that hides a constant gives no warning. See [ADR 026](adrs/026-const-in-the-reference-runtime.md).
+
+```flt
+const LIMIT = 10
+{
+  let LIMIT = 1     # ConstantHidden
+  LIMIT             # 1
+}
+LIMIT               # 10
 ```
 
 ## Errors that are not runtime errors

@@ -88,6 +88,24 @@ y                    # error: y is not bound
 
 An arm without braces (`if c 1 else 2`) is a plain expression. It has no scope of its own.
 
+### Constants
+
+A binding that `const` declares is a constant ([ADR 025](adrs/025-const-declarations.md)). The runtime marks it in the scope that declares it ([ADR 026](adrs/026-const-in-the-reference-runtime.md)). In that same scope, a `let`, an assignment, a `const` or a host's `set_variable` with the name raises a [`ConstantRebound`](errors.md#constantrebound) error. The runtime checks the name before it evaluates the expression. It evaluates the expression once, when the statement runs, and it does not need to be constant: `const NOW = now()` calls `now()` once.
+
+A `let` or a `const` in an inner scope can hide a constant of an outer scope. This is not a rebind, but it gives a [`ConstantHidden`](errors.md#constanthidden) warning. A parameter hides a constant with no warning. An assignment `X = expr` assigns the nearest binding of `X`. If that is a constant, it raises `ConstantRebound`.
+
+```flt
+const LIMIT = 10
+LIMIT = 11            # ConstantRebound
+let LIMIT = 11        # ConstantRebound
+{
+  let LIMIT = 1       # ConstantHidden: hides the constant in this block
+  LIMIT + 1           # 2
+}
+{ LIMIT = 2 }         # ConstantRebound: the nearest LIMIT is the constant
+LIMIT                 # 10
+```
+
 A host sees only the global scope. The `Runtime` trait does not change.
 
 ## Declaring functions

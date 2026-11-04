@@ -101,6 +101,15 @@ let n = "two"        # ok: declares n again, without a type
 
 An assignment can't declare a type, so `x: Integer = 1` is a parse error. Use `let x: Integer = 1`.
 
+A **constant** is declared with `const`. It has the same form as `let`, with an optional type:
+
+```flt
+const DEFAULT = "default"
+const LIMIT: Integer = 10
+```
+
+By convention, the name of a constant is in `ALL_CAPS`. The language does not enforce this. A constant is meant to be bound once. The reference runtime raises a [`ConstantRebound`](./errors.md#constantrebound) error if a program rebinds one ([ADR 026](./adrs/026-const-in-the-reference-runtime.md)).
+
 A **function declaration** starts with `def`, and its body ends with `end` ([ADR 019](./adrs/019-def-function-declarations.md)):
 
 ```flt
@@ -139,8 +148,9 @@ The following words are reserved and recognized with word boundaries (e.g. `if` 
 | `if`     | `else`  | `elsif` |
 | `return` | `and`   | `or`    |
 | `not`    | `for`   | `in`    |
-| `let`    | `while` | `do`    |
-| `fn`     | `def`   | `end`   |
+| `let`    | `const` | `while` |
+| `do`     | `fn`    | `def`   |
+| `end`    |         |         |
 
 A reserved keyword can't be the name in a binding or in a `def`, so `let if = 1`, `fn = 1` and `def end() end` are parse errors. Words that only start with a keyword, such as `iffy`, can be bound.
 

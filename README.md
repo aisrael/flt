@@ -12,7 +12,7 @@ A lightweight functional language with a parser, REPL, and a rudimentary interpr
 - a parser + AST (`flt::parser`, `flt::ast`)
 - a REPL (`flt::repl`) backed by a simple interpreter/runtime (`flt::runtime`)
 
-The language has literals (including arrays and maps), `let` bindings, `if` expressions, operators, string interpolation, comments, type-checked function calls with keyword and variadic arguments, and an Elixir-style pipe operator. Types are first-class values, and a Rust host can add its own functions and types.
+The language has literals (including arrays and maps), `let` and `const` bindings, `if` expressions, operators, string interpolation, comments, type-checked function calls with keyword and variadic arguments, and an Elixir-style pipe operator. Types are first-class values, and a Rust host can add its own functions and types.
 
 See the [documentation](https://github.com/aisrael/flt/blob/main/docs/README.md), starting with the one-page [language specification](https://github.com/aisrael/flt/blob/main/docs/spec.md).
 
@@ -146,7 +146,7 @@ cargo run -- version
 
 See the [Quickstart](https://github.com/aisrael/flt/blob/main/docs/quickstart.md).
 
-The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, field access, unary/binary operators, `if` expressions, `let` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [Runtime Behavior of the Reference Runtime](https://github.com/aisrael/flt/blob/main/docs/runtime.md).
+The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, field access, unary/binary operators, `if` expressions, `let` and `const` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [Runtime Behavior of the Reference Runtime](https://github.com/aisrael/flt/blob/main/docs/runtime.md).
 
 ## Public API
 

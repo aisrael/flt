@@ -14,6 +14,13 @@ pub enum Statement {
         r#type: Option<TypeExpr>,
         expr: Expr,
     },
+    /// A constant declaration: `const name = expr`, or `const name: type = expr` with a declared
+    /// type ([ADR 025](https://github.com/aisrael/flt/blob/main/docs/adrs/025-const-declarations.md)).
+    Const {
+        name: Identifier,
+        r#type: Option<TypeExpr>,
+        expr: Expr,
+    },
     /// An assignment: `name = expr`.
     Assign(Identifier, Expr),
     /// A function declaration: `def name(params) -> type … end`.
@@ -44,6 +51,24 @@ impl Statement {
         }
     }
 
+    /// A constant declaration without a type: `const name = expr`.
+    pub fn constant<S: Into<String>>(name: S, expr: Expr) -> Self {
+        Statement::Const {
+            name: Identifier(name.into()),
+            r#type: None,
+            expr,
+        }
+    }
+
+    /// A constant declaration with a type: `const name: type = expr`.
+    pub fn constant_typed<S: Into<String>>(name: S, r#type: TypeExpr, expr: Expr) -> Self {
+        Statement::Const {
+            name: Identifier(name.into()),
+            r#type: Some(r#type),
+            expr,
+        }
+    }
+
     /// An assignment: `name = expr`.
     pub fn assign<S: Into<String>>(name: S, expr: Expr) -> Self {
         Statement::Assign(Identifier(name.into()), expr)
@@ -61,9 +86,10 @@ impl Statement {
     pub fn contains_return(&self) -> bool {
         match self {
             Statement::Return(_) => true,
-            Statement::Let { expr, .. } | Statement::Assign(_, expr) | Statement::Expr(expr) => {
-                expr.contains_return()
-            }
+            Statement::Let { expr, .. }
+            | Statement::Const { expr, .. }
+            | Statement::Assign(_, expr)
+            | Statement::Expr(expr) => expr.contains_return(),
             Statement::Def(_) => false,
         }
     }
@@ -102,6 +128,7 @@ impl Statement {
         match self {
             Statement::Return(Some(expr))
             | Statement::Let { expr, .. }
+            | Statement::Const { expr, .. }
             | Statement::Assign(_, expr)
             | Statement::Expr(expr) => expr.unreachable_lists(),
             Statement::Return(None) | Statement::Def(_) => 0,
@@ -122,6 +149,16 @@ impl Display for Statement {
                 r#type: None,
                 expr,
             } => write!(f, "let {name} = {expr}"),
+            Statement::Const {
+                name,
+                r#type: Some(r#type),
+                expr,
+            } => write!(f, "const {name}: {type} = {expr}"),
+            Statement::Const {
+                name,
+                r#type: None,
+                expr,
+            } => write!(f, "const {name} = {expr}"),
             Statement::Assign(name, expr) => write!(f, "{name} = {expr}"),
             Statement::Def(decl) => write!(f, "{decl}"),
             Statement::Return(Some(expr)) => write!(f, "return {expr}"),
@@ -146,6 +183,32 @@ mod tests {
         let statement =
             Statement::declare_typed("x", TypeExpr::name("Number"), Expr::literal_integer(1));
         assert_eq!(statement.to_string(), "let x: Number = 1");
+    }
+
+    #[test]
+    fn test_display_constant() {
+        let statement = Statement::constant("A", Expr::literal_integer(1));
+        assert_eq!(statement.to_string(), "const A = 1");
+    }
+
+    #[test]
+    fn test_display_typed_constant() {
+        let statement =
+            Statement::constant_typed("A", TypeExpr::name("Number"), Expr::literal_integer(1));
+        assert_eq!(statement.to_string(), "const A: Number = 1");
+    }
+
+    #[test]
+    fn test_a_constant_is_not_a_declaration() {
+        let constant = Statement::constant("A", Expr::literal_integer(1));
+        assert_ne!(constant, Statement::declare("A", Expr::literal_integer(1)));
+    }
+
+    #[test]
+    fn test_contains_return_in_a_constant() {
+        let block = Expr::Block(vec![Statement::Return(None)]);
+        assert!(Statement::constant("A", block).contains_return());
+        assert!(!Statement::constant("A", Expr::literal_integer(1)).contains_return());
     }
 
     #[test]

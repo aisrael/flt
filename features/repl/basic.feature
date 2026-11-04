@@ -46,6 +46,18 @@ Feature: flt repl
     Then the command should succeed
     And the output should contain '"a"'
 
+  Scenario: unset a constant lets the name be bound again
+    When the REPL is run and the user types:
+      """
+      const A = 1
+      /unset A
+      let A = 2
+      A
+      """
+    Then the command should succeed
+    And the output should contain "2"
+    And the output should not contain "rebind"
+
   Scenario: inspect an unbound variable
     When the REPL is run and the user types:
       """
