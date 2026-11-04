@@ -42,3 +42,4 @@ This folder contains initial documentation for the `flt` language as it exists i
 - [ADR 019: Declaring Functions in flt with `def`](adrs/019-def-function-declarations.md)
 - [ADR 020: Brace Blocks](adrs/020-brace-blocks.md)
 - [ADR 021: Block Scopes](adrs/021-block-scopes.md)
+- [ADR 022: The Expanded Form of `if`](adrs/022-expanded-if.md)
