@@ -20,9 +20,11 @@ While the body of a `const def` runs, a call to a function that is not `const` r
 const def area(w: Integer, h: Integer) -> Integer
   w * h
 end
+
 def stamp() -> Integer
   now()
 end
+
 const def bad() -> Integer
   stamp()          # NonConstFunctionCall
 end
@@ -38,9 +40,11 @@ A default of a keyword parameter, of a `def` or of a `const def`, is evaluated w
 const def seconds(m: Integer) -> Integer
   m * 60
 end
+
 def wait(timeout: Integer = seconds(2)) -> Integer      # allowed
   timeout
 end
+
 def stamp(at = now())                                    # stamp() raises NonConstFunctionCall
   at
 end
@@ -64,6 +68,7 @@ The runtime checks the function that the call names. It does not need the overlo
 const def f(n: Integer) -> Integer
   n
 end
+
 def f(s: String) -> String          # ConstOverloadMismatch
   s
 end
@@ -75,7 +80,7 @@ A `def` cannot add an overload to a function that a host registered ([ADR 019](0
 
 ### 5. Native `const` functions
 
-A host declares that a native function is `const` in the definition of the function, and registers it as before. The `Runtime` trait ([ADR 008](008-the-runtime-trait.md)) does not change. All overloads of the definition are `const`.
+A host declares that a native function is `const` in the definition of the function, and registers it as before. The `Runtime` trait ([ADR 008](008-the-runtime-trait.md)) does not change. The mark applies to the whole function. A host cannot mark one overload of a native function and not another, so a marked function has only `const` overloads.
 
 The runtime cannot check a native function. The host must keep the contract: a call with the same arguments always gives the same result. A native function that the host does not mark is assumed to be impure (ADR 027, decision 7).
 
