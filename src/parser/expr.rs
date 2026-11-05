@@ -25,7 +25,10 @@ use super::string::parse_interpolated_string;
 use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::Keyword;
+use crate::ast::Literal;
+use crate::ast::Numeric;
 use crate::ast::Statement;
+use crate::ast::UnaryOp;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 
@@ -352,25 +355,46 @@ fn parse_if_condition_mul_div(input: &str) -> IResult<&str, Expr> {
 /// e.g. `!x` and `+1` are valid, but `! x` / `+ 1` are not.
 fn parse_unary(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_or_comment(input)?;
-    alt((
-        map((parse_unary_op, parse_unary_tight), |(op, e)| {
-            Expr::unary_expr(op, e)
-        }),
-        parse_postfix,
-    ))
-    .parse(input)
+    alt((parse_unary_application, parse_postfix)).parse(input)
 }
 
 /// Parses a unary expression without allowing whitespace/comments between a unary
 /// operator and the expression that follows.
 fn parse_unary_tight(input: &str) -> IResult<&str, Expr> {
-    alt((
-        map((parse_unary_op, parse_unary_tight), |(op, e)| {
-            Expr::unary_expr(op, e)
-        }),
-        parse_postfix,
-    ))
-    .parse(input)
+    alt((parse_unary_application, parse_postfix)).parse(input)
+}
+
+/// Parses a unary operator and its operand.
+///
+/// A `-` or `+` that touches the digits of a number literal is part of the literal: `-1` is
+/// `Literal(Integer(-1))`, `-1.5` is `Literal(Number(-1.5))` and `+1` is `Literal(Integer(1))`.
+/// A sign before anything else, such as `-x`, `-(1)`, `- 1` or `--1`, is a `UnaryExpr`.
+fn parse_unary_application(input: &str) -> IResult<&str, Expr> {
+    let (rest, (op, operand)) = (parse_unary_op, parse_unary_tight).parse(input)?;
+    let touches_digit = input
+        .get(1..)
+        .is_some_and(|after| after.starts_with(|c: char| c.is_ascii_digit()));
+    if touches_digit {
+        let negate = match op {
+            UnaryOp::Minus => Some(true),
+            UnaryOp::Plus => Some(false),
+            _ => None,
+        };
+        if let Some(negate) = negate {
+            match operand {
+                Expr::Literal(Literal::Integer(n)) => {
+                    let n = if negate { -n } else { n };
+                    return Ok((rest, Expr::Literal(Literal::Integer(n))));
+                }
+                Expr::Literal(Literal::Number(Numeric(n))) => {
+                    let n = if negate { -n } else { n };
+                    return Ok((rest, Expr::Literal(Literal::Number(Numeric(n)))));
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok((rest, Expr::unary_expr(op, operand)))
 }
 
 /// Parses binary expressions: `Expr` then `BinaryOp` then `Expr`, with left-associative folding.
@@ -489,6 +513,8 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use bigdecimal::BigDecimal;
 
     use crate::ast::BinaryOp;
     use crate::ast::Expr;
@@ -1010,8 +1036,20 @@ mod tests {
             parse_expr("!x"),
             Ok(("", Expr::unary_expr(UnaryOp::Not, Expr::ident("x"))))
         );
+        assert_eq!(parse_expr("+1"), Ok(("", Expr::literal_integer(1))));
         assert_eq!(
-            parse_expr("+1"),
+            parse_expr("+1.0"),
+            Ok((
+                "",
+                Expr::literal_number(BigDecimal::from_str("1.0").unwrap())
+            ))
+        );
+        assert_eq!(
+            parse_expr("+x"),
+            Ok(("", Expr::unary_expr(UnaryOp::Plus, Expr::ident("x"))))
+        );
+        assert_eq!(
+            parse_expr("++1"),
             Ok((
                 "",
                 Expr::unary_expr(UnaryOp::Plus, Expr::literal_integer(1))
@@ -1020,11 +1058,40 @@ mod tests {
         assert!(parse_expr("! x").is_err());
         assert!(parse_expr("+ 1").is_err());
         assert!(parse_expr("- 42").is_err());
+        assert_eq!(parse_expr("-42"), Ok(("", Expr::literal_integer(-42))));
         assert_eq!(
-            parse_expr("-42"),
+            parse_expr("-1.5"),
             Ok((
                 "",
-                Expr::unary_expr(UnaryOp::Minus, Expr::literal_integer(42))
+                Expr::literal_number(BigDecimal::from_str("-1.5").unwrap())
+            ))
+        );
+        assert_eq!(
+            parse_expr("-1.0"),
+            Ok((
+                "",
+                Expr::literal_number(BigDecimal::from_str("-1.0").unwrap())
+            ))
+        );
+        assert_eq!(
+            parse_expr("-x"),
+            Ok(("", Expr::unary_expr(UnaryOp::Minus, Expr::ident("x"))))
+        );
+        assert_eq!(
+            parse_expr("--42"),
+            Ok((
+                "",
+                Expr::unary_expr(UnaryOp::Minus, Expr::literal_integer(-42))
+            ))
+        );
+        assert_eq!(
+            parse_expr("-(42)"),
+            Ok((
+                "",
+                Expr::unary_expr(
+                    UnaryOp::Minus,
+                    Expr::parenthesized(Expr::literal_integer(42))
+                )
             ))
         );
     }
@@ -1511,14 +1578,7 @@ mod tests {
                 int(3),
             ),
         );
-        assert_parses_to(
-            "-7 // 2",
-            bin(
-                Expr::unary_expr(UnaryOp::Minus, int(7)),
-                BinaryOp::FloorDiv,
-                int(2),
-            ),
-        );
+        assert_parses_to("-7 // 2", bin(int(-7), BinaryOp::FloorDiv, int(2)));
     }
 
     #[test]

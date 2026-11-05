@@ -8,6 +8,8 @@
 | `+`      | numeric unary plus | `+42`   |
 | `-`      | numeric negation   | `-42`   |
 
+A `-` or `+` that touches the digits of a number is part of the number: `-42` is the `Integer` literal `-42`, `-1.5` is the `Number` literal `-1.5`, and `+1` is the `Integer` literal `1`. In any other place the sign is a unary operator, so `-x`, `+x`, `-(42)`, `- 42` and `--42` apply the operator.
+
 ## Binary Operators
 
 | Operator | Category | Example |
