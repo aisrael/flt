@@ -78,6 +78,16 @@ An expression reads a name that has no binding.
 y              # UnboundIdentifier
 ```
 
+The body of a function declared with `def` does not see global variables ([ADR 027](adrs/027-function-visibility.md)), so reading one there raises this error too:
+
+```flt
+let counter = 0
+def read()
+  counter      # UnboundIdentifier
+end
+read()
+```
+
 ### `UnknownType`
 
 **Message:** `Unknown type: <name>`

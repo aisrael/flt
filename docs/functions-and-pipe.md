@@ -84,7 +84,7 @@ end
 
 A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type. Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
 
-A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global variables, but not other parameters.
+A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global constants, but not other parameters, global variables or global functions ([Scope](#scope)).
 
 ### Return Type and Body
 
@@ -142,8 +142,8 @@ check(8)              # "even"
 Each call has its own scope:
 
 - Parameters and variables declared with `let` in the body exist only during the call.
-- A name that the scope does not bind is looked up in the global scope.
-- `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the call.
+- A name that the scope does not bind is looked up in the global scope. The body sees global constants, functions and type names, but not global variables ([ADR 027](./adrs/027-function-visibility.md)). A reference to a global variable raises `UnboundIdentifier`.
+- `x = expr` assigns to the nearest binding of `x` that the body sees. If there is none, it declares `x` in the call. After `let x = 1` at the top level, `x = 2` in a body declares a local `x`, and the global `x` keeps its value.
 - A [brace block](./syntax.md#brace-blocks) in the body has its own scope inside the call's scope. See [block scope](./runtime.md#block-scope).
 
 ### Names and Overloads

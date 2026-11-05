@@ -427,13 +427,15 @@ pub trait Runtime {
 /// flt source.
 pub struct SimpleRuntime {
     global_scope: GlobalScope,
+    /// Which global names the running code sees (ADR 027)
+    visibility: Visibility,
     /// The local scopes, innermost last: the scope of each call to a function declared in flt,
     /// and the scope of each brace block that is running. A name is looked up in the scopes
     /// from `call_base` on, innermost first, then in the global scope.
     frames: Vec<Frame>,
     /// The index in `frames` of the scope of the innermost call, or of the outermost block when
-    /// no call is running. A call sees its own scopes and the global scope, not the scopes of
-    /// its caller.
+    /// no call is running. A call sees its own scopes and the global names that `visibility`
+    /// allows, not the scopes of its caller.
     call_base: usize,
     /// The number of calls to functions declared in flt that are running. A `return` needs one.
     calls: usize,
@@ -450,6 +452,7 @@ impl Default for SimpleRuntime {
         register_builtins(&mut global_scope);
         Self {
             global_scope,
+            visibility: Visibility::Open,
             frames: Vec::new(),
             call_base: 0,
             calls: 0,
@@ -457,6 +460,19 @@ impl Default for SimpleRuntime {
             native_types: HashMap::new(),
         }
     }
+}
+
+/// Which global names the running code sees (ADR 027).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Visibility {
+    /// Top-level code, and the blocks in it, sees every global name.
+    Open,
+    /// The body of a function declared in flt sees global constants, functions and type names,
+    /// but not global variables.
+    Body,
+    /// A default of a keyword parameter sees global constants and type names, but not global
+    /// variables or global functions.
+    Default,
 }
 
 /// Registers the built-in native functions in `global_scope`.
@@ -498,7 +514,10 @@ impl Runtime for SimpleRuntime {
                 self.global_scope.check_bindable(name)?;
                 self.check_assignable(name)?;
                 let value = self.eval_expr(expr)?;
-                let global = self.global_scope.has_variable(name);
+                // A global variable is not a binding that a function body sees, so an assignment
+                // there declares a local. A global constant was refused above.
+                let global =
+                    self.global_scope.has_variable(name) && self.sees_global_variable(name);
                 let scopes = self.local_scopes_mut();
                 match scopes
                     .iter()
@@ -677,6 +696,12 @@ impl SimpleRuntime {
         Ok(value)
     }
 
+    /// Whether the running code sees the global variable or constant `name`. Top-level code
+    /// sees every one. A function body and a default see only constants (ADR 027).
+    fn sees_global_variable(&self, name: &str) -> bool {
+        self.visibility == Visibility::Open || self.global_scope.is_constant(name)
+    }
+
     /// Looks up `name` as a variable, then a global function, then a built-in type name, then
     /// a native type name. A name is never more than one of these, since a binding can't
     /// shadow a function or a type, so the order doesn't change the result.
@@ -685,11 +710,16 @@ impl SimpleRuntime {
             .iter()
             .rev()
             .find_map(|frame| frame.variables.get(name))
-            .or_else(|| self.global_scope.get_variable(name))
+            .or_else(|| {
+                self.global_scope
+                    .get_variable(name)
+                    .filter(|_| self.sees_global_variable(name))
+            })
             .cloned()
             .or_else(|| {
                 self.global_scope
                     .get_function(name)
+                    .filter(|_| self.visibility != Visibility::Default)
                     .cloned()
                     .map(Value::Function)
             })
@@ -852,7 +882,7 @@ impl SimpleRuntime {
         let FunctionImplementation::Declared(body) = signature.implementation.clone() else {
             unreachable!("an overload of a function declared in flt has a body");
         };
-        // A default can use global bindings, but not the parameters or the caller's variables
+        // A default sees global constants and type names, but not the parameters, the caller's variables, global variables or global functions (ADR 027)
         for (keyword, default) in &body.defaults {
             let key = MapKey::symbol(keyword.as_str());
             if keywords.contains_key(&key) {
@@ -860,7 +890,9 @@ impl SimpleRuntime {
             }
             let caller_frames = std::mem::take(&mut self.frames);
             let caller_base = std::mem::take(&mut self.call_base);
+            let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Default);
             let value = self.eval_expr(default);
+            self.visibility = caller_visibility;
             self.frames = caller_frames;
             self.call_base = caller_base;
             let value = value?;
@@ -908,7 +940,9 @@ impl SimpleRuntime {
         self.call_base = self.frames.len();
         self.frames.push(frame);
         self.calls += 1;
+        let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Body);
         let result = self.eval_statements(&body.statements);
+        self.visibility = caller_visibility;
         self.calls -= 1;
         self.frames.truncate(self.call_base);
         self.call_base = caller_base;
@@ -3491,11 +3525,11 @@ mod tests {
     }
 
     #[test]
-    fn test_def_default_is_evaluated_for_each_call() {
-        let source = "let base = 1\n\
-            def plus(n: Integer, by: Integer = base) -> Integer\n  n + by\nend\n\
-            let first = plus(10)\nbase = 5\n[first, plus(10)]";
-        assert_eq!(run(source), "[11, 15]");
+    fn test_def_default_can_use_a_global_constant() {
+        let source = "const BASE = 1\n\
+            def plus(n: Integer, by: Integer = BASE) -> Integer\n  n + by\nend\n\
+            plus(10)";
+        assert_eq!(run(source), "11");
     }
 
     #[test]
@@ -3551,9 +3585,9 @@ mod tests {
     }
 
     #[test]
-    fn test_def_body_reads_globals_and_a_parameter_hides_one() {
+    fn test_def_body_reads_constants_and_a_parameter_hides_a_variable() {
         assert_eq!(
-            run("let base = 10\ndef plus(n: Integer) -> Integer\n  n + base\nend\nplus(1)"),
+            run("const BASE = 10\ndef plus(n: Integer) -> Integer\n  n + BASE\nend\nplus(1)"),
             "11"
         );
         assert_eq!(
@@ -3571,8 +3605,8 @@ mod tests {
     #[test]
     fn test_def_assignment_changes_the_nearest_binding() {
         assert_eq!(
-            run("let count = 0\ndef bump()\n  count = count + 1\n  None\nend\nbump()\ncount"),
-            "1"
+            run("def f(n: Integer) -> Integer\n  n = n + 1\n  n\nend\nf(1)"),
+            "2"
         );
         let (_, message) = run_error("def f() -> Integer\n  x = 1\n  x\nend\nf()\nx");
         assert_eq!(message, "Unbound identifier: x");
@@ -3810,8 +3844,8 @@ mod tests {
     }
 
     #[test]
-    fn test_function_called_in_a_block_reads_globals() {
-        let source = "let g = 5\ndef get() -> Integer\n  g\nend\n{ let a = 1; get() + a }";
+    fn test_function_called_in_a_block_reads_global_constants() {
+        let source = "const G = 5\ndef get() -> Integer\n  G\nend\n{ let a = 1; get() + a }";
         assert_eq!(run(source), "6");
     }
 
@@ -3884,6 +3918,151 @@ mod tests {
         let mut runtime = SimpleRuntime::default();
         runtime.eval("{ let hidden = 1 }").unwrap();
         assert_eq!(runtime.get_variable("hidden"), None);
+    }
+
+    #[test]
+    fn test_body_cannot_read_a_global_variable() {
+        let (debug, message) =
+            run_error("let base = 10\ndef plus(n: Integer) -> Integer\n  n + base\nend\nplus(1)");
+        assert!(debug.contains("UnboundIdentifier"), "{debug}");
+        assert_eq!(message, "Unbound identifier: base");
+    }
+
+    #[test]
+    fn test_block_in_a_body_cannot_read_a_global_variable() {
+        let source = "let base = 10\ndef f() -> Integer\n  { base }\nend\nf()";
+        let (_, message) = run_error(source);
+        assert_eq!(message, "Unbound identifier: base");
+    }
+
+    #[test]
+    fn test_body_cannot_call_a_function_that_a_variable_holds() {
+        let source = "let g = typeof\ndef f() -> Type\n  g(1)\nend\nf()";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("UndefinedFunction"), "{debug}");
+        assert_eq!(message, "Undefined function: g");
+    }
+
+    #[test]
+    fn test_body_sees_constants_functions_and_type_names() {
+        let source = "const STEP = 2\n\
+            def double(n: Integer) -> Integer\n  n * 2\nend\n\
+            def f(n: Integer) -> Type\n  let m = double(n) + STEP\n  typeof(m)\nend\n\
+            f(1)";
+        assert_eq!(run(source), "Integer");
+        assert_eq!(run("def kind() -> Type\n  Integer\nend\nkind()"), "Integer");
+    }
+
+    #[test]
+    fn test_body_sees_a_constant_declared_after_the_function() {
+        let source = "def f() -> Integer\n  STEP\nend\nconst STEP = 2\nf()";
+        assert_eq!(run(source), "2");
+    }
+
+    #[test]
+    fn test_assignment_in_a_body_declares_a_local_and_keeps_the_global_variable() {
+        let mut runtime = SimpleRuntime::default();
+        let source = "let counter = 0\n\
+            def write() -> Integer\n  counter = 1\n  counter\nend\n\
+            [write(), write(), counter]";
+        assert_eq!(runtime.eval(source).unwrap().to_string(), "[1, 1, 0]");
+        assert_eq!(runtime.get_variable("counter").unwrap().to_string(), "0");
+        assert!(runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_assignment_in_a_body_does_not_count_in_a_global_variable() {
+        let source = "let counter = 0\ndef bump()\n  counter = counter + 1\nend\nbump()";
+        let (_, message) = run_error(source);
+        assert_eq!(message, "Unbound identifier: counter");
+    }
+
+    #[test]
+    fn test_let_in_a_body_hides_a_global_variable_with_no_warning() {
+        let mut runtime = SimpleRuntime::default();
+        let source = "let x = 1\ndef f() -> Integer\n  let x = 2\n  x\nend\n[f(), x]";
+        assert_eq!(runtime.eval(source).unwrap().to_string(), "[2, 1]");
+        assert!(runtime.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn test_assignment_in_a_body_to_a_global_constant_is_a_rebind() {
+        let mut runtime = SimpleRuntime::default();
+        let result = runtime.eval("const LIMIT = 10\ndef f()\n  LIMIT = 1\nend\nf()");
+        assert_constant_rebound(result, "LIMIT");
+    }
+
+    #[test]
+    fn test_default_can_use_a_type_name() {
+        let source = "def kind(t: Type = Integer) -> Type\n  t\nend\nkind()";
+        assert_eq!(run(source), "Integer");
+    }
+
+    #[test]
+    fn test_default_cannot_use_a_global_variable() {
+        let source = "let base = 1\n\
+            def plus(n: Integer, by: Integer = base) -> Integer\n  n + by\nend\n\
+            plus(10)";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("UnboundIdentifier"), "{debug}");
+        assert_eq!(message, "Unbound identifier: base");
+    }
+
+    #[test]
+    fn test_default_cannot_call_a_native_function() {
+        let source = "def kind(t: Type = typeof(1)) -> Type\n  t\nend\nkind()";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("UndefinedFunction"), "{debug}");
+        assert_eq!(message, "Undefined function: typeof");
+    }
+
+    #[test]
+    fn test_default_cannot_call_a_function_declared_with_def() {
+        let source = "def one() -> Integer\n  1\nend\n\
+            def plus(n: Integer, by: Integer = one()) -> Integer\n  n + by\nend\n\
+            plus(10)";
+        let (_, message) = run_error(source);
+        assert_eq!(message, "Undefined function: one");
+    }
+
+    #[test]
+    fn test_default_is_not_evaluated_when_the_call_gives_the_keyword() {
+        let source = "let base = 1\n\
+            def plus(n: Integer, by: Integer = base) -> Integer\n  n + by\nend\n\
+            plus(10, by: 5)";
+        assert_eq!(run(source), "15");
+    }
+
+    #[test]
+    fn test_visibility_is_restored_after_a_call_with_a_default() {
+        let source = "let base = 1\n\
+            def f(by: Integer = 2) -> Integer\n  by\nend\n\
+            f()\n\
+            base";
+        assert_eq!(run(source), "1");
+    }
+
+    #[test]
+    fn test_visibility_is_restored_after_an_error_in_a_call() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("let base = 1\ndef f() -> Integer\n  base\nend")
+            .unwrap();
+        assert!(runtime.eval("f()").is_err());
+        assert_eq!(runtime.eval("base").unwrap().to_string(), "1");
+    }
+
+    #[test]
+    fn test_host_variable_is_not_visible_in_a_function_but_a_constant_is() {
+        let mut runtime = SimpleRuntime::default();
+        runtime.set_variable("v", Value::from(1u64)).unwrap();
+        runtime.declare_constant("C", Value::from(2u64)).unwrap();
+        runtime
+            .eval("def read_v() -> Integer\n  v\nend\ndef read_c() -> Integer\n  C\nend")
+            .unwrap();
+        assert_eq!(runtime.get_variable("v").unwrap().to_string(), "1");
+        assert!(runtime.eval("read_v()").is_err());
+        assert_eq!(runtime.eval("read_c()").unwrap().to_string(), "2");
     }
 
     /// The error that evaluating `source` gives, displayed.
@@ -4143,13 +4322,17 @@ mod tests {
 
     #[test]
     fn test_the_const_expression_is_evaluated_once() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let counter = Arc::clone(&calls);
         let mut runtime = SimpleRuntime::default();
-        runtime.eval("let n = 0").unwrap();
         runtime
-            .eval("def next() -> Integer\n  n = n + 1\n  n\nend")
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new("next", Type::integer(), vec![]),
+                move |_args| Ok(Value::from(counter.fetch_add(1, Ordering::SeqCst) + 1)),
+            ))
             .unwrap();
         runtime.eval("const A = next()").unwrap();
         assert_eq!(runtime.eval("A + A").unwrap(), integer(2));
-        assert_eq!(runtime.get_variable("n"), Some(integer(1)));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
