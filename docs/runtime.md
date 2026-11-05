@@ -24,9 +24,9 @@ A type in a `let` or a `def` declaration can be the name of a native type.
 
 ## Built-ins
 
-A runtime can register any number of built-in, native functions. The reference runtime registers only `typeof(Any) -> Type`. It returns the type of its argument. Thus `typeof(1) == Integer` is `true`, and `typeof(x)` reports the type of the value of `x`, not the declared type of `x`.
+A runtime can register any number of built-in, native functions. The reference runtime registers only `typeof(Any) -> Type`, which is a [`const` function](#const-functions). It returns the type of its argument. Thus `typeof(1) == Integer` is `true`, and `typeof(x)` reports the type of the value of `x`, not the declared type of `x`.
 
-`Any` is the type of every value. It occurs only in signatures. For example, `typeof` is `fn(Any) -> Type`.
+`Any` is the type of every value. It occurs only in signatures. For example, `typeof` is `const fn(Any) -> Type`.
 
 ## Function types
 
@@ -80,19 +80,51 @@ counter             # 0
 
 Thus the result of a call depends only on the arguments, the global constants and the functions that the body calls. A host can change the constants between two calls, so a function is pure for a fixed set of global constants. The runtime assumes that a native function can have side effects, so a function that calls one is not pure.
 
-A default of a keyword parameter sees less than a body: only global constants and type names. It does not see other parameters, global variables or global functions. A reference to a global variable raises `UnboundIdentifier`, and a call to a global function raises [`UndefinedFunction`](errors.md#undefinedfunction). The runtime evaluates a default only when the call leaves out the keyword, so it raises the error then.
+A default of a keyword parameter sees global constants, type names and `const` functions ([`const` functions](#const-functions)). It does not see other parameters or global variables. A reference to a global variable raises `UnboundIdentifier`. A call to a function that is not `const` raises [`NonConstFunctionCall`](errors.md#nonconstfunctioncall). The runtime evaluates a default only when the call leaves out the keyword, so it raises the error then.
 
 ```flt
 const WAIT = 5
 def fetch(timeout: Integer = WAIT)       # a constant: allowed
   timeout
 end
-def stamp(at = now())                    # stamp() raises UndefinedFunction
+def stamp(at = now())                    # stamp() raises NonConstFunctionCall
   at
 end
 ```
 
 A called function does not see the blocks of its caller. It sees only its own scopes and the global constants, functions and type names.
+
+### `const` functions
+
+A function declared with `const def` is meant to be pure ([ADR 028](adrs/028-const-functions.md)). `SimpleRuntime` enforces this with a flag that says the running code must be `const` ([ADR 029](adrs/029-const-functions-in-the-reference-runtime.md)):
+
+- The runtime sets the flag while the body of a `const def` runs, with its blocks and the functions that it calls. It sets the flag too while it evaluates a default of a keyword parameter, for a `def` and for a `const def`. It restores the flag when the call ends, also after an error.
+- When the flag is set, a call to a function that is not `const` raises a [`NonConstFunctionCall`](errors.md#nonconstfunctioncall) error. A call to a `const` function is allowed.
+- Top-level code and the body of a `def` do not set the flag. They can call any function, and a call to a `const` function from them is a normal call.
+- The runtime checks the function that the call names, when the call runs. It does not analyse the body when the function is declared.
+- A native function is `const` only if the host marks it so. The runtime cannot check it. The built-in `typeof` is `const`.
+
+```flt
+const def area(w: Integer, h: Integer) -> Integer
+  w * h
+end
+def stamp() -> Integer
+  now()
+end
+const def ok() -> Integer
+  area(2, 3)         # 6
+end
+const def bad() -> Integer
+  stamp()            # NonConstFunctionCall
+end
+def wait(t: Integer = area(1, 2))      # allowed: area is const
+  t
+end
+```
+
+The body of a `const def` sees the same names as the body of a `def`: its parameters, its locals, global constants, global functions and type names. A function that is not `const` is visible, but a call to it raises the error. So the result of a `const` call depends only on the arguments, the global constants and the `const` natives. As for any function, this holds for a fixed set of global constants.
+
+Functions are called by name, and a function that a variable holds can not be called. A `const` body therefore cannot reach a function that is not `const` through an argument.
 
 ### Block scope
 
@@ -144,7 +176,7 @@ A `def` statement binds its name in the global scope to a function value, and gi
 
 A `def` is allowed only at the top level. A `def` inside a block or inside the body of a function raises a `DefNotAtTopLevel` error ([ADR 021](adrs/021-block-scopes.md)). A later change can allow it.
 
-A second `def` with the same name adds an overload. It raises a `DuplicateOverload` error if its parameters have the same types as an existing overload (see [ADR 018](adrs/018-distinct-overload-signatures.md)). A `def` raises a `NameAlreadyBound` error if its name is a built-in type or a variable. It also raises this error if the name is a function that a host registered.
+A second `def` with the same name adds an overload. All overloads of a function are `const`, or none is: a `def` or `const def` that differs from the function in this raises a `ConstOverloadMismatch` error. The runtime checks this before it checks for a duplicate. A `DuplicateOverload` error follows if its parameters have the same types as an existing overload (see [ADR 018](adrs/018-distinct-overload-signatures.md)). A `def` raises a `NameAlreadyBound` error if its name is a built-in type or a variable. It also raises this error if the name is a function that a host registered.
 
 ## Returning from a function
 

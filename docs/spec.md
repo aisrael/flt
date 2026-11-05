@@ -17,7 +17,7 @@ program    = { statement [ ";" ] } ;           (* ";" required only between stat
 statement  = "let" ident [ ":" type ] "=" expr  (* declaration *)
            | "const" ident [ ":" type ] "=" expr  (* constant declaration *)
            | ident "=" expr                       (* assignment *)
-           | "def" ident "(" [ params ] ")" [ "->" type ] body  (* function declaration *)
+           | [ "const" ] "def" ident "(" [ params ] ")" [ "->" type ] body  (* function declaration *)
            | "return" [ expr ]                    (* only in a function body *)
            | expr ;
 params     = param { "," param } ;
@@ -202,7 +202,7 @@ A function _signature_ is comprised of:
 
 A function declaration starts with the `def` keyword, followed by the function _name_, then the parameters enclosed in parentheses (`()`), then an optional return type, then the body. The body ends with `end`.
 
-> `def` _name_ `(` [ _parameter spec_ [`,` ...] ] `)` [ `->` _type_ ] _body_ `end`
+> [`const`] `def` _name_ `(` [ _parameter spec_ [`,` ...] ] `)` [ `->` _type_ ] _body_ `end`
 
 A function can have no parameters.
 
@@ -252,6 +252,18 @@ end
 A call to a function runs its body in a scope of its own. The parameters are bound in this scope. A variable that the body declares is gone when the call ends.
 
 A `def` statement binds its name to a function value, and gives `None`. The name is bound before the body runs, so a function can call itself. A runtime decides if a second `def` with the same name adds an overload, and what happens when the name is already in use.
+
+#### `const` functions
+
+A declaration that starts with `const def` declares a function that is meant to be pure and deterministic: a call with the same arguments always gives the same result, and the call changes nothing outside itself ([ADR 028](adrs/028-const-functions.md)). Apart from this, a `const def` is a `def`.
+
+```flt
+const def area(w: Integer, h: Integer) -> Integer
+  w * h
+end
+```
+
+The language states the intent only. A runtime decides if it checks the contract, and how. For example, it can refuse a call from a `const` function to a function that is not `const`. See [`runtime.md`](runtime.md#const-functions).
 
 #### Positional parameters
 

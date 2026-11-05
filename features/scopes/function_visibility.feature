@@ -3,7 +3,8 @@ Feature: Function visibility
   The body of a function declared with `def` sees only its parameters, its
   local bindings, global constants, global functions and type names (ADR 027).
   A global variable does not exist for the body. A default of a keyword
-  parameter sees only global constants and type names.
+  parameter sees global constants, type names and `const` functions, and
+  it can call only `const` functions (ADR 029).
 
   See docs/runtime.md#function-scope and docs/errors.md.
 
@@ -250,7 +251,7 @@ Feature: Function visibility
     When I evaluate the input
     Then the evaluation should fail with exactly "Runtime Error: Unbound identifier: base"
 
-  Scenario: A default can't call a native function
+  Scenario: A default can call a native function that is const
     Given the multiline input
       """
       def kind(t: Type = typeof(1)) -> Type
@@ -259,9 +260,21 @@ Feature: Function visibility
       kind()
       """
     When I evaluate the input
-    Then the evaluation should fail with exactly "Runtime Error: Undefined function: typeof"
+    Then the result should be "Integer"
 
-  Scenario: A default can't call a function declared with def
+  Scenario: A default can't call a native function that is not const
+    Given the native function "identity(v: Any) -> Any"
+    And the multiline input
+      """
+      def f(v: Any = identity(1)) -> Any
+        v
+      end
+      f()
+      """
+    When I evaluate the input
+    Then the evaluation should fail with exactly "Runtime Error: Function identity is not const and cannot be called here"
+
+  Scenario: A default can't call a function declared with def, which is not const
     Given the multiline input
       """
       def one() -> Integer
@@ -273,7 +286,7 @@ Feature: Function visibility
       plus(10)
       """
     When I evaluate the input
-    Then the evaluation should fail with exactly "Runtime Error: Undefined function: one"
+    Then the evaluation should fail with exactly "Runtime Error: Function one is not const and cannot be called here"
 
   Scenario: A default that the call does not use raises no error
     Given the multiline input

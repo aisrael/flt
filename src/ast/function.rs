@@ -125,9 +125,12 @@ impl Display for Parameter {
     }
 }
 
-/// A function declaration: `def name(params) -> type`, a body of statements, and `end`.
+/// A function declaration: `def name(params) -> type`, a body of statements, and `end`. A
+/// declaration that starts with `const` declares a function that is meant to be pure (ADR 028).
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclaration {
+    /// Whether the declaration is `const def`
+    pub is_const: bool,
     pub name: Identifier,
     pub params: Vec<Parameter>,
     /// The return type, or `None` if the declaration has no `->`, which means `-> None`
@@ -139,6 +142,9 @@ pub struct FunctionDeclaration {
 /// a form that parses back to the same declaration.
 impl Display for FunctionDeclaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_const {
+            write!(f, "const ")?;
+        }
         write!(f, "def {}(", self.name)?;
         for (i, param) in self.params.iter().enumerate() {
             if i > 0 {
@@ -190,6 +196,7 @@ mod tests {
     #[test]
     fn test_display_declaration() {
         let declaration = FunctionDeclaration {
+            is_const: false,
             name: Identifier("log".to_string()),
             params: vec![
                 Parameter::positional("label", TypeExpr::name("String")),
@@ -212,6 +219,7 @@ mod tests {
     #[test]
     fn test_display_declaration_without_a_body_or_return_type() {
         let declaration = FunctionDeclaration {
+            is_const: false,
             name: Identifier("nothing".to_string()),
             params: vec![],
             return_type: None,

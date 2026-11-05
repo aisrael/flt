@@ -20,6 +20,9 @@ pub struct FunctionType {
     /// The type of any other keyword arguments the function accepts, if it accepts them
     pub rest_keywords: Option<Box<Type>>,
     pub return_type: Box<Type>,
+    /// Whether the function is `const`, so meant to be pure (ADR 028). The type of every
+    /// overload of a `const` function is `const`.
+    pub is_const: bool,
 }
 
 impl FunctionType {
@@ -32,7 +35,14 @@ impl FunctionType {
             keywords: Vec::new(),
             rest_keywords: None,
             return_type: Box::new(return_type),
+            is_const: false,
         }
+    }
+
+    /// This type, as the type of a `const` function: it displays as `const fn(…) -> R`
+    pub fn constant(mut self) -> Self {
+        self.is_const = true;
+        self
     }
 
     /// Create a new function type whose parameters end with a variadic one, which takes
@@ -66,15 +76,19 @@ impl From<&FunctionSignature> for FunctionType {
                 .collect(),
             rest_keywords: signature.rest_keywords.clone().map(Box::new),
             return_type: Box::new(signature.return_type.clone()),
+            is_const: false,
         }
     }
 }
 
-/// Writes `fn(P1, P2, *V, k: K, **T) -> R`. A union is bracketed where `|` would otherwise be
+/// Writes `fn(P1, P2, *V, k: K, **T) -> R`, with `const ` before it for a `const` function. A union is bracketed where `|` would otherwise be
 /// misread: after `*` or `**`, e.g. `fn(*(String | Symbol)) -> String`, and as the return type,
 /// since `->` groups before `|`, e.g. `fn(Number) -> (Number | None)`.
 impl fmt::Display for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_const {
+            write!(f, "const ")?;
+        }
         write!(f, "fn(")?;
         let parameters = self
             .parameters

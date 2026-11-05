@@ -31,6 +31,15 @@ pub enum Error {
     Return(Box<crate::runtime::Value>),
 }
 
+/// The message of a `ConstOverloadMismatch`.
+fn const_overload_mismatch_message(name: &str, function_is_const: bool) -> String {
+    if function_is_const {
+        format!("Function {name} is const, so all of its overloads must be const")
+    } else {
+        format!("Function {name} is not const, so none of its overloads can be const")
+    }
+}
+
 impl Error {
     /// Wraps a host's own error, so that a native function can fail with it
     pub fn native(error: impl std::error::Error + Send + Sync + 'static) -> Self {
@@ -73,6 +82,10 @@ pub enum RuntimeError {
     InvalidPipeTarget(String),
     #[error("Undefined function: {0}")]
     UndefinedFunction(String),
+    /// The body of a `const def`, or a default of a keyword parameter, called a function that
+    /// is not `const`
+    #[error("Function {0} is not const and cannot be called here")]
+    NonConstFunctionCall(String),
     #[error("{0} is not a function")]
     NotCallable(String),
     /// No signature of the function takes that many positional arguments
@@ -137,6 +150,14 @@ pub enum RuntimeError {
     /// A `def` declared an overload whose parameter types equal those of an existing overload
     #[error("Function {name} already has the overload {overload}")]
     DuplicateOverload { name: String, overload: String },
+    /// A `def` or `const def` added an overload to a function whose overloads are not all
+    /// `const`, or all not `const`, the way the new overload is
+    #[error("{}", const_overload_mismatch_message(.name, *.function_is_const))]
+    ConstOverloadMismatch {
+        name: String,
+        /// Whether the function that has the overloads is `const`
+        function_is_const: bool,
+    },
     /// A `def` used a name that is already in use
     #[error("Cannot define {name}: it's {reason}")]
     NameAlreadyBound { name: String, reason: ProtectedName },

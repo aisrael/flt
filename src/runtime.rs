@@ -42,6 +42,7 @@ use crate::runtime::functions::NativeFunction;
 use crate::runtime::native::NativeType;
 use crate::runtime::native::NativeTypeInfo;
 use crate::runtime::native::NativeValue;
+use crate::runtime::types::FunctionType;
 use crate::runtime::types::Type;
 use crate::utils::escape_string;
 use crate::utils::write_name;
@@ -429,6 +430,9 @@ pub struct SimpleRuntime {
     global_scope: GlobalScope,
     /// Which global names the running code sees (ADR 027)
     visibility: Visibility,
+    /// Whether the running code can call only `const` functions: the body of a `const def` and
+    /// a default of a keyword parameter (ADR 029).
+    require_const: bool,
     /// The local scopes, innermost last: the scope of each call to a function declared in flt,
     /// and the scope of each brace block that is running. A name is looked up in the scopes
     /// from `call_base` on, innermost first, then in the global scope.
@@ -453,6 +457,7 @@ impl Default for SimpleRuntime {
         Self {
             global_scope,
             visibility: Visibility::Open,
+            require_const: false,
             frames: Vec::new(),
             call_base: 0,
             calls: 0,
@@ -470,9 +475,6 @@ enum Visibility {
     /// The body of a function declared in flt sees global constants, functions and type names,
     /// but not global variables.
     Body,
-    /// A default of a keyword parameter sees global constants and type names, but not global
-    /// variables or global functions.
-    Default,
 }
 
 /// Registers the built-in native functions in `global_scope`.
@@ -483,7 +485,8 @@ fn register_builtins(global_scope: &mut GlobalScope) {
                 "typeof",
                 Type::type_type(),
                 vec![Argument::new("V", Type::any())],
-            ),
+            )
+            .constant(),
             builtin_typeof,
         ))
         .expect("a new global scope has no names in use");
@@ -719,7 +722,6 @@ impl SimpleRuntime {
             .or_else(|| {
                 self.global_scope
                     .get_function(name)
-                    .filter(|_| self.visibility != Visibility::Default)
                     .cloned()
                     .map(Value::Function)
             })
@@ -752,6 +754,14 @@ impl SimpleRuntime {
     /// like an identifier.
     fn call_function(&mut self, name: &str, args: &[Value], keywords: Map) -> Result<Value, Error> {
         match self.lookup(name) {
+            // The code that runs must be `const`, so the function must be too (ADR 029)
+            Some(Value::Function(function))
+                if self.require_const && !function.definition.is_const =>
+            {
+                Err(Error::RuntimeError(RuntimeError::NonConstFunctionCall(
+                    name.to_string(),
+                )))
+            }
             Some(Value::Function(function)) if function.is_declared_in_flt() => {
                 self.call_declared_function(&function, args, keywords)
             }
@@ -833,6 +843,16 @@ impl SimpleRuntime {
             defaults,
             rest_keywords: rest_name,
         }));
+        // All overloads of a function are `const`, or none is. This comes before the check for
+        // a duplicate.
+        if let Some(function) = &existing {
+            if function.definition.is_const != declaration.is_const {
+                return Err(Error::RuntimeError(RuntimeError::ConstOverloadMismatch {
+                    name: name.to_string(),
+                    function_is_const: function.definition.is_const,
+                }));
+            }
+        }
         let mut overloads = existing
             .map(|function| function.definition.overloads.clone())
             .unwrap_or_default();
@@ -842,7 +862,15 @@ impl SimpleRuntime {
         {
             return Err(Error::RuntimeError(RuntimeError::DuplicateOverload {
                 name: name.to_string(),
-                overload: Type::Function((&signature).into()).to_string(),
+                overload: {
+                    let function_type = FunctionType::from(&signature);
+                    Type::Function(if declaration.is_const {
+                        function_type.constant()
+                    } else {
+                        function_type
+                    })
+                    .to_string()
+                },
             }));
         }
         overloads.push(signature);
@@ -851,6 +879,7 @@ impl SimpleRuntime {
             FunctionDefinition {
                 name: owned_name.clone(),
                 overloads,
+                is_const: declaration.is_const,
             },
             move |_| {
                 Err(Error::RuntimeError(RuntimeError::DeclaredInFlt(
@@ -882,7 +911,8 @@ impl SimpleRuntime {
         let FunctionImplementation::Declared(body) = signature.implementation.clone() else {
             unreachable!("an overload of a function declared in flt has a body");
         };
-        // A default sees global constants and type names, but not the parameters, the caller's variables, global variables or global functions (ADR 027)
+        // A default sees what a body sees, but not the parameters or the caller's variables
+        // (ADR 027). It can call only `const` functions (ADR 029).
         for (keyword, default) in &body.defaults {
             let key = MapKey::symbol(keyword.as_str());
             if keywords.contains_key(&key) {
@@ -890,8 +920,10 @@ impl SimpleRuntime {
             }
             let caller_frames = std::mem::take(&mut self.frames);
             let caller_base = std::mem::take(&mut self.call_base);
-            let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Default);
+            let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Body);
+            let caller_const = std::mem::replace(&mut self.require_const, true);
             let value = self.eval_expr(default);
+            self.require_const = caller_const;
             self.visibility = caller_visibility;
             self.frames = caller_frames;
             self.call_base = caller_base;
@@ -941,7 +973,11 @@ impl SimpleRuntime {
         self.frames.push(frame);
         self.calls += 1;
         let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Body);
+        // The body of a `const` function must call only `const` functions. Any other body can
+        // call any function.
+        let caller_const = std::mem::replace(&mut self.require_const, function.definition.is_const);
         let result = self.eval_statements(&body.statements);
+        self.require_const = caller_const;
         self.visibility = caller_visibility;
         self.calls -= 1;
         self.frames.truncate(self.call_base);
@@ -1998,7 +2034,7 @@ mod tests {
     fn test_typeof_of_typeof() {
         let value = eval(Expr::function_call("typeof", vec![Expr::ident("typeof")]));
         assert!(matches!(&value, Value::Type(Type::Function(_))));
-        assert_eq!(value.to_string(), "fn(Any) -> Type");
+        assert_eq!(value.to_string(), "const fn(Any) -> Type");
     }
 
     #[test]
@@ -3082,7 +3118,7 @@ mod tests {
         let runtime: &mut dyn Runtime = &mut runtime;
         runtime.eval("let x = 1").unwrap();
         let function = runtime.get_function("typeof").unwrap();
-        assert_eq!(function.r#type().to_string(), "fn(Any) -> Type");
+        assert_eq!(function.r#type().to_string(), "const fn(Any) -> Type");
         let function = runtime.get_function("meters").unwrap();
         assert_eq!(function.r#type().to_string(), "fn(Number) -> Meters");
         for name in ["nope", "x", "Number", "Meters"] {
@@ -4009,11 +4045,18 @@ mod tests {
     }
 
     #[test]
-    fn test_default_cannot_call_a_native_function() {
+    fn test_default_can_call_a_native_function_that_is_const() {
         let source = "def kind(t: Type = typeof(1)) -> Type\n  t\nend\nkind()";
-        let (debug, message) = run_error(source);
-        assert!(debug.contains("UndefinedFunction"), "{debug}");
-        assert_eq!(message, "Undefined function: typeof");
+        assert_eq!(run(source), "Integer");
+    }
+
+    #[test]
+    fn test_default_cannot_call_a_native_function_that_is_not_const() {
+        let mut runtime = runtime_with_tick();
+        let error = runtime
+            .eval("def f(t: Integer = tick()) -> Integer\n  t\nend\nf()")
+            .unwrap_err();
+        assert_non_const_call(&error, "tick");
     }
 
     #[test]
@@ -4021,8 +4064,20 @@ mod tests {
         let source = "def one() -> Integer\n  1\nend\n\
             def plus(n: Integer, by: Integer = one()) -> Integer\n  n + by\nend\n\
             plus(10)";
-        let (_, message) = run_error(source);
-        assert_eq!(message, "Undefined function: one");
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("NonConstFunctionCall"), "{debug}");
+        assert_eq!(
+            message,
+            "Function one is not const and cannot be called here"
+        );
+    }
+
+    #[test]
+    fn test_default_can_call_a_const_function() {
+        let source = "const def seconds(m: Integer) -> Integer\n  m * 60\nend\n\
+            def wait(t: Integer = seconds(2)) -> Integer\n  t\nend\n\
+            wait()";
+        assert_eq!(run(source), "120");
     }
 
     #[test]
@@ -4334,5 +4389,311 @@ mod tests {
         runtime.eval("const A = next()").unwrap();
         assert_eq!(runtime.eval("A + A").unwrap(), integer(2));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    // `const` functions, ADR 028 and ADR 029
+
+    /// A runtime with a native function `tick() -> Integer` that is not `const`.
+    fn runtime_with_tick() -> SimpleRuntime {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new("tick", Type::integer(), vec![]),
+                |_args| Ok(Value::from(1u64)),
+            ))
+            .unwrap();
+        runtime
+    }
+
+    fn assert_non_const_call(error: &Error, name: &str) {
+        assert!(
+            format!("{error:?}").contains("NonConstFunctionCall"),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            format!("Runtime Error: Function {name} is not const and cannot be called here")
+        );
+    }
+
+    #[test]
+    fn test_const_def_gives_none_and_can_be_called() {
+        assert_eq!(
+            run("const def area(w: Integer, h: Integer) -> Integer\n  w * h\nend"),
+            "None"
+        );
+        let source = "const def area(w: Integer, h: Integer) -> Integer\n  w * h\nend\narea(3, 4)";
+        assert_eq!(run(source), "12");
+    }
+
+    #[test]
+    fn test_const_def_can_call_itself_and_other_const_functions() {
+        let source =
+            "const def fact(n: Integer) -> Integer\n  if n <= 1 1 else n * fact(n - 1)\nend\n\
+            const def twice(n: Integer) -> Integer\n  fact(n) * 2\nend\n\
+            twice(4)";
+        assert_eq!(run(source), "48");
+    }
+
+    #[test]
+    fn test_const_def_can_call_typeof() {
+        assert_eq!(
+            run("const def kind(n: Integer) -> Type\n  typeof(n)\nend\nkind(1)"),
+            "Integer"
+        );
+    }
+
+    #[test]
+    fn test_const_def_cannot_call_a_function_declared_with_def() {
+        let source = "def stamp() -> Integer\n  1\nend\n\
+            const def bad() -> Integer\n  stamp()\nend\n\
+            bad()";
+        let error = SimpleRuntime::default().eval(source).unwrap_err();
+        assert_non_const_call(&error, "stamp");
+    }
+
+    #[test]
+    fn test_const_def_cannot_call_a_native_function_that_is_not_const() {
+        let mut runtime = runtime_with_tick();
+        let error = runtime
+            .eval("const def bad() -> Integer\n  tick()\nend\nbad()")
+            .unwrap_err();
+        assert_non_const_call(&error, "tick");
+    }
+
+    #[test]
+    fn test_const_def_cannot_call_a_function_that_is_not_const_in_a_block_or_a_pipe() {
+        let mut runtime = runtime_with_tick();
+        runtime
+            .eval("const def in_block() -> Integer\n  { tick() }\nend")
+            .unwrap();
+        assert_non_const_call(&runtime.eval("in_block()").unwrap_err(), "tick");
+        runtime
+            .eval("const def in_pipe(n: Integer) -> Integer\n  n |> tick\nend")
+            .unwrap();
+        // The pipe passes an argument, so the call to `tick` fails on its arity too, but the
+        // const check comes first
+        let error = runtime.eval("in_pipe(1)").unwrap_err();
+        assert!(
+            format!("{error:?}").contains("NonConstFunctionCall"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn test_the_const_check_is_made_through_the_functions_that_a_const_function_calls() {
+        let source = "def stamp() -> Integer\n  1\nend\n\
+            const def inner() -> Integer\n  stamp()\nend\n\
+            const def outer() -> Integer\n  inner()\nend\n\
+            outer()";
+        let error = SimpleRuntime::default().eval(source).unwrap_err();
+        assert_non_const_call(&error, "stamp");
+    }
+
+    #[test]
+    fn test_the_const_check_is_made_when_the_call_runs() {
+        let mut runtime = runtime_with_tick();
+        // A branch that does not run gives no error, and a function can be declared later
+        let source = "const def pick(flag: Boolean) -> Integer\n  if flag tick() else 0\nend\n\
+            const def outer(n: Integer) -> Integer\n  inner(n)\nend\n\
+            const def inner(n: Integer) -> Integer\n  n + 1\nend";
+        runtime.eval(source).unwrap();
+        assert_eq!(runtime.eval("pick(false)").unwrap(), integer(0));
+        assert_eq!(runtime.eval("outer(1)").unwrap(), integer(2));
+        assert_non_const_call(&runtime.eval("pick(true)").unwrap_err(), "tick");
+    }
+
+    #[test]
+    fn test_a_def_function_can_call_const_and_other_functions() {
+        let mut runtime = runtime_with_tick();
+        let source = "const def area(w: Integer, h: Integer) -> Integer\n  w * h\nend\n\
+            def report(w: Integer, h: Integer) -> Integer\n  tick() + area(w, h)\nend\n\
+            report(2, 3)";
+        assert_eq!(runtime.eval(source).unwrap(), integer(7));
+    }
+
+    #[test]
+    fn test_the_const_requirement_is_restored_after_a_call_and_after_an_error() {
+        let mut runtime = runtime_with_tick();
+        runtime
+            .eval(
+                "const def ok() -> Integer\n  1\nend\n\
+                const def bad() -> Integer\n  tick()\nend\n\
+                def calls_ok() -> Integer\n  ok() + tick()\nend",
+            )
+            .unwrap();
+        // Top-level code can call any function after a const call
+        assert_eq!(runtime.eval("ok()").unwrap(), integer(1));
+        assert_eq!(runtime.eval("tick()").unwrap(), integer(1));
+        // After an error in a const call
+        assert!(runtime.eval("bad()").is_err());
+        assert_eq!(runtime.eval("tick()").unwrap(), integer(1));
+        // A def body that calls a const function still calls other functions
+        assert_eq!(runtime.eval("calls_ok()").unwrap(), integer(2));
+        // A default that failed does not leave the requirement set
+        runtime
+            .eval("def d(t: Integer = tick()) -> Integer\n  t\nend")
+            .unwrap();
+        assert!(runtime.eval("d()").is_err());
+        assert_eq!(runtime.eval("tick()").unwrap(), integer(1));
+        assert_eq!(runtime.eval("d(t: 5)").unwrap(), integer(5));
+    }
+
+    #[test]
+    fn test_const_def_reads_global_constants_but_not_global_variables() {
+        let source =
+            "const STEP = 2\nconst def next(n: Integer) -> Integer\n  n + STEP\nend\nnext(1)";
+        assert_eq!(run(source), "3");
+        let source =
+            "let base = 10\nconst def plus(n: Integer) -> Integer\n  n + base\nend\nplus(1)";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("UnboundIdentifier"), "{debug}");
+        assert_eq!(message, "Unbound identifier: base");
+    }
+
+    #[test]
+    fn test_all_overloads_of_a_function_are_const_or_none_is() {
+        let (debug, message) = run_error(
+            "const def f(n: Integer) -> Integer\n  n\nend\ndef f(s: String) -> String\n  s\nend",
+        );
+        assert!(debug.contains("ConstOverloadMismatch"), "{debug}");
+        assert_eq!(
+            message,
+            "Function f is const, so all of its overloads must be const"
+        );
+        let (debug, message) = run_error(
+            "def f(n: Integer) -> Integer\n  n\nend\nconst def f(s: String) -> String\n  s\nend",
+        );
+        assert!(debug.contains("ConstOverloadMismatch"), "{debug}");
+        assert_eq!(
+            message,
+            "Function f is not const, so none of its overloads can be const"
+        );
+    }
+
+    #[test]
+    fn test_the_const_check_comes_before_the_duplicate_check() {
+        let (debug, _) = run_error(
+            "def f(n: Integer) -> Integer\n  n\nend\nconst def f(n: Integer) -> Integer\n  n\nend",
+        );
+        assert!(debug.contains("ConstOverloadMismatch"), "{debug}");
+        let (debug, _) = run_error(
+            "const def f(n: Integer) -> Integer\n  n\nend\nconst def f(m: Integer) -> Integer\n  m\nend",
+        );
+        assert!(debug.contains("DuplicateOverload"), "{debug}");
+    }
+
+    #[test]
+    fn test_const_overloads_can_differ_in_parameters() {
+        let source = "const def show(n: Integer) -> String\n  \"integer\"\nend\n\
+            const def show(s: String) -> String\n  \"string\"\nend\n\
+            [show(1), show(\"a\")]";
+        assert_eq!(run(source), "[\"integer\", \"string\"]");
+    }
+
+    #[test]
+    fn test_the_type_of_a_const_function_shows_const() {
+        let source = "const def mod(n: Integer, d: Integer) -> Integer\n  n\nend\ntypeof(mod)";
+        assert_eq!(run(source), "const fn(Integer, Integer) -> Integer");
+        let source = "def mod(n: Integer, d: Integer) -> Integer\n  n\nend\ntypeof(mod)";
+        assert_eq!(run(source), "fn(Integer, Integer) -> Integer");
+        let source = "const def show(n: Integer) -> String\n  \"i\"\nend\n\
+            const def show(s: String) -> String\n  \"s\"\nend\n\
+            typeof(show)";
+        assert_eq!(
+            run(source),
+            "const fn(Integer) -> String | const fn(String) -> String"
+        );
+    }
+
+    #[test]
+    fn test_a_function_declared_with_const_def_is_a_declared_function() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("const def one() -> Integer\n  1\nend")
+            .unwrap();
+        let function = runtime.get_function("one").unwrap();
+        assert!(function.is_declared_in_flt());
+    }
+
+    #[test]
+    fn test_a_native_function_marked_const_can_be_called_from_a_const_function() {
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .register_function(NativeFunction::new(
+                FunctionDefinition::new(
+                    "square",
+                    Type::integer(),
+                    vec![Argument::new("n", Type::integer())],
+                )
+                .constant(),
+                |args| {
+                    let n: i64 = args.get("n")?;
+                    Ok(Value::from(n * n))
+                },
+            ))
+            .unwrap();
+        let source = "const def area(n: Integer) -> Integer\n  square(n)\nend\n\
+            def wait(t: Integer = square(3)) -> Integer\n  t\nend\n\
+            [area(3), wait(), typeof(square)]";
+        assert_eq!(
+            runtime.eval(source).unwrap().to_string(),
+            "[9, 9, const fn(Integer) -> Integer]"
+        );
+    }
+
+    #[test]
+    fn test_a_native_function_is_not_const_unless_the_host_marks_it() {
+        let definition = FunctionDefinition::new("f", Type::integer(), vec![]);
+        assert!(!definition.is_const);
+        assert!(definition.constant().is_const);
+    }
+
+    #[test]
+    fn test_all_overloads_of_a_native_const_definition_have_a_const_type() {
+        let definition = FunctionDefinition::new(
+            "f",
+            Type::integer(),
+            vec![Argument::new("n", Type::integer())],
+        )
+        .add_overload(Type::string(), vec![Argument::new("s", Type::string())])
+        .constant();
+        assert_eq!(
+            definition.r#type().to_string(),
+            "const fn(Integer) -> Integer | const fn(String) -> String"
+        );
+    }
+
+    #[test]
+    fn test_a_def_cannot_add_an_overload_to_a_native_const_function() {
+        let mut runtime = SimpleRuntime::default();
+        let (debug, _) = {
+            let error = runtime
+                .eval("def typeof(v: String) -> String\n  v\nend")
+                .unwrap_err();
+            (format!("{error:?}"), error.to_string())
+        };
+        assert!(debug.contains("NameAlreadyBound"), "{debug}");
+    }
+
+    #[test]
+    fn test_a_function_type_is_equal_only_if_both_are_const() {
+        let plain = FunctionType::new(vec![Type::integer()], Type::integer());
+        assert_ne!(plain, plain.clone().constant());
+        assert_eq!(plain.clone().constant(), plain.clone().constant());
+        assert_eq!(
+            plain.clone().constant().to_string(),
+            "const fn(Integer) -> Integer"
+        );
+        let mut runtime = SimpleRuntime::default();
+        runtime
+            .eval("const def f(n: Integer) -> Integer\n  n\nend\ndef g(n: Integer) -> Integer\n  n\nend")
+            .unwrap();
+        let f = runtime.get_function("f").unwrap();
+        let g = runtime.get_function("g").unwrap();
+        assert!(Type::Function(plain.clone().constant()).accepts(&Value::Function(f.clone())));
+        assert!(!Type::Function(plain.clone()).accepts(&Value::Function(f)));
+        assert!(Type::Function(plain.clone()).accepts(&Value::Function(g.clone())));
+        assert!(!Type::Function(plain.constant()).accepts(&Value::Function(g)));
     }
 }

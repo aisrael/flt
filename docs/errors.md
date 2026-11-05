@@ -149,6 +149,22 @@ A call uses a name that has no binding.
 nope(1)        # UndefinedFunction
 ```
 
+### `NonConstFunctionCall`
+
+**Message:** `Function <name> is not const and cannot be called here`
+
+The body of a `const def`, or a default of a keyword parameter, calls a function that is not `const`. See [ADR 029](adrs/029-const-functions-in-the-reference-runtime.md).
+
+```flt
+def stamp() -> Integer
+  now()
+end
+const def bad() -> Integer
+  stamp()        # NonConstFunctionCall
+end
+bad()
+```
+
 ### `NotCallable`
 
 **Message:** `<name> is not a function`
@@ -231,6 +247,21 @@ The result of a function is not of the return type of the signature that the run
 **Message:** `Function <name> already has the overload <type>`
 
 A `def` has the same parameter types as an existing overload of the same name. See [ADR 018](adrs/018-distinct-overload-signatures.md).
+
+### `ConstOverloadMismatch`
+
+**Message:** `Function <name> is const, so all of its overloads must be const` or `Function <name> is not const, so none of its overloads can be const`
+
+A `def` adds an overload to a function declared with `const def`, or a `const def` adds an overload to a function declared with `def`. The runtime checks this before it checks for a duplicate overload. See [ADR 029](adrs/029-const-functions-in-the-reference-runtime.md).
+
+```flt
+const def f(n: Integer) -> Integer
+  n
+end
+def f(s: String) -> String      # ConstOverloadMismatch
+  s
+end
+```
 
 ### `NameAlreadyBound`
 
