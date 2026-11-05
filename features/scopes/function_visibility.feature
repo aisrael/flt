@@ -4,7 +4,7 @@ Feature: Function visibility
   local bindings, global constants, global functions and type names (ADR 027).
   A global variable does not exist for the body. A default of a keyword
   parameter sees global constants, type names and `const` functions, and
-  it can call only `const` functions (ADR 029).
+  it can only call `const` functions (ADR 029).
 
   See docs/runtime.md#function-scope and docs/errors.md.
 

@@ -12,7 +12,7 @@
 
 ## Decisions
 
-### 1. A `const` function calls only `const` functions
+### 1. A `const` function can only call other `const` functions
 
 While the body of a `const def` runs, a call to a function that is not `const` raises a `NonConstFunctionCall` error. This applies to the blocks in the body, and to the functions that the body calls. A call to a `const` function is always allowed.
 
@@ -34,7 +34,7 @@ A `def` function can call a `const` function. Top-level code can call any functi
 
 ### 2. Defaults can call `const` functions
 
-A default of a keyword parameter, of a `def` or of a `const def`, is evaluated with the same rule: it can call only `const` functions. A call to another function raises `NonConstFunctionCall`. This changes decision 5 of ADR 027, where a call to any global function raised `UndefinedFunction`.
+A default of a keyword parameter, of a `def` or of a `const def`, is evaluated with the same rule: it can only call `const` functions. A call to another function raises `NonConstFunctionCall`. This changes decision 5 of ADR 027, where a call to any global function raised `UndefinedFunction`.
 
 ```flt
 const def seconds(m: Integer) -> Integer

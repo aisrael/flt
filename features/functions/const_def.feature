@@ -2,7 +2,7 @@ Feature: const functions
 
   `const def` declares a function that is meant to be pure: the same arguments
   give the same result. In the reference runtime, the body of a `const def`
-  and a default of a keyword parameter can call only `const` functions. All
+  and a default of a keyword parameter can only call `const` functions. All
   overloads of a function are `const`, or none is. See
   docs/functions-and-pipe.md#const-functions, docs/runtime.md#const-functions
   and docs/adrs/028-const-functions.md, docs/adrs/029-const-functions-in-the-reference-runtime.md.

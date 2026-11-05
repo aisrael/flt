@@ -430,7 +430,7 @@ pub struct SimpleRuntime {
     global_scope: GlobalScope,
     /// Which global names the running code sees (ADR 027)
     visibility: Visibility,
-    /// Whether the running code can call only `const` functions: the body of a `const def` and
+    /// Whether the running code can only call `const` functions: the body of a `const def` and
     /// a default of a keyword parameter (ADR 029).
     require_const: bool,
     /// The local scopes, innermost last: the scope of each call to a function declared in flt,
@@ -912,7 +912,7 @@ impl SimpleRuntime {
             unreachable!("an overload of a function declared in flt has a body");
         };
         // A default sees what a body sees, but not the parameters or the caller's variables
-        // (ADR 027). It can call only `const` functions (ADR 029).
+        // (ADR 027). It can only call `const` functions (ADR 029).
         for (keyword, default) in &body.defaults {
             let key = MapKey::symbol(keyword.as_str());
             if keywords.contains_key(&key) {
@@ -973,7 +973,7 @@ impl SimpleRuntime {
         self.frames.push(frame);
         self.calls += 1;
         let caller_visibility = std::mem::replace(&mut self.visibility, Visibility::Body);
-        // The body of a `const` function must call only `const` functions. Any other body can
+        // The body of a `const` function can only call other `const` functions. Any other body can
         // call any function.
         let caller_const = std::mem::replace(&mut self.require_const, function.definition.is_const);
         let result = self.eval_statements(&body.statements);
