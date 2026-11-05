@@ -154,7 +154,7 @@ runtime.set_variable("point", Value::Map(point))?;   // point is {x: 1}
 
 ### Native `const` Functions
 
-A function declared in flt with `const def` is meant to be pure ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can call only `const` functions, so a host that wants its native functions to be callable from them marks them. `FunctionDefinition::constant()` marks the whole definition, so all of its overloads are `const` ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)). No `Runtime` method changes:
+A function declared in flt with `const def` is meant to be pure ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can _only_ call other `const` functions, so a host that wants its native functions to be callable from them marks them. `FunctionDefinition::constant()` marks the whole definition, so all of its overloads are `const` ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)). No `Runtime` method changes:
 
 ```rust
 runtime.register_function(NativeFunction::new(

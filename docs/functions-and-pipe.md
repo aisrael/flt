@@ -156,7 +156,7 @@ Known limitation: `SimpleRuntime` does not yet share overloads with a name that 
 
 ### `const` Functions
 
-A function declared with `const def` is meant to be pure and deterministic: a call with the same arguments always gives the same result ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can call only `const` functions ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)).
+A function declared with `const def` is meant to be pure and deterministic: a call with the same arguments always gives the same result ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can _only_ call other `const` functions ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)).
 
 ```flt
 const def area(w: Integer, h: Integer) -> Integer
