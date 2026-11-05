@@ -111,6 +111,9 @@ pub enum RuntimeError {
     },
     #[error("Cannot bind {name}: it's {reason}")]
     CannotBind { name: String, reason: ProtectedName },
+    /// A program or a host binds a name that is a constant in the same scope
+    #[error("Cannot rebind constant {name}")]
+    ConstantRebound { name: String },
     /// A variable declared with a type is bound to a value of another type
     #[error("Variable {name} expects {expected}, found {found}")]
     VariableTypeMismatch {

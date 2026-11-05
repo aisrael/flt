@@ -1000,6 +1000,35 @@ fn then_statement_should_be_untyped_declaration(world: &mut AstWorld, expected_n
     }
 }
 
+#[then(expr = r#"the statement should be a constant declaration of {string} with type {string}"#)]
+fn then_statement_should_be_typed_constant(
+    world: &mut AstWorld,
+    expected_name: String,
+    expected_type: String,
+) {
+    match parsed_statement(world) {
+        Statement::Const {
+            name,
+            r#type: Some(r#type),
+            ..
+        } => {
+            assert_eq!(name.0, expected_name);
+            assert_eq!(r#type.to_string(), expected_type);
+        }
+        other => panic!("expected a constant declaration with a type, got {other:?}"),
+    }
+}
+
+#[then(expr = r#"the statement should be a constant declaration of {string} without a type"#)]
+fn then_statement_should_be_untyped_constant(world: &mut AstWorld, expected_name: String) {
+    match parsed_statement(world) {
+        Statement::Const {
+            name, r#type: None, ..
+        } => assert_eq!(name.0, expected_name),
+        other => panic!("expected a constant declaration without a type, got {other:?}"),
+    }
+}
+
 #[then(expr = r#"the statement should be an assignment to {string}"#)]
 fn then_statement_should_be_assignment(world: &mut AstWorld, expected_name: String) {
     match parsed_statement(world) {

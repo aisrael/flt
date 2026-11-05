@@ -49,7 +49,7 @@ greet: fn(String, greeting: String) -> String    # greeting defaults to "Hello"
 
 ## Scopes
 
-The reference runtime has three kinds of scope: global, function and block ([ADR 021](adrs/021-block-scopes.md)). Outside a function body, a binding is global. It is visible to every statement after it.
+The reference runtime has three kinds of scope: global, function and block ([ADR 021](adrs/021-block-scopes.md)). Outside a function body, a binding is global. It is visible to every statement after it, but a function body sees only some global bindings (see [Function scope](#function-scope)).
 
 ### Function scope
 
@@ -57,19 +57,49 @@ A call to a function declared with `def` creates a scope for its body:
 
 - Each parameter is bound in this scope, with its declared type. A variadic parameter is bound to an `Array`. A rest keywords parameter is bound to a `Map`.
 - A `let` in the body declares a variable in this scope only. The variable is gone when the call ends.
-- A reference to a name that this scope does not bind looks in the global scope.
-- An assignment `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the scope of the call.
+- A reference to a name that this scope does not bind looks in the global scope, but it finds only constants, functions and type names ([ADR 027](adrs/027-function-visibility.md)). A global variable does not exist for the body. A reference to it raises an [`UnboundIdentifier`](errors.md#unboundidentifier) error.
+- An assignment `x = expr` assigns to the nearest binding of `x` that the body sees. A global variable is not one of them. If there is none, it declares `x` in the scope of the call, and the global variable keeps its value.
 
-A default of a keyword parameter can use global bindings, but not other parameters.
+```flt
+let counter = 0
+const STEP = 2
+def next(n: Integer) -> Integer
+  n + STEP          # STEP is a constant: visible
+end
+def read()
+  counter           # UnboundIdentifier: a global variable is not visible
+end
+def write()
+  counter = 1       # declares a local counter
+  counter
+end
+next(1)             # 3
+write()             # 1
+counter             # 0
+```
 
-A called function does not see the blocks of its caller. It sees only its own scopes and the global scope.
+Thus the result of a call depends only on the arguments, the global constants and the functions that the body calls. A host can change the constants between two calls, so a function is pure for a fixed set of global constants. The runtime assumes that a native function can have side effects, so a function that calls one is not pure.
+
+A default of a keyword parameter sees less than a body: only global constants and type names. It does not see other parameters, global variables or global functions. A reference to a global variable raises `UnboundIdentifier`, and a call to a global function raises [`UndefinedFunction`](errors.md#undefinedfunction). The runtime evaluates a default only when the call leaves out the keyword, so it raises the error then.
+
+```flt
+const WAIT = 5
+def fetch(timeout: Integer = WAIT)       # a constant: allowed
+  timeout
+end
+def stamp(at = now())                    # stamp() raises UndefinedFunction
+  at
+end
+```
+
+A called function does not see the blocks of its caller. It sees only its own scopes and the global constants, functions and type names.
 
 ### Block scope
 
 Each [brace block](spec.md#blocks) has a scope of its own. This includes each brace arm of an `if` ([ADR 020](adrs/020-brace-blocks.md)). A block scope follows the rules of a function scope:
 
 - A `let` declares a variable in the block only. It can hide a name from an outer scope. The outer binding returns when the block ends.
-- A lookup goes from the innermost block outward through the enclosing blocks. Then it goes to the scope of the call, and last to the global scope.
+- A lookup goes from the innermost block outward through the enclosing blocks. Then it goes to the scope of the call, and last to the global scope. In the body of a function, the lookup finds only the global names that [Function scope](#function-scope) lists.
 - An assignment `x = expr` assigns to the nearest binding of `x`. If there is none, it declares `x` in the innermost block.
 - The condition of an `if` is evaluated in the enclosing scope, not in a block of the `if`.
 - The scope of a block is gone when the block ends. It is also gone when an error stops the block.
@@ -87,6 +117,24 @@ y                    # error: y is not bound
 ```
 
 An arm without braces (`if c 1 else 2`) is a plain expression. It has no scope of its own.
+
+### Constants
+
+A binding that `const` declares is a constant ([ADR 025](adrs/025-const-declarations.md)). The runtime marks it in the scope that declares it ([ADR 026](adrs/026-const-in-the-reference-runtime.md)). In that same scope, a `let`, an assignment, a `const` or a host's `set_variable` with the name raises a [`ConstantRebound`](errors.md#constantrebound) error. The runtime checks the name before it evaluates the expression. It evaluates the expression once, when the statement runs, and it does not need to be constant: `const NOW = now()` calls `now()` once.
+
+A `let` or a `const` in an inner scope can hide a constant of an outer scope. This is not a rebind, but it gives a [`ConstantHidden`](errors.md#constanthidden) warning. A parameter hides a constant with no warning. An assignment `X = expr` assigns the nearest binding of `X`. If that is a constant, it raises `ConstantRebound`.
+
+```flt
+const LIMIT = 10
+LIMIT = 11            # ConstantRebound
+let LIMIT = 11        # ConstantRebound
+{
+  let LIMIT = 1       # ConstantHidden: hides the constant in this block
+  LIMIT + 1           # 2
+}
+{ LIMIT = 2 }         # ConstantRebound: the nearest LIMIT is the constant
+LIMIT                 # 10
+```
 
 A host sees only the global scope. The `Runtime` trait does not change.
 

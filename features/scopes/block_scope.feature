@@ -201,12 +201,12 @@ Feature: Block scope
     When I evaluate the input
     Then the evaluation should fail with "Unbound identifier: a"
 
-  Scenario: A function called in a block reads global variables
+  Scenario: A function called in a block reads global constants
     Given the multiline input
       """
-      let g = 5
+      const G = 5
       def get() -> Integer
-        g
+        G
       end
       { let a = 1; get() + a }
       """

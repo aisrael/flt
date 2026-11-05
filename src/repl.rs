@@ -266,7 +266,7 @@ impl<R: Runtime> FltRepl<R> {
             return Err("usage: /unset <identifier>".to_string());
         }
         let ident = Identifier::try_from(args.trim()).map_err(|e| format!("{e:?}"))?;
-        if self.runtime.remove_variable(&ident).is_some() {
+        if self.runtime.remove_binding(&ident).is_some() {
             return Ok(());
         }
         // A name that can't be bound is a built-in type, a function or a native type, not a
@@ -504,6 +504,16 @@ mod tests {
                 .to_string(),
             "Runtime Error: Unbound identifier: x"
         );
+    }
+
+    #[test]
+    fn test_unset_constant_removes_the_constant() {
+        let mut repl = FltRepl::new();
+        let statement = parse_full("const A = 1").unwrap();
+        repl.runtime.eval_statement(&statement).unwrap();
+        assert_eq!(repl.unset("A"), Ok(()));
+        let statement = parse_full("let A = 2").unwrap();
+        assert!(repl.runtime.eval_statement(&statement).is_ok());
     }
 
     #[test]

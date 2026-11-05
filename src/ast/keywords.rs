@@ -19,6 +19,7 @@ pub enum Keyword {
     For,
     In,
     Let,
+    Const,
     While,
     Do,
     Fn,
@@ -46,8 +47,8 @@ mod tests {
         assert_eq!(
             spellings,
             [
-                "if", "else", "elsif", "return", "and", "or", "not", "for", "in", "let", "while",
-                "do", "fn", "def", "end"
+                "if", "else", "elsif", "return", "and", "or", "not", "for", "in", "let", "const",
+                "while", "do", "fn", "def", "end"
             ]
         );
     }

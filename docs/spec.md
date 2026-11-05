@@ -8,13 +8,14 @@ This page describes the syntax of flt and the semantics that every runtime must 
 
 - **Whitespace and comments**: `#` starts a comment. The comment continues to the end of the line. A comment can occur where whitespace can occur.
 - **Identifiers**: one or more of `A-Z a-z 0-9 _ -` (for example `x`, `user_name`, `foo-bar`). Literals have priority over identifiers. Thus `true`, `false`, `None` and names that start with a digit are not identifiers.
-- **Reserved keywords** (matched on word boundaries, so `iffy` is an identifier): `if else elsif return and or not for in let while do fn def end`
+- **Reserved keywords** (matched on word boundaries, so `iffy` is an identifier): `if else elsif return and or not for in let const while do fn def end`
 
 ## 2. Grammar
 
 ```ebnf
 program    = { statement [ ";" ] } ;           (* ";" required only between statements on one line *)
 statement  = "let" ident [ ":" type ] "=" expr  (* declaration *)
+           | "const" ident [ ":" type ] "=" expr  (* constant declaration *)
            | ident "=" expr                       (* assignment *)
            | "def" ident "(" [ params ] ")" [ "->" type ] body  (* function declaration *)
            | "return" [ expr ]                    (* only in a function body *)
@@ -141,7 +142,7 @@ Some places check a value against a type (§6, §7). In these places, `Number` a
 
 A union `A | B` is a value of either type (see [union types](types/union_types.md)). An `if` without `else` gives `None` when its condition is `false`. Thus it has type `T | None`.
 
-flt source writes a type only in a `let` declaration (§7) and in a `def` declaration (§6). A type in these declarations is one of these:
+flt source writes a type only in a `let` or `const` declaration (§7) and in a `def` declaration (§6). A type in these declarations is one of these:
 
 - a built-in type name (including `Any` and `None`);
 - the name of a type that the runtime defines;
@@ -395,13 +396,15 @@ On the left side, a whitespace-form call cannot take an unparenthesized pipe as 
 
 ## 7. Bindings
 
-A variable is a binding of an identifier. At run time, it binds the identifier to a value. For static analysis (for example, type inference), it binds the identifier to an expression.
+A variable is a binding of an identifier. At run time, it binds the identifier to a value.
 
 - **`let` declares a variable.** `let x = expr` declares `x` without a type. `let x: T = expr` declares `x` with the type `T`. The value must be of type `T`, by the same rules as for a function argument (§6). If it is not, the declaration raises a [`VariableTypeMismatch`](errors.md#variabletypemismatch) error. The runtime also converts the value in the same way. Thus `let n: Number = 1` binds `1.0`. A declaration replaces any earlier declaration of `x`, including its type.
+- **`const` declares a constant.** `const X = expr` and `const X: T = expr` bind `X` as `let` does, and follow the same rules for the type. A constant is a binding that the program does not intend to change. A runtime decides what happens when a program rebinds one. By convention, the name of a constant is in `ALL_CAPS`, such as `DEFAULT`. The language does not enforce this.
 - **`x = expr` assigns.** If `x` was declared with a type, the value must be of that type. If it is not, the assignment raises a [`VariableTypeMismatch`](errors.md#variabletypemismatch) error, and `x` keeps its value. The runtime converts the value as in a declaration. If `x` has no declared type, the value replaces the binding, including its type. After `let x = 1` and then `x = "a"`, `x` has type `String`. An assignment to a name with no binding declares the name without a type.
 - **The runtime checks the name and the type before it evaluates the value.** A type name that the runtime does not know raises an [`UnknownType`](errors.md#unknowntype) error.
 - **A binding evaluates to the bound value.**
-- **Bindings are global, except in a function call.** A binding outside a function body is visible to every statement after it. A binding in the scope of a function call is limited to the call (§6). A runtime decides whether a block has a scope of its own (§2). The runtime decides what other names a binding cannot use (see [`runtime.md`](runtime.md#scopes)).
+- **Which statements see a binding is not part of the language.** A runtime decides the visibility of a binding, including the scopes of blocks and function calls (see [`runtime.md`](runtime.md#scopes)).
+- **A runtime decides what other names a binding cannot use** (see [`runtime.md`](runtime.md#scopes)).
 - A reference to an identifier with no binding raises an [`UnboundIdentifier`](errors.md#unboundidentifier) error.
 
 ```flt
@@ -412,4 +415,7 @@ let i: Integer = 1.0      # VariableTypeMismatch
 let n = "two"             # ok: declares n again, without a type
 let x: Number | None = None
 let y: Foo = 1            # UnknownType
+const DEFAULT = "default"
+const LIMIT: Integer = 10
+const RATE: Number = 2    # RATE is 2.0
 ```

@@ -9,12 +9,14 @@ use nom::sequence::preceded;
 use nom::sequence::terminated;
 use nom::Parser;
 
+use crate::ast::Expr;
 use crate::ast::FunctionDeclaration;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::Parameter;
 use crate::ast::ParameterKind;
 use crate::ast::Statement;
+use crate::ast::TypeExpr;
 use crate::parser::IResult;
 use crate::parser::ParseError;
 use crate::Error;
@@ -42,20 +44,16 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let mut parse_let_or_assign = alt((
         map(
-            (
-                verify(parse_keyword, |k: &Keyword| *k == Keyword::Let),
-                multispace0_or_comment,
-                parse_binding_name,
-                multispace0_or_comment,
-                opt(terminated(
-                    preceded((tag(":"), multispace0_or_comment), parse_type),
-                    multispace0_or_comment,
-                )),
-                tag("="),
-                multispace0_or_comment,
-                parse_expr,
-            ),
-            |(_, _, name, _, r#type, _, _, expr)| Statement::Let {
+            |input| parse_declaration(Keyword::Let, input),
+            |(name, r#type, expr)| Statement::Let {
+                name: Identifier(name.to_string()),
+                r#type,
+                expr,
+            },
+        ),
+        map(
+            |input| parse_declaration(Keyword::Const, input),
+            |(name, r#type, expr)| Statement::Const {
                 name: Identifier(name.to_string()),
                 r#type,
                 expr,
@@ -77,7 +75,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         map(parse_def, Statement::Def).parse(input)?
     } else if starts_with_keyword(input, Keyword::Return) {
         parse_return(input)?
-    } else if input.starts_with("let") {
+    } else if input.starts_with("let") || input.starts_with("const") {
         parse_let_or_assign.parse(input)?
     } else {
         alt((parse_let_or_assign, map(parse_expr, Statement::Expr))).parse(input)?
@@ -85,6 +83,31 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0_or_comment(input)?;
     let (input, _) = opt(tag(";")).parse(input)?;
     Ok((input, stmt))
+}
+
+/// Parses a declaration after `keyword`, `let` or `const`: a name, an optional type after a `:`,
+/// and an expression.
+fn parse_declaration(
+    keyword: Keyword,
+    input: &str,
+) -> IResult<&str, (&str, Option<TypeExpr>, Expr)> {
+    map(
+        (
+            verify(parse_keyword, |k: &Keyword| *k == keyword),
+            multispace0_or_comment,
+            parse_binding_name,
+            multispace0_or_comment,
+            opt(terminated(
+                preceded((tag(":"), multispace0_or_comment), parse_type),
+                multispace0_or_comment,
+            )),
+            tag("="),
+            multispace0_or_comment,
+            parse_expr,
+        ),
+        |(_, _, name, _, r#type, _, _, expr)| (name, r#type, expr),
+    )
+    .parse(input)
 }
 
 /// Parses `return` and its expression, if any. The expression is on the same line as `return`:
@@ -446,7 +469,8 @@ mod tests {
     fn parses_as_binding(input: &str) -> bool {
         matches!(
             parse_statement(input),
-            Ok((rest, Statement::Let { .. } | Statement::Assign(_, _))) if rest.trim().is_empty()
+            Ok((rest, Statement::Let { .. } | Statement::Const { .. } | Statement::Assign(_, _)))
+                if rest.trim().is_empty()
         )
     }
 
@@ -458,10 +482,106 @@ mod tests {
                 "let {keyword} = 1 should not parse as a binding"
             );
             assert!(
+                !parses_as_binding(&format!("const {keyword} = 1")),
+                "const {keyword} = 1 should not parse as a binding"
+            );
+            assert!(
                 !parses_as_binding(&format!("{keyword} = 1")),
                 "{keyword} = 1 should not parse as a binding"
             );
         }
+    }
+
+    #[test]
+    fn test_parse_const_statement() {
+        let (rest, stmt) = parse_statement("const A = 1").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(stmt, Statement::constant("A", Expr::literal_integer(1)));
+    }
+
+    #[test]
+    fn test_parse_const_statement_with_expr() {
+        let (rest, stmt) = parse_statement("const A = 1 + 2").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(stmt.to_string(), "const A = 1 + 2");
+    }
+
+    #[test]
+    fn test_parse_typed_const_statement() {
+        let expected =
+            Statement::constant_typed("A", TypeExpr::name("Number"), Expr::literal_integer(1));
+        for input in [
+            "const A: Number = 1",
+            "const A:Number=1",
+            "const A : Number = 1",
+        ] {
+            assert_eq!(
+                parse_statement(input),
+                Ok(("", expected.clone())),
+                "{input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_typed_const_statement_with_union() {
+        let (rest, stmt) = parse_statement("const A: Number | None = None").unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(
+            stmt,
+            Statement::constant_typed(
+                "A",
+                TypeExpr::Union(vec![TypeExpr::name("Number"), TypeExpr::name("None")]),
+                Expr::Literal(crate::ast::Literal::None)
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_const_needs_a_name_a_value_and_a_binding_name() {
+        for input in [
+            "const A",
+            "const = 1",
+            "const 1 = 2",
+            "const A: = 1",
+            "const A: Number",
+            "const: Integer = 1",
+            "let const = 1",
+            "const = 1",
+        ] {
+            assert!(!parses_as_binding(input), "{input:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_const_with_comments_and_separators() {
+        assert_eq!(
+            parse_statement("const A # the name\n  = 1"),
+            Ok(("", Statement::constant("A", Expr::literal_integer(1))))
+        );
+        assert_eq!(
+            parse_statement("const A = 1;"),
+            Ok(("", Statement::constant("A", Expr::literal_integer(1))))
+        );
+        assert_eq!(
+            parse_statements("const A = 1; const B = 2").unwrap(),
+            vec![
+                Statement::constant("A", Expr::literal_integer(1)),
+                Statement::constant("B", Expr::literal_integer(2)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_a_name_that_starts_with_const_is_a_name() {
+        assert_eq!(
+            parse_statement("constant = 1"),
+            Ok(("", Statement::assign("constant", Expr::literal_integer(1))))
+        );
+        assert_eq!(
+            parse_statement("const-a = 1"),
+            Ok(("", Statement::assign("const-a", Expr::literal_integer(1))))
+        );
     }
 
     fn let_x(n: i64) -> Statement {
