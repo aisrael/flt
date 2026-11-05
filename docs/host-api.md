@@ -21,8 +21,8 @@ runtime.eval("x * 2")?;          // 6
 | `register_native_type::<T>()` | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails |
 | `register_native_type_info(info)` | the same, given its `NativeTypeInfo` |
 | `get_native_type(name)` | a registered native type |
-| `set_variable(name, value)` | assigns a global variable, as `name = value` does, or fails. It fails on a constant |
-| `declare_constant(name, value)` | binds a global constant, replacing a variable of that name, or fails |
+| `set_variable(name, value)` | assigns a global variable, as `name = value` does, or fails. It fails on a constant. A function declared in flt does not see the variable |
+| `declare_constant(name, value)` | binds a global constant, replacing a variable of that name, or fails. A function declared in flt sees the constant |
 | `get_variable(name)` | a global variable's value |
 | `remove_binding(name)` | unbinds a global variable or constant and its declared type, returning its value |
 | `check_bindable(name)` | whether `name` can be bound, and if not, why |

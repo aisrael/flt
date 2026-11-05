@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- **A function body does not see global variables**: The body of a function declared with `def` sees only its parameters, its local bindings, global constants, global functions and type names. Reading a global variable raises `UnboundIdentifier`, and `x = …` with the name of a global variable declares a local. A default of a keyword parameter sees only global constants and type names. Pass a value as an argument, or declare a `const`. A host that gives context to functions with `set_variable` must use `declare_constant` ([ADR 027](https://github.com/aisrael/flt/blob/main/docs/adrs/027-function-visibility.md)).
 - **`const` is a reserved keyword**: It is no longer a valid name. `Keyword::Const` and `Statement::Const` are new, so an exhaustive `match` on `Statement` must handle the new variant ([ADR 025](https://github.com/aisrael/flt/blob/main/docs/adrs/025-const-declarations.md)).
 - **`remove_variable` is now `remove_binding`**: `Runtime::remove_variable` is renamed `Runtime::remove_binding`. It removes a variable or a constant ([ADR 026](https://github.com/aisrael/flt/blob/main/docs/adrs/026-const-in-the-reference-runtime.md)).
 

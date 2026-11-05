@@ -262,20 +262,6 @@ Feature: Declaring functions with def
     When I evaluate the input
     Then the evaluation should fail with "Keyword argument greeting of greet expects String, found Integer"
 
-  Scenario: A default is evaluated for each call that omits the keyword
-    Given the multiline input
-      """
-      let base = 1
-      def plus(n: Integer, by: Integer = base) -> Integer
-        n + by
-      end
-      let first = plus(10)
-      base = 5
-      [first, plus(10)]
-      """
-    When I evaluate the input
-    Then the result should be "[11, 15]"
-
   Scenario: A default can't use another parameter
     Given the multiline input
       """
@@ -392,18 +378,6 @@ Feature: Declaring functions with def
     When I evaluate the input
     Then the evaluation should fail with "Unbound identifier: inner"
 
-  Scenario: A body reads global variables
-    Given the multiline input
-      """
-      let base = 10
-      def plus(n: Integer) -> Integer
-        n + base
-      end
-      plus(1)
-      """
-    When I evaluate the input
-    Then the result should be "11"
-
   Scenario: A parameter hides a global variable of the same name
     Given the multiline input
       """
@@ -427,20 +401,6 @@ Feature: Declaring functions with def
       """
     When I evaluate the input
     Then the evaluation should fail with "Variable n expects Integer, found String"
-
-  Scenario: An assignment in the body changes the nearest binding
-    Given the multiline input
-      """
-      let count = 0
-      def bump()
-        count = count + 1
-        None
-      end
-      bump()
-      count
-      """
-    When I evaluate the input
-    Then the result should be "1"
 
   Scenario: An assignment to an unbound name in the body declares it in the call
     Given the multiline input
