@@ -180,6 +180,19 @@ fn native_function(name: &str) -> Option<NativeFunction> {
                 Ok(Value::String(format!("{greeting}, {name}")))
             },
         )),
+        // A native function that is `const`: the same argument always gives the same result
+        "square" => Some(NativeFunction::new(
+            FunctionDefinition::new(
+                "square",
+                Type::integer(),
+                vec![Argument::new("n", Type::integer())],
+            )
+            .constant(),
+            |args| {
+                let n: i64 = args.get("n")?;
+                Ok(Value::from(n * n))
+            },
+        )),
         "options" => Some(NativeFunction::new(
             FunctionDefinition::new("options", Type::map(), vec![]).rest_keywords(Type::any()),
             |args| Ok(Value::Map(args.keywords().clone())),

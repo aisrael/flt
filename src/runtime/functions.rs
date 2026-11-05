@@ -14,6 +14,7 @@ use crate::errors::ArgumentCounts;
 use crate::errors::HandlerError;
 use crate::errors::RuntimeError;
 use crate::runtime::native::NativeType;
+use crate::runtime::types::FunctionType;
 use crate::runtime::types::Type;
 use crate::runtime::unexpected_type;
 use crate::runtime::Map;
@@ -312,6 +313,9 @@ impl<'a> FromValue<'a> for BigDecimal {
 pub struct FunctionDefinition {
     pub name: String,
     pub overloads: Vec<FunctionSignature>,
+    /// Whether the function is `const`: meant to be pure, so that a `const` function can call
+    /// it (ADR 029). All overloads of a function are `const`, or none is.
+    pub is_const: bool,
 }
 
 impl FunctionDefinition {
@@ -326,7 +330,17 @@ impl FunctionDefinition {
         Self {
             name,
             overloads: vec![FunctionSignature::new(arguments, return_type)],
+            is_const: false,
         }
+    }
+
+    /// Mark the function as `const`, with all its overloads. A `const` function can be called
+    /// from the body of a `const def` and from a default (ADR 029). The runtime cannot check a
+    /// native function, so the host must keep the contract: a call with the same arguments
+    /// always gives the same result.
+    pub fn constant(mut self) -> Self {
+        self.is_const = true;
+        self
     }
 
     /// Add a new overload to the function definition
@@ -410,7 +424,14 @@ impl FunctionDefinition {
     pub fn r#type(&self) -> Type {
         self.overloads
             .iter()
-            .map(|overload| Type::Function(overload.into()))
+            .map(|overload| {
+                let function_type = FunctionType::from(overload);
+                Type::Function(if self.is_const {
+                    function_type.constant()
+                } else {
+                    function_type
+                })
+            })
             .reduce(Type::union)
             .unwrap_or_else(|| Type::Union(Vec::new()))
     }

@@ -149,11 +149,15 @@ impl Type {
             }
             // A function whose type, or one of whose overloads' types, is exactly this one
             Type::Function(function_type) => match value {
-                Value::Function(function) => function
-                    .definition
-                    .overloads
-                    .iter()
-                    .any(|overload| FunctionType::from(overload) == *function_type),
+                Value::Function(function) => function.definition.overloads.iter().any(|overload| {
+                    let found = FunctionType::from(overload);
+                    let found = if function.definition.is_const {
+                        found.constant()
+                    } else {
+                        found
+                    };
+                    found == *function_type
+                }),
                 _ => false,
             },
             // No value has a custom type yet

@@ -120,6 +120,14 @@ end
 
 A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. In the reference runtime, a `def` is allowed only at the top level, not in a block or in a function body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
+A **`const` function** starts with `const def`. It declares a function that is meant to be pure: the same arguments give the same result ([ADR 028](./adrs/028-const-functions.md)). See [`const` Functions](./functions-and-pipe.md#const-functions).
+
+```flt
+const def area(w: Integer, h: Integer) -> Integer
+  w * h
+end
+```
+
 A **return statement** is `return` with an optional expression. It stops the call of the enclosing function and gives its value. It is allowed only in the body of a `def` and the blocks inside it ([ADR 023](./adrs/023-return-statement.md)):
 
 ```flt

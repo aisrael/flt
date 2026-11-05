@@ -71,7 +71,8 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         ),
     ));
 
-    let (input, stmt) = if starts_with_keyword(input, Keyword::Def) {
+    let (input, stmt) = if starts_with_keyword(input, Keyword::Def) || starts_with_const_def(input)
+    {
         map(parse_def, Statement::Def).parse(input)?
     } else if starts_with_keyword(input, Keyword::Return) {
         parse_return(input)?
@@ -133,6 +134,16 @@ fn starts_with_keyword(input: &str, keyword: Keyword) -> bool {
     matches!(parse_keyword(input), Ok((_, found)) if found == keyword)
 }
 
+/// Whether `input` starts with `const` and then `def`, which is a function declaration. `const`
+/// and a name is a constant declaration.
+fn starts_with_const_def(input: &str) -> bool {
+    match parse_keyword(input) {
+        Ok((rest, Keyword::Const)) => multispace0_or_comment(rest)
+            .is_ok_and(|(rest, _)| starts_with_keyword(rest, Keyword::Def)),
+        _ => false,
+    }
+}
+
 /// A failure, which stops the parser from trying anything else, e.g. a `def` with its
 /// parameters in the wrong order.
 fn failure(input: &str) -> nom::Err<ParseError<&str>> {
@@ -183,12 +194,25 @@ fn default_contains_return(param: &Parameter) -> bool {
     matches!(&param.kind, ParameterKind::Keyword(default) if default.contains_return())
 }
 
-/// Parses a function declaration, `def name(params) -> type`, a body and `end`. The `-> type` is
-/// optional. The body is statements, separated by newlines or by `;`.
+/// Parses a function declaration, `def name(params) -> type`, a body and `end`, with an optional
+/// `const` before `def`. The `-> type` is optional. The body is statements, separated by newlines
+/// or by `;`.
 fn parse_def(input: &str) -> IResult<&str, FunctionDeclaration> {
+    let (input, is_const) = opt(terminated(
+        verify(parse_keyword, |k: &Keyword| *k == Keyword::Const),
+        multispace0_or_comment,
+    ))
+    .parse(input)?;
     let (input, _) = verify(parse_keyword, |k: &Keyword| *k == Keyword::Def).parse(input)?;
     // After `def`, nothing else can parse, so a mistake is a failure
-    cut(parse_def_rest).parse(input)
+    let (input, declaration) = cut(parse_def_rest).parse(input)?;
+    Ok((
+        input,
+        FunctionDeclaration {
+            is_const: is_const.is_some(),
+            ..declaration
+        },
+    ))
 }
 
 fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
@@ -213,6 +237,7 @@ fn parse_def_rest(input: &str) -> IResult<&str, FunctionDeclaration> {
     Ok((
         input,
         FunctionDeclaration {
+            is_const: false,
             name: Identifier(name.to_string()),
             params,
             return_type,
@@ -769,6 +794,91 @@ mod tests {
             let printed = stmt.to_string();
             assert_eq!(parse_def(&printed), Ok(stmt), "{printed:?}");
         }
+    }
+
+    fn parse_const_def(source: &str) -> Result<Statement, String> {
+        match parse_statement(source) {
+            Ok((rest, stmt))
+                if rest.trim().is_empty() && stmt.to_string().starts_with("const def ") =>
+            {
+                Ok(stmt)
+            }
+            Ok((rest, stmt)) => Err(format!("not a const def, or left {rest:?}: {stmt:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_parse_const_def_accepts_every_kind_of_parameter() {
+        for source in [
+            "const def flip_a_coin() -> Boolean\n  true\nend",
+            "const def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend",
+            "const def greet(name: String, greeting: String = \"Hello\") -> String\n  greeting\nend",
+            "const def log(label: String, *values: Any, level: Symbol = :info)\n  None\nend",
+            "const def options(**opts: Any) -> Map\n  opts\nend",
+            "const def one() 1 end",
+            "const   def   spaced() 1 end",
+            "const def nothing()\nend",
+        ] {
+            assert!(parse_const_def(source).is_ok(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_const_def_display_parses_back_to_the_same_statement() {
+        for source in [
+            "const def flip_a_coin() -> Boolean\n  true\nend",
+            "const def mod(n: Integer, d: Integer) -> Integer\n  n - (n // d) * d\nend",
+            "const def log(label: String, *values: Any, level: Symbol = :info)\n  None\nend",
+            "const def two() -> Integer\n  1\n  2\nend",
+        ] {
+            let stmt = parse_const_def(source).unwrap();
+            let printed = stmt.to_string();
+            assert_eq!(parse_const_def(&printed), Ok(stmt), "{printed:?}");
+        }
+    }
+
+    #[test]
+    fn test_a_const_def_is_not_the_same_statement_as_a_def() {
+        let plain = parse_def("def one() 1 end").unwrap();
+        let constant = parse_const_def("const def one() 1 end").unwrap();
+        assert_ne!(plain, constant);
+        assert_eq!(
+            plain.to_string().replacen("def ", "const def ", 1),
+            constant.to_string()
+        );
+    }
+
+    #[test]
+    fn test_const_def_checks_the_same_rules_as_def() {
+        for source in [
+            "const def f(a: Integer = 1, b: Integer) 1 end",
+            "const def f(a: Integer, a: Integer) 1 end",
+            "const def end() 1 end",
+            "const def f(",
+            "const def",
+            "const def f() 1",
+        ] {
+            assert!(
+                parse_statement(source).map_or(true, |(rest, _)| !rest.trim().is_empty()),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_const_followed_by_a_name_that_starts_with_def_is_a_constant() {
+        for source in ["const defer = 1", "const default: Integer = 1"] {
+            let (rest, stmt) = parse_statement(source).unwrap();
+            assert!(rest.is_empty(), "{source:?}");
+            assert!(matches!(stmt, Statement::Const { .. }), "{stmt:?}");
+        }
+    }
+
+    #[test]
+    fn test_const_def_in_a_statement_list() {
+        let statements = parse_statements("const def one() 1 end\none()").unwrap();
+        assert_eq!(statements.len(), 2);
     }
 
     #[test]
