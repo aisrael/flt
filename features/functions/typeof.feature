@@ -1,7 +1,7 @@
 Feature: typeof
 
   `typeof` is a native function that the runtime registers in the global scope,
-  of type `fn(Any) -> Type`. It's a function value like any other, so it can be
+  of type `const fn(Any) -> Type`. It's a function value like any other, so it can be
   bound to another name and piped into through that name. Like any function's
   name, `typeof` can't be bound. See docs/functions-and-pipe.md#built-in-functions.
 
@@ -13,7 +13,7 @@ Feature: typeof
   Scenario: The type of typeof
     Given the input 'typeof(typeof)'
     When I evaluate the input
-    Then the result should be "fn(Any) -> Type"
+    Then the result should be "const fn(Any) -> Type"
 
   Scenario: Calling typeof through another name
     Given the input 'let t = typeof; t(42)'

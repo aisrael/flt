@@ -129,7 +129,7 @@ A name that is neither a variable, a function nor a type is an error, e.g. `Foo`
 
 ## `Any`
 
-`Any` is a placeholder used only in type and function signatures, where it means "accepts any value". For example, a function that takes one argument of any type and returns its type has the type `fn(Any) -> Type`.
+`Any` is a placeholder used only in type and function signatures, where it means "accepts any value". For example, a function that takes one argument of any type and returns its type has the type `const fn(Any) -> Type`. A `const` function shows `const` before `fn` ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)).
 
 `Any` is also what a declaration gets when no type is given. This applies to a variable, a parameter, or a function's return type.
 

@@ -466,7 +466,7 @@ mod tests {
         let repl = FltRepl::new();
         assert_eq!(
             repl.inspect_identifier("typeof"),
-            "(function) fn(Any) -> Type"
+            "(function) const fn(Any) -> Type"
         );
     }
 
@@ -477,7 +477,7 @@ mod tests {
         assert!(repl.runtime.eval_statement(&statement).is_err());
         assert_eq!(
             repl.inspect_identifier("typeof"),
-            "(function) fn(Any) -> Type"
+            "(function) const fn(Any) -> Type"
         );
     }
 

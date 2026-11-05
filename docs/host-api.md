@@ -17,7 +17,7 @@ runtime.eval("x * 2")?;          // 6
 | --- | --- |
 | `eval(source)` | parses and evaluates flt source, returning the last statement's value |
 | `eval_statement(statement)` | evaluates one parsed statement |
-| `register_function(function)` | registers a [native function](./native-functions-and-values.md#native-functions), replacing one of the same name, or fails |
+| `register_function(function)` | registers a [native function](./native-functions-and-values.md#native-functions), replacing one of the same name, or fails. A function marked [`const`](./native-functions-and-values.md#native-const-functions) can be called from a `const` function |
 | `register_native_type::<T>()` | registers the [native type](./native-functions-and-values.md#native-types-and-values) `T`, or fails |
 | `register_native_type_info(info)` | the same, given its `NativeTypeInfo` |
 | `get_native_type(name)` | a registered native type |

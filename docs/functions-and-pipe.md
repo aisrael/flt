@@ -84,7 +84,7 @@ end
 
 A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type. Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
 
-A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global constants, but not other parameters, global variables or global functions ([Scope](#scope)).
+A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global constants and calls to [`const` functions](#const-functions), but not other parameters or global variables ([Scope](#scope)).
 
 ### Return Type and Body
 
@@ -150,9 +150,44 @@ Each call has its own scope:
 
 A `def` is allowed only at the top level, not in a block or in the body of a function: that raises `DefNotAtTopLevel`. A `def` binds its name globally and gives `None`. The name is bound before the body runs, so a function can call itself.
 
-A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function.
+A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function. All overloads of a function are `const`, or none is: a `def` that adds an overload to a `const` function, or the other way round, raises `ConstOverloadMismatch` ([`const` Functions](#const-functions)).
 
 Known limitation: `SimpleRuntime` does not yet share overloads with a name that is bound to the function. After `let f = show`, a later `def show(…)` adds an overload to `show` but not to `f`. Declare every overload before you bind the function to another name.
+
+### `const` Functions
+
+A function declared with `const def` is meant to be pure and deterministic: a call with the same arguments always gives the same result ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can _only_ call other `const` functions ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)).
+
+```flt
+const def area(w: Integer, h: Integer) -> Integer
+  w * h
+end
+const def double_area(w: Integer, h: Integer) -> Integer
+  area(w, h) * 2            # a call to a const function: allowed
+end
+def now_area(w: Integer, h: Integer) -> Integer
+  area(w, h)                # a def function can call a const function
+end
+
+typeof(area)                # const fn(Integer, Integer) -> Integer
+```
+
+A call from a `const` function to a function that is not `const` raises `NonConstFunctionCall`. The runtime checks this when the call runs, so a branch that does not run gives no error:
+
+```flt
+def stamp() -> Integer
+  now()
+end
+const def bad() -> Integer
+  stamp()                   # NonConstFunctionCall
+end
+bad()
+```
+
+- A default of a keyword parameter follows the same rule, for `def` and for `const def`. It can call a `const` function. A call to another function raises `NonConstFunctionCall`.
+- All overloads of a function are `const`, or none is. A `def` that adds an overload to a `const` function raises `ConstOverloadMismatch`, and so does a `const def` that adds an overload to a function declared with `def`.
+- A host can register native `const` functions ([Native `const` Functions](./native-functions-and-values.md#native-const-functions)). The built-in `typeof` is `const`. A native function that the host does not mark is assumed to have side effects.
+- A `const` function is pure for a fixed set of global constants.
 
 ## Pipe Operator
 
@@ -225,15 +260,15 @@ Piping into anything other than a call or a name raises `Cannot pipe into <expr>
 
 ## Built-in Functions
 
-The runtime currently registers one built-in function:
+The runtime currently registers one built-in function, and it is [`const`](#const-functions):
 
 - `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Integer`, `typeof(4.2)` to `Number`, `typeof({a: 1})` to `Map`, and `typeof(42) == Integer` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
 
-Built-ins are [native functions](./native-functions-and-values.md#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `fn(Any) -> Type`:
+Built-ins are [native functions](./native-functions-and-values.md#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `const fn(Any) -> Type`:
 
 ```flt
 typeof                # <fn typeof>
-typeof(typeof)        # fn(Any) -> Type
+typeof(typeof)        # const fn(Any) -> Type
 let t = typeof
 t("hi")               # String
 1 |> t                # Integer

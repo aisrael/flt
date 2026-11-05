@@ -157,3 +157,14 @@ Feature: flt repl
       """
     Then the command should succeed
     And the output should not contain "Loading REPL history"
+
+  Scenario: declare and inspect a const function
+    When the REPL is run and the user types:
+      """
+      const def area(w: Integer, h: Integer) -> Integer w * h end
+      area(3, 4)
+      /inspect area
+      """
+    Then the command should succeed
+    And the output should contain "12"
+    And the output should contain "(function) const fn(Integer, Integer) -> Integer"

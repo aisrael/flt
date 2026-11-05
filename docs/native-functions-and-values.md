@@ -152,6 +152,26 @@ runtime.set_variable("point", Value::Map(point))?;   // point is {x: 1}
 
 ### Keyword Arguments
 
+### Native `const` Functions
+
+A function declared in flt with `const def` is meant to be pure ([ADR 028](./adrs/028-const-functions.md)). In the reference runtime, a `const` function can _only_ call other `const` functions, so a host that wants its native functions to be callable from them marks them. `FunctionDefinition::constant()` marks the whole definition, so all of its overloads are `const` ([ADR 029](./adrs/029-const-functions-in-the-reference-runtime.md)). No `Runtime` method changes:
+
+```rust
+runtime.register_function(NativeFunction::new(
+    FunctionDefinition::new("square", Type::integer(), vec![Argument::new("n", Type::integer())])
+        .constant(),
+    square,
+))?;
+```
+
+```flt
+const def area(n: Integer) -> Integer
+  square(n)            # allowed: square is const
+end
+```
+
+The runtime cannot check a native function. The host must keep the contract: a call with the same arguments always gives the same result. A native function that the host does not mark is assumed to have side effects, and a call to it from a `const` function raises `NonConstFunctionCall`. The type of a `const` function shows `const`, e.g. `const fn(Integer) -> Integer`.
+
 A native function can declare optional [keyword arguments](./functions-and-pipe.md#keyword-arguments), each with a type and a default, with `FunctionDefinition::keyword` ([ADR 010](./adrs/010-keyword-arguments.md)). Its handler reads them by name, like its positional arguments:
 
 ```rust
