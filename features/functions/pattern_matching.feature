@@ -1,12 +1,12 @@
-Feature: Literal patterns in function parameters
+Feature: Pattern matching in function parameters
 
   A positional parameter can be a literal, such as `def foo(0)`. The parameter
   accepts only that value. A pattern matches by type and by value, so `def
   foo(2)` accepts the `Integer` 2 and not the `Number` 2.0. A pattern is the
   narrowest overload for its value, so `SimpleRuntime` runs it whatever the
   order of the `def`s. Only a literal is a pattern. See
-  docs/functions-and-pipe.md#literal-patterns and
-  docs/adrs/030-literal-patterns.md.
+  docs/functions-and-pipe.md#pattern-matching and
+  docs/adrs/030-pattern-matching.md.
 
   # Choosing an overload
 

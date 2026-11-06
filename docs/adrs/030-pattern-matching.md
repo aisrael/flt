@@ -1,4 +1,4 @@
-# ADR 030: Literal Patterns in Function Parameters
+# ADR 030: Pattern Matching in Function Parameters
 
 - **Date:** 2026-11-05
 - **Scope:** Language specification
@@ -14,7 +14,7 @@ def fib(n: Integer) -> Integer
 end
 ```
 
-Some languages, such as Elixir, let a parameter be a value. The overload then accepts only that value. This ADR adds **literal patterns** for positional parameters.
+Some languages, such as Elixir, let a parameter be a value. The overload then accepts only that value. This ADR adds **pattern matching** to positional parameters, starting with **literal patterns**.
 
 ```flt
 def fib(0) -> Integer

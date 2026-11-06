@@ -120,7 +120,7 @@ end
 
 A declaration has a name, the parameters in parentheses, an optional `-> type`, and a body. In the reference runtime, a `def` is allowed only at the top level, not in a block or in a function body. See [Declaring Functions](./functions-and-pipe.md#declaring-functions).
 
-A positional parameter can be a **literal pattern** instead of a typed name. It accepts only that value ([ADR 030](./adrs/030-literal-patterns.md)). See [Literal Patterns](./functions-and-pipe.md#literal-patterns).
+A positional parameter can be a **literal pattern** instead of a typed name. It accepts only that value ([ADR 030](./adrs/030-pattern-matching.md)). See [Pattern Matching](./functions-and-pipe.md#pattern-matching).
 
 ```flt
 def fib(0) -> Integer

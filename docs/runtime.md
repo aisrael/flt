@@ -228,9 +228,9 @@ foo(:b)          # the first
 
 The keywords of a call help to select the signature to call. If no signature declares a keyword, the call raises an `UnexpectedKeywordArgument` error.
 
-## Literal patterns
+## Pattern matching
 
-A positional parameter can be a literal pattern ([ADR 030](adrs/030-literal-patterns.md)). `SimpleRuntime` treats it in these ways:
+A positional parameter can be a literal pattern ([ADR 030](adrs/030-pattern-matching.md)). `SimpleRuntime` treats it in these ways:
 
 - **A pattern matches by type and by value.** An argument matches if its type is the type of the literal and it is equal to it. `def foo(2)` does not accept `2.0`. The runtime does not convert an `Integer` to a `Number` to match a `Number` pattern.
 - **A pattern is the narrowest type.** A literal type is at least as narrow as itself, as its base type, as `Number` if it is an integer, as `Any` and as a union that has one of these (see [The Narrowest Overload](functions-and-pipe.md#the-narrowest-overload)). So `SimpleRuntime` runs the pattern when it matches, whatever the order of the `def`s. This needs no new rule for selecting an overload.
@@ -267,7 +267,7 @@ A call raises one of these errors. See [`errors.md`](errors.md) for the cause an
 - a `NotCallable` error when the name is bound to a value that is not a function;
 - an `ArgumentCountMismatch` error when no signature of the function takes that number of positional arguments;
 - when one signature takes that number of positional arguments but does not match, an error for the first check that fails. The runtime checks positional arguments first. Then it checks keywords in the order of the call:
-  - an `ArgumentTypeMismatch` error for a positional argument of the wrong type, or one that does not match a [literal pattern](#literal-patterns);
+  - an `ArgumentTypeMismatch` error for a positional argument of the wrong type, or one that does not match a [literal pattern](#pattern-matching);
   - an `UnexpectedKeywordArgument` error for a keyword that the signature does not accept;
   - a `KeywordTypeMismatch` error for a keyword value of the wrong type;
 - when several signatures take that number of positional arguments and none matches, the error for the closest signature, as if it were the only one;

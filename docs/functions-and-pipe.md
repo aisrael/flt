@@ -82,7 +82,7 @@ def log(label: String, *values: Any, level: Symbol = :info, **extra: Any)
 end
 ```
 
-A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type, or is a [literal pattern](#literal-patterns). Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
+A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type, or is a [literal pattern](#pattern-matching). Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
 
 A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global constants and calls to [`const` functions](#const-functions), but not other parameters or global variables ([Scope](#scope)).
 
@@ -154,9 +154,9 @@ A second `def` with the same name adds an overload ([Overloads](#overloads)). Tw
 
 Known limitation: `SimpleRuntime` does not yet share overloads with a name that is bound to the function. After `let f = show`, a later `def show(…)` adds an overload to `show` but not to `f`. Declare every overload before you bind the function to another name.
 
-### Literal Patterns
+### Pattern Matching
 
-A positional parameter can be a literal instead of a typed name. The parameter then accepts only that value ([ADR 030](./adrs/030-literal-patterns.md)). The literal is an integer, a number, a string, a boolean, `None` or a symbol. An integer or a number can have a `-` or `+` sign in front, with no space, as in `-1`, `-2.5` and `+1`.
+A positional parameter can be a literal instead of a typed name. The parameter then accepts only that value ([ADR 030](./adrs/030-pattern-matching.md)). The literal is an integer, a number, a string, a boolean, `None` or a symbol. An integer or a number can have a `-` or `+` sign in front, with no space, as in `-1`, `-2.5` and `+1`.
 
 ```flt
 def foo(i: Integer) -> Integer
@@ -381,7 +381,7 @@ A function can have several signatures, or overloads. A call runs the one that m
 When no overload matches:
 
 - **No overload takes that many positional arguments:** the error lists the counts they take, e.g. `Function g expected 1 or 2 argument(s), found 3`, or `Function f expected 1 or at least 3 argument(s), found 2`.
-- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Integer`. For a [literal pattern](#literal-patterns) the error shows the position of the argument, the literal and the value that was passed, e.g. `Argument 1 of foo expects 0, found 1`.
+- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Integer`. For a [literal pattern](#pattern-matching) the error shows the position of the argument, the literal and the value that was passed, e.g. `Argument 1 of foo expects 0, found 1`.
 - **Several take that many, but none matches:** the error is the closest overload's, as if it were the only one ([ADR 015](./adrs/015-closest-overload-errors.md)). The closest is the one that passes the most checks before one fails. A literal pattern is one more check, after the type check of its argument. With `head(plan: Plan, n: Number)` and `head(path: String, n: Number)`, `read("data.parquet") |> head("x")` raises `Argument n of head expects Number, found String`, because `head(plan, n)` takes the plan. If several first fail at the same keyword, one that declares it is closer than one that doesn't, so with the two `foo`s above, `foo("abc", n: "x")` raises `Keyword argument n of foo expects Number, found String`.
 - **Several are equally close:** `No overload of count accepts (Number)`, listing the call's argument types, then its keywords, e.g. `No overload of foo accepts (String, z: Number)`.
 

@@ -146,7 +146,7 @@ A union is bracketed wherever `|` would otherwise be read the wrong way:
 
 A union parameter or keyword is left as it is, since the commas and the function's own brackets already separate it: `fn(String | Symbol, k: Number | None) -> String`.
 
-A [literal pattern](./functions-and-pipe.md#literal-patterns) shows as its literal. With `def foo(i: Integer) -> Integer` and `def foo(0) -> Integer`, `typeof(foo)` is `fn(Integer) -> Integer | fn(0) -> Integer`. A literal has one value. It is a type in the signature of an overload only, so you can't write `0` as the type of a variable.
+A [literal pattern](./functions-and-pipe.md#pattern-matching) shows as its literal. With `def foo(i: Integer) -> Integer` and `def foo(0) -> Integer`, `typeof(foo)` is `fn(Integer) -> Integer | fn(0) -> Integer`. A literal has one value. It is a type in the signature of an overload only, so you can't write `0` as the type of a variable.
 
 Functions are first-class values. With a host that registers a [native function](./native-functions-and-values.md#native-functions) `identity`, which returns its argument and has the type `fn(Any) -> Any`:
 

@@ -4704,7 +4704,7 @@ mod tests {
         assert!(!Type::Function(plain.constant()).accepts(&Value::Function(g)));
     }
 
-    // Literal patterns (ADR 030)
+    // Pattern matching (ADR 030)
 
     #[test]
     fn test_a_pattern_runs_for_its_value_and_the_typed_name_for_the_others() {

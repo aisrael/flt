@@ -208,7 +208,7 @@ Only one signature takes that number of positional arguments, and a positional a
 mod(1, "two")  # ArgumentTypeMismatch: "two" is not an Integer
 ```
 
-For a [literal pattern](functions-and-pipe.md#literal-patterns), `<argument>` is the position of the argument, counted from 1, the first `<type>` is the literal, and the second is the value that was passed. The value shows because a wrong value of the right type, such as `1` for `0`, has the same type.
+For a [literal pattern](functions-and-pipe.md#pattern-matching), `<argument>` is the position of the argument, counted from 1, the first `<type>` is the literal, and the second is the value that was passed. The value shows because a wrong value of the right type, such as `1` for `0`, has the same type.
 
 ```flt
 def foo(0) -> Integer
