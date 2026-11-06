@@ -14,7 +14,7 @@ This folder contains initial documentation for the `flt` language as it exists i
   - [`types/union_types.md`](types/union_types.md) - Union types (`A | B`) and the type of `if`.
 - [`operators.md`](operators.md) - Unary/binary operators and precedence.
 - [`field-access.md`](field-access.md) - Dot-access syntax for reading map fields (`u.foo`).
-- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments), declaring functions with `def`, and pipe chaining.
+- [`functions-and-pipe.md`](functions-and-pipe.md) - Function call syntax (including keyword arguments), declaring functions with `def`, literal patterns in parameters, and pipe chaining.
 - [`native-functions-and-values.md`](native-functions-and-values.md) - Native functions, types and values: extending flt from a Rust host.
 - [`host-api.md`](host-api.md) - The `Runtime` trait: how a Rust host evaluates flt source and registers functions and types.
 - [`errors.md`](errors.md) - The errors and warnings that the runtime raises, and when it raises them.

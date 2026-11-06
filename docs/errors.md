@@ -208,6 +208,18 @@ Only one signature takes that number of positional arguments, and a positional a
 mod(1, "two")  # ArgumentTypeMismatch: "two" is not an Integer
 ```
 
+For a [literal pattern](functions-and-pipe.md#literal-patterns), `<argument>` is the position of the argument, counted from 1, the first `<type>` is the literal, and the second is the value that was passed. The value shows because a wrong value of the right type, such as `1` for `0`, has the same type.
+
+```flt
+def foo(0) -> Integer
+  1
+end
+
+foo(1)         # Argument 1 of foo expects 0, found 1
+foo("a")       # Argument 1 of foo expects 0, found "a"
+foo(0.0)       # Argument 1 of foo expects 0, found 0.0
+```
+
 ### `UnexpectedKeywordArgument`
 
 **Message:** `Function <name> got an unexpected keyword argument: <key>`

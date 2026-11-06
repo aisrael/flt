@@ -82,7 +82,7 @@ def log(label: String, *values: Any, level: Symbol = :info, **extra: Any)
 end
 ```
 
-A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type. Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
+A declaration in another order is a parse error, and so is a name used twice. Every parameter has a type, or is a [literal pattern](#literal-patterns). Use `Any` to accept every value. Inside the body, a variadic parameter is an `Array` and a rest keywords parameter is a `Map`.
 
 A keyword parameter must have a default. A call that leaves out the keyword evaluates the default for that call. A default can use global constants and calls to [`const` functions](#const-functions), but not other parameters or global variables ([Scope](#scope)).
 
@@ -153,6 +153,56 @@ A `def` is allowed only at the top level, not in a block or in the body of a fun
 A second `def` with the same name adds an overload ([Overloads](#overloads)). Two overloads can't have the same parameter types: that raises `DuplicateOverload`. A `def` can't use the name of a built-in type, a native type, a variable, or a function that a host registered: that raises `NameAlreadyBound`. A function declared in flt follows the same rules for [calls](#calls) as a native function. All overloads of a function are `const`, or none is: a `def` that adds an overload to a `const` function, or the other way round, raises `ConstOverloadMismatch` ([`const` Functions](#const-functions)).
 
 Known limitation: `SimpleRuntime` does not yet share overloads with a name that is bound to the function. After `let f = show`, a later `def show(…)` adds an overload to `show` but not to `f`. Declare every overload before you bind the function to another name.
+
+### Literal Patterns
+
+A positional parameter can be a literal instead of a typed name. The parameter then accepts only that value ([ADR 030](./adrs/030-literal-patterns.md)). The literal is an integer, a number, a string, a boolean, `None` or a symbol. An integer or a number can have a `-` or `+` sign in front, with no space, as in `-1`, `-2.5` and `+1`.
+
+```flt
+def foo(i: Integer) -> Integer
+  i * 2
+end
+
+def foo(0) -> Integer
+  1
+end
+
+foo(0)         # 1, from foo(0)
+foo(3)         # 6, from foo(i: Integer)
+```
+
+A call matches a pattern if its argument has the same type as the literal and is equal to it. A literal keeps its own type, so `2` is an `Integer` and `2.0` is a `Number`:
+
+| Overload       | `foo(0)` | `foo(0.0)` | `foo(1)` |
+| -------------- | -------- | ---------- | -------- |
+| `def foo(0)`   | matches  | no         | no       |
+| `def foo(0.0)` | no       | matches    | no       |
+
+`def foo(2)` does not accept `2.0`, although `2 == 2.0` is `true`. To accept both, declare both overloads, or declare a `Number`.
+
+```flt
+def fib(0) -> Integer
+  0
+end
+
+def fib(1) -> Integer
+  1
+end
+
+def fib(n: Integer) -> Integer
+  fib(n - 1) + fib(n - 2)
+end
+
+fib(10)        # 55
+```
+
+- A pattern has no name. The body can't read it.
+- A pattern can be in a positional parameter only. A pattern in a variadic parameter, a keyword parameter or the rest keywords is a parse error. So is a string pattern with interpolation, such as `"a{x}"`.
+- A pattern can come with other parameters: `def scale(0, factor: Integer = 1)` and `def add(0, 0)`.
+- A name without a type, such as `def foo(x)`, is still a parse error. Only a literal is a pattern. A sign is allowed before a number only: `-x`, `--1`, `-(1)` and `- 1` are parse errors. `+1` is the same pattern as `1`, so `def foo(+1)` after `def foo(1)` raises `DuplicateOverload`.
+- A `const def` can have patterns. All overloads are `const`, or none is ([`const` Functions](#const-functions)).
+- A pattern is part of the signature of its overload. `foo(0)` and `foo(i: Integer)` are different overloads, and so are `foo(0)` and `foo(0.0)`. A second `def foo(0)` raises `DuplicateOverload`.
+- The order of the `def`s does not matter. `SimpleRuntime` runs the [narrowest](#the-narrowest-overload) overload, and a pattern is the narrowest overload for its value.
 
 ### `const` Functions
 
@@ -331,17 +381,18 @@ A function can have several signatures, or overloads. A call runs the one that m
 When no overload matches:
 
 - **No overload takes that many positional arguments:** the error lists the counts they take, e.g. `Function g expected 1 or 2 argument(s), found 3`, or `Function f expected 1 or at least 3 argument(s), found 2`.
-- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Integer`.
-- **Several take that many, but none matches:** the error is the closest overload's, as if it were the only one ([ADR 015](./adrs/015-closest-overload-errors.md)). The closest is the one that passes the most checks before one fails. With `head(plan: Plan, n: Number)` and `head(path: String, n: Number)`, `read("data.parquet") |> head("x")` raises `Argument n of head expects Number, found String`, because `head(plan, n)` takes the plan. If several first fail at the same keyword, one that declares it is closer than one that doesn't, so with the two `foo`s above, `foo("abc", n: "x")` raises `Keyword argument n of foo expects Number, found String`.
+- **One takes that many, but doesn't match:** the error names the first thing that fails, checking the positional arguments in order, then the keywords in call order, e.g. `Argument s of pad expects String, found Integer`. For a [literal pattern](#literal-patterns) the error shows the position of the argument, the literal and the value that was passed, e.g. `Argument 1 of foo expects 0, found 1`.
+- **Several take that many, but none matches:** the error is the closest overload's, as if it were the only one ([ADR 015](./adrs/015-closest-overload-errors.md)). The closest is the one that passes the most checks before one fails. A literal pattern is one more check, after the type check of its argument. With `head(plan: Plan, n: Number)` and `head(path: String, n: Number)`, `read("data.parquet") |> head("x")` raises `Argument n of head expects Number, found String`, because `head(plan, n)` takes the plan. If several first fail at the same keyword, one that declares it is closer than one that doesn't, so with the two `foo`s above, `foo("abc", n: "x")` raises `Keyword argument n of foo expects Number, found String`.
 - **Several are equally close:** `No overload of count accepts (Number)`, listing the call's argument types, then its keywords, e.g. `No overload of foo accepts (String, z: Number)`.
 
-A function's type shows every overload: `typeof(count)` is `fn(Plan) -> Integer | fn(Symbol | String) -> Aggregate`.
+A function's type shows every overload: `typeof(count)` is `fn(Plan) -> Integer | fn(Symbol | String) -> Aggregate`. A literal pattern shows as the literal, so `typeof(foo)` for the `foo` above is `fn(Integer) -> Integer | fn(0) -> Integer`.
 
 ### The Narrowest Overload
 
 Since `Number` accepts an `Integer`, overloads that take an `Integer` and a `Number` both match an integer. flt doesn't say which one runs, but `SimpleRuntime` runs the **narrowest** ([ADR 017](./adrs/017-integers.md)):
 
 - One type is at least as narrow as another if they're the same, if the other is `Any`, if it's `Integer` and the other is `Number`, or if it's a member of the other, a union. A union is at least as narrow as a type if each of its members is.
+- A literal pattern has a type that has one value. That type is at least as narrow as itself, as its base type (`0` is at least as narrow as `Integer`), as `Number` if it is an integer, as `Any`, and as a union that has one of these. Two different literals are not at least as narrow as each other.
 - One overload is narrower than another if each of its types for the arguments the call passes is at least as narrow as the other's, and at least one is narrower.
 - If no overload is narrower than every other, `SimpleRuntime` runs the one declared first.
 
@@ -354,6 +405,9 @@ show(x: Any) -> String
 show(x: Number) -> String
 g(a: Integer, b: Number) -> String
 g(a: Number, b: Integer) -> String
+h(n: Number) -> String
+h(i: Integer) -> String
+h(0) -> String
 ```
 
 ```flt
@@ -361,6 +415,9 @@ f(1)           # runs f(i: Integer)
 f(1.0)         # runs f(n: Number), the only one that matches
 show(1.0)      # runs show(x: Number), though show(x: Any) was declared first
 g(1, 2)        # neither is narrower, so runs the first declared, g(a: Integer, b: Number)
+h(0)           # runs h(0), the narrowest
+h(1)           # runs h(i: Integer)
+h(1.0)         # runs h(n: Number), the only one that matches
 ```
 
 The overload is chosen before an `Integer` is converted to a `Number`, so `f(1)` passes `f(i: Integer)` the `Integer` `1`.
