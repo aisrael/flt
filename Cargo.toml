@@ -30,6 +30,7 @@ futures = "0.3.34"
 tempfile = "3.27.0"
 serial_test = "4.0.1"
 chrono = "0.4.45"
+shell-words = "1.1.1"
 
 [[test]]
 name = "features"

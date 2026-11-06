@@ -169,6 +169,20 @@ fn parse_full(line: &str) -> Result<Statement, String> {
     }
 }
 
+/// Evaluates `source` as an flt program on a new `SimpleRuntime`, for `flt -e`. Prints the value
+/// of the last statement to standard output and the warnings to standard error. Returns the
+/// error message if the program does not parse or fails to evaluate.
+pub fn run_program(source: &str) -> Result<(), String> {
+    let mut runtime = SimpleRuntime::default();
+    let result = runtime.eval(source);
+    for warning in runtime.take_warnings() {
+        eprintln!("Warning: {warning}");
+    }
+    let value = result.map_err(|e| format!("{e}"))?;
+    println!("{value}");
+    Ok(())
+}
+
 /// The concrete implementation of the REPL context for `flt`, on any [`Runtime`]
 #[derive(Default)]
 pub struct FltRepl<R: Runtime = SimpleRuntime> {

@@ -1,6 +1,9 @@
 use std::process::ExitCode;
 
+use clap::Parser;
+use clap::Subcommand;
 use flt::repl::default_history_path;
+use flt::repl::run_program;
 use flt::repl::FltRepl;
 use flt::repl::Repl;
 
@@ -9,11 +12,36 @@ pub fn version() -> String {
     clap::crate_version!().to_string()
 }
 
+#[derive(Parser)]
+#[command(name = "flt", disable_version_flag = true)]
+struct Cli {
+    /// Evaluate PROGRAM as an flt program, print the value of its last statement, and exit
+    #[arg(short = 'e', value_name = "PROGRAM")]
+    eval: Option<String>,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Print the version
+    Version,
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("version") {
+    let cli = Cli::parse();
+    if let Some(Command::Version) = cli.command {
         println!("flt version {}", version());
         return ExitCode::SUCCESS;
+    }
+    if let Some(program) = cli.eval {
+        return match run_program(&program) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("Error: {message}");
+                ExitCode::FAILURE
+            }
+        };
     }
 
     let history_path = if std::env::var_os("FLT_NO_HISTORY").is_some() {
