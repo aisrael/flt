@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 
 use super::expr::Expr;
 use super::identifier::Identifier;
+use super::literal::Literal;
 use super::statement::Statement;
 use super::type_expr::TypeExpr;
 use crate::utils::escape_string;
@@ -60,9 +61,13 @@ pub enum ParameterKind {
     Keyword(Expr),
     /// `**name: Type`, which takes any other keyword arguments
     RestKeywords,
+    /// A literal, such as `0` or `"a"`, filled by the position of an argument, which must be
+    /// that value (ADR 030). The parameter has no name, so the body can't read it.
+    Pattern(Literal),
 }
 
-/// A parameter in a function declaration. Every parameter has a type.
+/// A parameter in a function declaration. Every parameter has a type. The type of a literal
+/// pattern is the type of the literal, e.g. `Integer` for `0`, and its name is empty.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameter {
     pub name: Identifier,
@@ -91,6 +96,24 @@ impl Parameter {
         Self::new(name, ParameterKind::RestKeywords, r#type)
     }
 
+    /// A literal pattern, e.g. `0`. Its type is the type of the literal, and its name is empty.
+    pub fn pattern(literal: Literal) -> Self {
+        let r#type = TypeExpr::name(match &literal {
+            Literal::Integer(_) => "Integer",
+            Literal::Number(_) => "Number",
+            Literal::String(_) => "String",
+            Literal::Boolean(_) => "Boolean",
+            Literal::Symbol(_) => "Symbol",
+            Literal::None => "None",
+        });
+        Self::new("", ParameterKind::Pattern(literal), r#type)
+    }
+
+    /// Whether the parameter is a literal pattern
+    pub fn is_pattern(&self) -> bool {
+        matches!(self.kind, ParameterKind::Pattern(_))
+    }
+
     fn new<S: Into<String>>(name: S, kind: ParameterKind, r#type: TypeExpr) -> Self {
         Self {
             name: Identifier(name.into()),
@@ -103,7 +126,7 @@ impl Parameter {
     /// first, then the variadic one, then keywords, then the rest keywords.
     pub fn order(&self) -> u8 {
         match self.kind {
-            ParameterKind::Positional => 0,
+            ParameterKind::Positional | ParameterKind::Pattern(_) => 0,
             ParameterKind::Variadic => 1,
             ParameterKind::Keyword(_) => 2,
             ParameterKind::RestKeywords => 3,
@@ -111,7 +134,7 @@ impl Parameter {
     }
 }
 
-/// Displays the parameter as written, e.g. `*values: Any` or `level: Symbol = :info`.
+/// Displays the parameter as written, e.g. `*values: Any`, `level: Symbol = :info` or `0`.
 impl Display for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
@@ -121,6 +144,7 @@ impl Display for Parameter {
                 write!(f, "{}: {} = {default}", self.name, self.r#type)
             }
             ParameterKind::RestKeywords => write!(f, "**{}: {}", self.name, self.r#type),
+            ParameterKind::Pattern(literal) => write!(f, "{literal}"),
         }
     }
 }
@@ -240,5 +264,33 @@ mod tests {
             Parameter::keyword("a", t(), Expr::literal_none()).order()
                 < Parameter::rest_keywords("a", t()).order()
         );
+    }
+
+    #[test]
+    fn test_display_a_pattern() {
+        let declaration = FunctionDeclaration {
+            is_const: false,
+            name: Identifier("f".to_string()),
+            params: vec![
+                Parameter::pattern(Literal::integer(0)),
+                Parameter::pattern(Literal::string("a")),
+                Parameter::positional("n", TypeExpr::name("Integer")),
+            ],
+            return_type: None,
+            body: vec![],
+        };
+        assert_eq!(declaration.to_string(), "def f(0, \"a\", n: Integer)\nend");
+    }
+
+    #[test]
+    fn test_a_pattern_is_positional_and_has_the_type_of_its_literal() {
+        let pattern = Parameter::pattern(Literal::number(bigdecimal::BigDecimal::from(2)));
+        assert!(pattern.is_pattern());
+        assert_eq!(
+            pattern.order(),
+            Parameter::positional("n", TypeExpr::name("Any")).order()
+        );
+        assert_eq!(pattern.r#type, TypeExpr::name("Number"));
+        assert!(!Parameter::positional("n", TypeExpr::name("Any")).is_pattern());
     }
 }

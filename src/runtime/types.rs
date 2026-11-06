@@ -4,6 +4,7 @@ use std::fmt;
 
 use bigdecimal::BigDecimal;
 
+use crate::ast::Literal;
 use crate::runtime::native::NativeType;
 use crate::runtime::native::NativeTypeInfo;
 use crate::runtime::Value;
@@ -27,6 +28,9 @@ pub enum Type {
     Function(FunctionType),
     /// A native type, defined by the host
     Native(NativeTypeInfo),
+    /// The type of a literal pattern, such as `0`: it has one value, and only a value of the
+    /// same type that is equal to it is of this type (ADR 030). It exists in signatures only.
+    Literal(Literal),
 }
 
 impl Type {
@@ -73,6 +77,11 @@ impl Type {
     /// The built-in map type
     pub fn map() -> Self {
         Type::Builtin(BuiltinType::Map)
+    }
+
+    /// The type of a literal pattern, which only that value is of
+    pub fn literal(literal: Literal) -> Self {
+        Type::Literal(literal)
     }
 
     /// The `Option` wrapper type around an inner type
@@ -160,8 +169,24 @@ impl Type {
                 }),
                 _ => false,
             },
+            // The same type, and an equal value. `Number` does not accept an `Integer` here.
+            Type::Literal(literal) => literal_matches(literal, value),
             // No value has a custom type yet
             Type::Custom(_) => false,
+        }
+    }
+
+    /// The type of the values of this type, e.g. `Integer` for the literal pattern `0`. Any
+    /// other type is its own.
+    pub(crate) fn base(&self) -> Type {
+        match self {
+            Type::Literal(Literal::Integer(_)) => Type::integer(),
+            Type::Literal(Literal::Number(_)) => Type::number(),
+            Type::Literal(Literal::String(_)) => Type::string(),
+            Type::Literal(Literal::Boolean(_)) => Type::boolean(),
+            Type::Literal(Literal::Symbol(_)) => Type::symbol(),
+            Type::Literal(Literal::None) => Type::none(),
+            other => other.clone(),
         }
     }
 
@@ -175,6 +200,17 @@ impl Type {
         }
         match (self, other) {
             (_, Type::Builtin(BuiltinType::Any)) => true,
+            // A literal has one value, so it is at least as narrow as its type and the types
+            // that its type is at least as narrow as. Two different literals are not.
+            (Type::Literal(_), _) if !matches!(other, Type::Union(_) | Type::Option(_)) => {
+                self.base().is_at_least_as_narrow_as(other)
+            }
+            (Type::Literal(_), Type::Option(inner)) => {
+                self.base() == Type::none() || self.is_at_least_as_narrow_as(inner)
+            }
+            (Type::Literal(_), Type::Union(members)) => members
+                .iter()
+                .any(|member| self.is_at_least_as_narrow_as(member)),
             (Type::Union(members), _) => members
                 .iter()
                 .all(|member| member.is_at_least_as_narrow_as(other)),
@@ -203,7 +239,22 @@ impl fmt::Display for Type {
             Type::Union(members) => union_types::fmt_union(members, f),
             Type::Function(function_type) => write!(f, "{function_type}"),
             Type::Native(info) => write!(f, "{}", info.name()),
+            Type::Literal(literal) => write!(f, "{literal}"),
         }
+    }
+}
+
+/// Whether `value` has the type of `literal` and is equal to it. An `Integer` does not match a
+/// `Number` literal, nor a `Number` an `Integer` literal, although they can be equal.
+fn literal_matches(literal: &Literal, value: &Value) -> bool {
+    match (literal, value) {
+        (Literal::Integer(a), Value::Integer(b)) => a == b,
+        (Literal::Number(a), Value::Number(b)) => a.as_ref() == b,
+        (Literal::String(a), Value::String(b)) => a == b,
+        (Literal::Boolean(a), Value::Boolean(b)) => a == b,
+        (Literal::Symbol(a), Value::Symbol(b)) => a == b,
+        (Literal::None, Value::None) => true,
+        _ => false,
     }
 }
 
@@ -572,5 +623,86 @@ mod tests {
                 "{this} shouldn't be at least as narrow as {other}"
             );
         }
+    }
+
+    #[test]
+    fn test_a_literal_type_accepts_one_value_of_its_own_type() {
+        assert_accepts(Type::literal(Literal::integer(1)), &["1"]);
+        assert_accepts(
+            Type::literal(Literal::number(BigDecimal::from_str("1.5").unwrap())),
+            &["1.5"],
+        );
+        assert_accepts(Type::literal(Literal::string("a")), &["\"a\""]);
+        assert_accepts(Type::literal(Literal::boolean(true)), &["true"]);
+        assert_accepts(Type::literal(Literal::symbol("a")), &[":a"]);
+        assert_accepts(Type::literal(Literal::none()), &["None"]);
+    }
+
+    #[test]
+    fn test_a_literal_type_does_not_convert_between_integer_and_number() {
+        let one = Type::literal(Literal::integer(1));
+        let one_point_zero = Type::literal(Literal::number(BigDecimal::from_str("1.0").unwrap()));
+        assert!(one.accepts(&Value::from(1u64)));
+        assert!(!one.accepts(&number("1.0")));
+        assert!(!one_point_zero.accepts(&Value::from(1u64)));
+        assert!(one_point_zero.accepts(&number("1.0")));
+        assert!(!Type::literal(Literal::integer(2)).accepts(&Value::from(1u64)));
+    }
+
+    #[test]
+    fn test_a_literal_type_displays_as_written() {
+        for (literal, shown) in [
+            (Literal::integer(-1), "-1"),
+            (Literal::number(BigDecimal::from_str("2.5").unwrap()), "2.5"),
+            (Literal::string("a"), "\"a\""),
+            (Literal::boolean(false), "false"),
+            (Literal::symbol("k"), ":k"),
+            (Literal::none(), "None"),
+        ] {
+            assert_eq!(Type::literal(literal).to_string(), shown);
+        }
+    }
+
+    #[test]
+    fn test_a_literal_type_is_at_least_as_narrow_as_its_type_and_wider_types() {
+        let zero = Type::literal(Literal::integer(0));
+        for wider in [
+            zero.clone(),
+            Type::integer(),
+            Type::number(),
+            Type::any(),
+            Type::union(Type::integer(), Type::string()),
+            Type::union(zero.clone(), Type::string()),
+            Type::option(Type::integer()),
+        ] {
+            assert!(
+                zero.is_at_least_as_narrow_as(&wider),
+                "{zero} should be at least as narrow as {wider}"
+            );
+        }
+        for not_wider in [
+            Type::string(),
+            Type::literal(Literal::integer(1)),
+            Type::literal(Literal::number(BigDecimal::from_str("0.0").unwrap())),
+            Type::union(Type::string(), Type::symbol()),
+        ] {
+            assert!(
+                !zero.is_at_least_as_narrow_as(&not_wider),
+                "{zero} shouldn't be at least as narrow as {not_wider}"
+            );
+        }
+        // The type is not at least as narrow as one of its values
+        assert!(!Type::integer().is_at_least_as_narrow_as(&zero));
+        assert!(
+            Type::literal(Literal::none()).is_at_least_as_narrow_as(&Type::option(Type::integer()))
+        );
+    }
+
+    #[test]
+    fn test_the_base_of_a_literal_type_is_its_type() {
+        assert_eq!(Type::literal(Literal::integer(1)).base(), Type::integer());
+        assert_eq!(Type::literal(Literal::string("a")).base(), Type::string());
+        assert_eq!(Type::literal(Literal::none()).base(), Type::none());
+        assert_eq!(Type::number().base(), Type::number());
     }
 }
