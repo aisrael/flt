@@ -14,6 +14,32 @@ Expected output:
 flt version 0.3.0
 ```
 
+## Run a Program with `-e`
+
+Use `-e` to evaluate a string as an flt program, then exit. Statements are separated by newlines or by `;`. `flt` prints the value of the last statement.
+
+```bash
+cargo run -- -e '1 + 2'
+```
+
+Expected output:
+
+```text
+3
+```
+
+```bash
+cargo run -- -e 'let x = 2; x * 3'
+```
+
+Expected output:
+
+```text
+6
+```
+
+A parse error or an evaluation error goes to standard error, and `flt` exits with status 1. Warnings go to standard error as `Warning: <message>`.
+
 ## Start the REPL
 
 ```bash

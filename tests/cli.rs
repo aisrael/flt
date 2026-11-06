@@ -12,21 +12,22 @@ use cucumber::World;
 pub struct CliWorld {
     pub status: Option<i32>,
     pub output: Option<String>,
+    pub error_output: Option<String>,
 }
 
 #[when(regex = r#"^the command `(.+)` is run$"#)]
 async fn the_command_is_run(world: &mut CliWorld, cmd: String) {
     println!("the_command_is_run: {}", cmd);
-    let parts = cmd.split_whitespace().collect::<Vec<&str>>();
+    let parts = shell_words::split(&cmd).unwrap();
     assert!(!parts.is_empty(), "No command provided");
     println!("run_command: {}", cmd);
-    let mut args: Vec<&str> = parts[1..].to_vec();
+    let mut args: Vec<&str> = parts[1..].iter().map(String::as_str).collect();
     let executable = if parts[0] == "flt" {
         args.insert(0, "--");
         args.insert(0, "run");
         "cargo"
     } else {
-        parts[0]
+        parts[0].as_str()
     };
     println!("Running {} {}", executable, args.join(" "));
     match Command::new(executable).args(args).output() {
@@ -35,6 +36,7 @@ async fn the_command_is_run(world: &mut CliWorld, cmd: String) {
             let output_str = String::from_utf8(output.stdout).unwrap();
             println!("Output: {}", output_str);
             world.output = Some(output_str);
+            world.error_output = Some(String::from_utf8(output.stderr).unwrap());
         }
         Err(e) => {
             panic!("Failed to run command: {}", e);
@@ -55,6 +57,17 @@ async fn the_output_should_contain(world: &mut CliWorld, expected: String) {
         world.output.as_ref().unwrap().contains(&expected),
         "Output does not contain {}",
         expected
+    );
+}
+
+#[then(expr = r"the error output should contain {string}")]
+async fn the_error_output_should_contain(world: &mut CliWorld, expected: String) {
+    let error_output = world.error_output.as_ref().expect("No error output");
+    assert!(
+        error_output.contains(&expected),
+        "Error output does not contain {}: {}",
+        expected,
+        error_output
     );
 }
 
