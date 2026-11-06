@@ -85,18 +85,19 @@ A `const def` can have patterns. All overloads of a function are `const`, or non
 
 ### 7. Only literals
 
-A pattern is a literal. A `const` name (`foo(MAX)`) and a call to a `const` function (`foo(twice(DEFAULT))`) are not patterns.
+A pattern is a literal. A `const` name (`foo(MAX)`) and a call to a `const` function (`foo(twice(DEFAULT))`) are not patterns, for now.
 
 ## Alternatives Considered
 
-- **Matching by value with `==`.** Rejected: `def foo(2)` would accept `2.0`. Then `typeof` could not tell the two apart, and two overloads could be hard to tell apart in their type. A user who wants both values can declare two overloads.
+- **Matching by value with `==`.** Rejected: `def foo(2)` would accept `2.0`. Then `typeof` could not tell the two apart, and two overloads could be hard to tell apart in their type. A user who wants both values can declare two overloads. Guards, if flt gets them, are a better place for a comparison with `==`.
 - **The first matching `def` runs, as in Elixir.** Rejected: the order of the declarations would decide the result. [ADR 013](013-type-checked-function-calls.md) rejects this for overloads, and [ADR 018](018-distinct-overload-signatures.md) does the same for duplicates.
 - **A pattern with a type, such as `n: 0`.** Rejected: the literal already has a type, so the user would write it twice.
-- **Names for patterns, such as `n @ 0`.** Rejected: it needs a rule for the type of `n` and a new syntax.
-- **`const` names as patterns.** Rejected: a pattern is a literal, and a name would need a rule for when the runtime looks it up.
+- **Names for patterns, such as `n @ 0`.** Not for now: it needs a rule for the type of `n` and a new syntax.
+- **`const` names as patterns.** Not for now: a pattern is a literal, and a name would need a rule for when the runtime looks it up.
 
 ## Consequences
 
 - A `def` can have a literal where it had a typed name. A program that used a typed name is unchanged.
 - A new kind of parameter is needed in the AST.
 - The type of an overload has a literal in place of a type. The language does not say how a runtime shows it. [`types.md`](../types.md) and [`functions-and-pipe.md`](../functions-and-pipe.md) describe the reference runtime.
+- Guards, `const` patterns and patterns for arrays and maps may come later.
