@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- **A signed number is a literal**: `-1` now parses as `Literal(Integer(-1))`, `-1.5` as `Literal(Number(-1.5))` and `+1` as `Literal(Integer(1))`, where they were `UnaryExpr(Minus, Literal(Integer(1)))`, `UnaryExpr(Minus, Literal(Number(1.5)))` and `UnaryExpr(Plus, Literal(Integer(1)))`. Values are the same. A sign that does not touch a number, such as `-x`, `+x`, `-(1)`, `- 1` or `--1`, is still a unary expression. A host that matches on `UnaryExpr(Minus | Plus, Literal(…))` must also match the signed literal.
 - **New variants for literal patterns**: `ParameterKind::Pattern(Literal)` and `Type::Literal(Literal)` are new, so an exhaustive `match` on `ParameterKind` or `Type` must handle them. A pattern is a `Parameter` with an empty name, made with `Parameter::pattern` ([ADR 030](https://github.com/aisrael/flt/blob/main/docs/adrs/030-pattern-matching.md)).
 - **A default can only call `const` functions**: A default of a keyword parameter can call a `const` function. A call to another function raises `NonConstFunctionCall` and no longer `UndefinedFunction` ([ADR 029](https://github.com/aisrael/flt/blob/main/docs/adrs/029-const-functions-in-the-reference-runtime.md)).
 - **`FunctionDefinition` and `FunctionType` have a `const` property**: A host that builds either with a struct literal must add the field. `typeof(typeof)` is now `const fn(Any) -> Type`, so a host that compares `typeof` output for `typeof` may need to update it.
