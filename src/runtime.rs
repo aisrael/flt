@@ -811,6 +811,11 @@ impl SimpleRuntime {
         let mut rest_keywords = None;
         let mut rest_name = None;
         for param in &declaration.params {
+            // A literal pattern has no name to bind
+            if let ParameterKind::Pattern(literal) = &param.kind {
+                arguments.push(Argument::new("", Type::literal(literal.clone())));
+                continue;
+            }
             let param_name = param.name.0.clone();
             self.global_scope.check_bindable(&param_name)?;
             let r#type = self.resolve_type(&param.r#type)?;
@@ -829,6 +834,7 @@ impl SimpleRuntime {
                     rest_keywords = Some(r#type);
                     rest_name = Some(param_name);
                 }
+                ParameterKind::Pattern(_) => unreachable!("a pattern is handled above"),
             }
         }
         let return_type = match &declaration.return_type {
@@ -947,7 +953,8 @@ impl SimpleRuntime {
         let mut frame = Frame::default();
         let minimum = signature.minimum_arguments();
         for (argument, value) in signature.arguments.iter().zip(&args) {
-            if !argument.variadic {
+            // A literal pattern has no name, so the body can't read it
+            if !argument.variadic && !matches!(argument.r#type, Type::Literal(_)) {
                 frame.bind(&argument.name, argument.r#type.clone(), value.clone());
             }
         }
@@ -4695,5 +4702,191 @@ mod tests {
         assert!(!Type::Function(plain.clone()).accepts(&Value::Function(f)));
         assert!(Type::Function(plain.clone()).accepts(&Value::Function(g.clone())));
         assert!(!Type::Function(plain.constant()).accepts(&Value::Function(g)));
+    }
+
+    // Pattern matching (ADR 030)
+
+    #[test]
+    fn test_a_pattern_runs_for_its_value_and_the_typed_name_for_the_others() {
+        let foo = "def foo(i: Integer) -> Integer\n  i * 2\nend\n\
+            def foo(0) -> Integer\n  1\nend\n";
+        assert_eq!(run(&format!("{foo}[foo(0), foo(3)]")), "[1, 6]");
+        // The order of the `def`s does not matter
+        let foo = "def foo(0) -> Integer\n  1\nend\n\
+            def foo(i: Integer) -> Integer\n  i * 2\nend\n";
+        assert_eq!(run(&format!("{foo}[foo(0), foo(3)]")), "[1, 6]");
+    }
+
+    #[test]
+    fn test_a_pattern_is_the_narrowest_overload() {
+        let source = "def f(n: Number) -> String\n  \"number\"\nend\n\
+            def f(i: Integer) -> String\n  \"integer\"\nend\n\
+            def f(0) -> String\n  \"zero\"\nend\n\
+            def g(x: Any) -> String\n  \"any\"\nend\n\
+            def g(0) -> String\n  \"zero\"\nend\n\
+            def h(x: Integer | String) -> String\n  \"union\"\nend\n\
+            def h(0) -> String\n  \"zero\"\nend\n\
+            [f(0), f(1), f(1.0), g(0), g(\"a\"), h(0), h(1), h(\"a\")]";
+        assert_eq!(
+            run(source),
+            "[\"zero\", \"integer\", \"number\", \"zero\", \"any\", \"zero\", \"union\", \"union\"]"
+        );
+    }
+
+    #[test]
+    fn test_a_pattern_matches_by_type_and_by_value() {
+        let (debug, message) = run_error("def foo(2) -> String\n  \"two\"\nend\nfoo(2.0)");
+        assert!(debug.contains("ArgumentTypeMismatch"), "{debug}");
+        assert_eq!(message, "Argument 1 of foo expects 2, found 2.0");
+        let (debug, message) = run_error("def foo(2.0) -> String\n  \"two\"\nend\nfoo(2)");
+        assert!(debug.contains("ArgumentTypeMismatch"), "{debug}");
+        assert_eq!(message, "Argument 1 of foo expects 2.0, found 2");
+        let source = "def foo(2) -> String\n  \"integer\"\nend\n\
+            def foo(2.0) -> String\n  \"number\"\nend\n[foo(2), foo(2.0)]";
+        assert_eq!(run(source), "[\"integer\", \"number\"]");
+    }
+
+    #[test]
+    fn test_each_kind_of_pattern_matches_its_literal() {
+        let source = "def a(2.5) -> Integer\n  1\nend\n\
+            def b(\"x\") -> Integer\n  2\nend\n\
+            def c(true) -> Integer\n  3\nend\n\
+            def d(None) -> Integer\n  4\nend\n\
+            def e(:k) -> Integer\n  5\nend\n\
+            [a(2.5), b(\"x\"), c(true), d(None), e(:k)]";
+        assert_eq!(run(source), "[1, 2, 3, 4, 5]");
+        for call in ["a(2.6)", "b(\"y\")", "c(false)", "d(1)", "e(:j)"] {
+            let source = format!(
+                "def a(2.5) -> Integer\n  1\nend\n\
+                def b(\"x\") -> Integer\n  2\nend\n\
+                def c(true) -> Integer\n  3\nend\n\
+                def d(None) -> Integer\n  4\nend\n\
+                def e(:k) -> Integer\n  5\nend\n{call}"
+            );
+            let (debug, _) = run_error(&source);
+            assert!(debug.contains("ArgumentTypeMismatch"), "{call}: {debug}");
+        }
+    }
+
+    #[test]
+    fn test_a_negative_pattern_matches_by_type_and_by_value() {
+        let source = "def sign(-1) -> String\n  \"minus one\"\nend\n\
+            def sign(n: Integer) -> String\n  \"other\"\nend\n\
+            [sign(-1), sign(1), sign(0)]";
+        assert_eq!(run(source), "[\"minus one\", \"other\", \"other\"]");
+        let source = "def f(-2.5) -> String\n  \"a\"\nend\n\
+            def f(n: Number) -> String\n  \"b\"\nend\n[f(-2.5), f(2.5), f(-2.0)]";
+        assert_eq!(run(source), "[\"a\", \"b\", \"b\"]");
+        let (_, message) = run_error("def foo(-1) -> Integer\n  1\nend\nfoo(-1.0)");
+        assert_eq!(message, "Argument 1 of foo expects -1, found -1.0");
+        let (_, message) = run_error("def foo(-1) -> Integer\n  1\nend\nfoo(1)");
+        assert_eq!(message, "Argument 1 of foo expects -1, found 1");
+        let source = "def foo(-1) -> Integer\n  1\nend\ndef foo(1) -> Integer\n  2\nend\n\
+            [foo(-1), foo(1)]";
+        assert_eq!(run(source), "[1, 2]");
+        let source = "def foo(-1) -> Integer\n  1\nend\ndef bar(-2.5) -> Integer\n  1\nend\n\
+            [typeof(foo), typeof(bar)]";
+        assert_eq!(run(source), "[fn(-1) -> Integer, fn(-2.5) -> Integer]");
+    }
+
+    #[test]
+    fn test_a_failed_pattern_names_its_position_and_the_value() {
+        let (_, message) = run_error("def foo(0) -> Integer\n  1\nend\nfoo(1)");
+        assert_eq!(message, "Argument 1 of foo expects 0, found 1");
+        let (_, message) = run_error("def foo(0) -> Integer\n  1\nend\nfoo(\"a\")");
+        assert_eq!(message, "Argument 1 of foo expects 0, found \"a\"");
+        let (_, message) = run_error("def foo(s: String, 0) -> Integer\n  1\nend\nfoo(\"a\", 1)");
+        assert_eq!(message, "Argument 2 of foo expects 0, found 1");
+    }
+
+    #[test]
+    fn test_a_pattern_counts_as_one_more_check_for_the_closest_overload() {
+        // The second overload passes its first check, so it is closer
+        let source = "def foo(0, s: String) -> Integer\n  1\nend\n\
+            def foo(n: Integer, s: Integer) -> Integer\n  2\nend\nfoo(1, \"x\")";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("ArgumentTypeMismatch"), "{debug}");
+        assert_eq!(message, "Argument s of foo expects Integer, found String");
+        // Both fail at the first argument
+        let source = "def foo(0, a: String) -> Integer\n  1\nend\n\
+            def foo(1, a: String) -> Integer\n  2\nend\nfoo(2, \"x\")";
+        let (debug, message) = run_error(source);
+        assert!(debug.contains("NoMatchingOverload"), "{debug}");
+        assert_eq!(message, "No overload of foo accepts (Integer, String)");
+    }
+
+    #[test]
+    fn test_patterns_in_several_parameters_and_with_other_parameters() {
+        let source = "def add(0, 0) -> String\n  \"both\"\nend\n\
+            def add(0, y: Integer) -> String\n  \"first\"\nend\n\
+            def add(x: Integer, y: Integer) -> String\n  \"none\"\nend\n\
+            [add(0, 0), add(0, 5), add(5, 0)]";
+        assert_eq!(run(source), "[\"both\", \"first\", \"none\"]");
+        let source = "def scale(0, factor: Integer = 1) -> Integer\n  factor\nend\n\
+            def scale(n: Integer, factor: Integer = 1) -> Integer\n  n * factor\nend\n\
+            [scale(0, factor: 7), scale(2, factor: 7), scale(2)]";
+        assert_eq!(run(source), "[7, 14, 2]");
+        let source = "def f(0, *rest: Any) -> Array\n  rest\nend\n\
+            def f(n: Integer, *rest: Any) -> Array\n  []\nend\n[f(0, 1, 2), f(5, 1, 2)]";
+        assert_eq!(run(source), "[[1, 2], []]");
+    }
+
+    #[test]
+    fn test_a_recursive_function_ends_on_its_patterns() {
+        let source = "def fib(0) -> Integer\n  0\nend\n\
+            def fib(1) -> Integer\n  1\nend\n\
+            def fib(n: Integer) -> Integer\n  fib(n - 1) + fib(n - 2)\nend\nfib(10)";
+        assert_eq!(run(source), "55");
+    }
+
+    #[test]
+    fn test_a_pattern_is_part_of_the_parameter_signature() {
+        let (debug, _) =
+            run_error("def foo(0) -> Integer\n  1\nend\ndef foo(0) -> Integer\n  2\nend");
+        assert!(debug.contains("DuplicateOverload"), "{debug}");
+        // Only the return type differs
+        let (debug, _) =
+            run_error("def foo(0) -> Integer\n  1\nend\ndef foo(0) -> String\n  \"a\"\nend");
+        assert!(debug.contains("DuplicateOverload"), "{debug}");
+        // A pattern and a typed name, and an integer and a number pattern, are different
+        assert_eq!(
+            run("def foo(0) -> Integer\n  1\nend\ndef foo(i: Integer) -> Integer\n  2\nend"),
+            "None"
+        );
+        assert_eq!(
+            run("def foo(0) -> Integer\n  1\nend\ndef foo(0.0) -> Integer\n  2\nend"),
+            "None"
+        );
+    }
+
+    #[test]
+    fn test_a_const_def_can_have_patterns() {
+        let source = "const def fact(0) -> Integer\n  1\nend\n\
+            const def fact(n: Integer) -> Integer\n  n * fact(n - 1)\nend\nfact(5)";
+        assert_eq!(run(source), "120");
+        let (debug, _) = run_error(
+            "const def f(0) -> Integer\n  1\nend\ndef f(n: Integer) -> Integer\n  n\nend",
+        );
+        assert!(debug.contains("ConstOverloadMismatch"), "{debug}");
+        let (debug, _) = run_error(
+            "def f(0) -> Integer\n  1\nend\nconst def f(n: Integer) -> Integer\n  n\nend",
+        );
+        assert!(debug.contains("ConstOverloadMismatch"), "{debug}");
+    }
+
+    #[test]
+    fn test_the_type_of_a_function_shows_its_patterns() {
+        let source = "def foo(i: Integer) -> Integer\n  i * 2\nend\n\
+            def foo(0) -> Integer\n  1\nend\ntypeof(foo)";
+        assert_eq!(run(source), "fn(Integer) -> Integer | fn(0) -> Integer");
+        let source = "def f(0, s: String, k: Integer = 1) -> None\nend\ntypeof(f)";
+        assert_eq!(run(source), "fn(0, String, k: Integer) -> None");
+        let source = "def a(2.5) -> None\nend\ndef b(\"x\") -> None\nend\n\
+            def c(true) -> None\nend\ndef d(None) -> None\nend\ndef e(:k) -> None\nend\n\
+            [typeof(a), typeof(b), typeof(c), typeof(d), typeof(e)]";
+        assert_eq!(
+            run(source),
+            "[fn(2.5) -> None, fn(\"x\") -> None, fn(true) -> None, fn(None) -> None, fn(:k) -> None]"
+        );
     }
 }

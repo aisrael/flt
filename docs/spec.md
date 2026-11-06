@@ -22,9 +22,11 @@ statement  = "let" ident [ ":" type ] "=" expr  (* declaration *)
            | expr ;
 params     = param { "," param } ;
 param      = ident ":" type                       (* positional *)
+           | pattern                              (* positional, literal pattern *)
            | "*" ident ":" type                   (* variadic *)
            | ident ":" type "=" expr              (* keyword, with default *)
            | "**" ident ":" type ;                (* rest keywords *)
+pattern    = [ "-" | "+" ] ( integer | number ) | string | boolean | "None" | symbol ;
 body       = { statement [ ";" ] } "end" ;
 type       = type_atom { "|" type_atom } ;
 type_atom  = ident | "None" | "(" type ")" ;
@@ -233,7 +235,7 @@ The parameters of a declaration come in this order:
 
 A syntax error occurs when a declaration has its parameters in another order. A syntax error also occurs when a parameter name occurs twice in one declaration. A reserved keyword cannot be a function name. This is also a syntax error.
 
-Every parameter declares its type. Use `Any` to accept every value. The runtime checks each argument against this type (see [Type-checked calls](#type-checked-calls)).
+Every parameter declares its type, or is a literal pattern (see [Pattern matching](#pattern-matching)). Use `Any` to accept every value. The runtime checks each argument against this type (see [Type-checked calls](#type-checked-calls)).
 
 Every keyword parameter has a default expression. A call that omits the keyword evaluates the default expression for that call. The runtime checks the value of the default against the type of the keyword.
 
@@ -288,6 +290,34 @@ mod(1)           # ArgumentCountMismatch: one argument is missing
 mod(1, 2, 3)     # ArgumentCountMismatch: one argument is extra
 mod(1, "two")    # ArgumentTypeMismatch: "two" is not an Integer
 ```
+
+#### Pattern matching
+
+A positional parameter can be a literal instead of a typed name ([ADR 030](adrs/030-pattern-matching.md)). The parameter then accepts only that value. It is a **literal pattern**. The literal is an integer, a number, a string, a boolean, `None` or a symbol. An integer or a number can have a `-` or `+` sign in front, with no space, as in `-1` and `+1`. A string pattern has no interpolation.
+
+```flt
+def fib(0) -> Integer
+  0
+end
+
+def fib(1) -> Integer
+  1
+end
+
+def fib(n: Integer) -> Integer
+  fib(n - 1) + fib(n - 2)
+end
+
+fib(10)          # 55
+```
+
+An argument **matches** a pattern if it has the same type as the literal and is equal to it. A literal keeps its own type: `0` is an `Integer` and `0.0` is a `Number`. So `def foo(0)` accepts the `Integer` `0` and does not accept the `Number` `0.0`, although `0 == 0.0` is `true`.
+
+- A pattern has no name, so the body can't read it. A function that needs the value declares a typed name.
+- A pattern is allowed only in a positional parameter. A pattern in a variadic parameter, a keyword parameter or a rest keywords parameter is a syntax error.
+- A name without a type is still a syntax error. Only a literal is a pattern.
+- A pattern is part of the signature of its overload. A runtime that lets a function have overloads treats `foo(0)` and `foo(i: Integer)` as different signatures, and `foo(0)` and `foo(0.0)` too. How it handles two overloads with an equal signature is up to the runtime (see [`runtime.md`](runtime.md#pattern-matching)).
+- An overload with a pattern accepts a subset of the calls that an overload with the type of the literal accepts. Which overload runs when several accept a call is up to the runtime.
 
 #### Keyword parameters
 

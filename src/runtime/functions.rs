@@ -681,11 +681,20 @@ impl FunctionSignature {
                         passed: i,
                         accepts_keyword: false,
                     },
-                    error: RuntimeError::ArgumentTypeMismatch {
-                        name: function_name.to_string(),
-                        argument: argument.name.clone(),
-                        expected: argument.r#type.to_string(),
-                        found: type_name(value),
+                    error: match argument.r#type {
+                        // A pattern has no name, so the error gives its position and the value
+                        Type::Literal(_) => RuntimeError::ArgumentTypeMismatch {
+                            name: function_name.to_string(),
+                            argument: (i + 1).to_string(),
+                            expected: argument.r#type.to_string(),
+                            found: value.to_string(),
+                        },
+                        _ => RuntimeError::ArgumentTypeMismatch {
+                            name: function_name.to_string(),
+                            argument: argument.name.clone(),
+                            expected: argument.r#type.to_string(),
+                            found: type_name(value),
+                        },
                     },
                 });
             }

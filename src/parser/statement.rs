@@ -2,6 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::combinator::cut;
 use nom::combinator::map;
+use nom::combinator::map_opt;
 use nom::combinator::opt;
 use nom::combinator::verify;
 use nom::multi::separated_list0;
@@ -13,6 +14,7 @@ use crate::ast::Expr;
 use crate::ast::FunctionDeclaration;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
+use crate::ast::Literal;
 use crate::ast::Parameter;
 use crate::ast::ParameterKind;
 use crate::ast::Statement;
@@ -25,6 +27,8 @@ use super::comment::multispace0_or_comment;
 use super::expr::parse_expr;
 use super::identifier::parse_identifier;
 use super::keyword::parse_keyword;
+use super::literal::parse_literal;
+use super::string::parse_interpolated_string;
 use super::type_expr::parse_type;
 
 /// Parses the name in a binding: an identifier that isn't a reserved keyword, so `let if = 1`
@@ -150,8 +154,32 @@ fn failure(input: &str) -> nom::Err<ParseError<&str>> {
     nom::Err::Failure(ParseError::new(input, nom::error::ErrorKind::Verify))
 }
 
-/// Parses a parameter: `name: Type`, `*name: Type`, `name: Type = default` or `**name: Type`.
+/// Parses a parameter: a typed name or a literal pattern.
 fn parse_parameter(input: &str) -> IResult<&str, Parameter> {
+    alt((
+        parse_typed_parameter,
+        map(parse_pattern, Parameter::pattern),
+    ))
+    .parse(input)
+}
+
+/// Parses a literal pattern (ADR 030): an integer, a number, a string, a boolean, `None` or a
+/// symbol, with a sign on a number as in an expression. A string pattern has no interpolation.
+fn parse_pattern(input: &str) -> IResult<&str, Literal> {
+    if input.starts_with('"') {
+        // Parsed like a string in an expression, so `{x}` interpolates and `\{` is a brace
+        return map_opt(parse_interpolated_string(parse_expr), |expr| match expr {
+            Expr::Literal(literal) => Some(literal),
+            _ => None,
+        })
+        .parse(input);
+    }
+    parse_literal(input)
+}
+
+/// Parses a typed parameter: `name: Type`, `*name: Type`, `name: Type = default` or
+/// `**name: Type`.
+fn parse_typed_parameter(input: &str) -> IResult<&str, Parameter> {
     let (input, stars) = alt((tag("**"), tag("*"), tag(""))).parse(input)?;
     let (input, name) = parse_binding_name(input)?;
     let (input, _) = (multispace0_or_comment, tag(":"), multispace0_or_comment).parse(input)?;
@@ -182,10 +210,10 @@ fn params_are_valid(params: &[Parameter]) -> bool {
         // Positional and keyword parameters can repeat; the other kinds occur once
         a < b || (a == b && (a == 0 || a == 2))
     });
-    let unique_names = params
-        .iter()
-        .enumerate()
-        .all(|(i, param)| params[..i].iter().all(|other| other.name != param.name));
+    let unique_names = params.iter().enumerate().all(|(i, param)| {
+        // A pattern has no name
+        param.is_pattern() || params[..i].iter().all(|other| other.name != param.name)
+    });
     in_order && unique_names
 }
 
@@ -1055,5 +1083,114 @@ mod tests {
     fn test_parse_statements_with_an_expanded_if() {
         let statements = parse_statements("let x = true\nif x\n  1\nelsif x\n  2\nend\nx").unwrap();
         assert_eq!(statements.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_def_accepts_each_kind_of_literal_pattern() {
+        for (pattern, shown) in [
+            ("0", "0"),
+            ("42", "42"),
+            ("2.5", "2.5"),
+            ("-1", "-1"),
+            ("-2.5", "-2.5"),
+            ("+1", "1"),
+            ("+2.5", "2.5"),
+            ("\"a\"", "\"a\""),
+            // The escape gives a plain brace
+            ("\"\\{\"", "\"{\""),
+            ("true", "true"),
+            ("false", "false"),
+            ("None", "None"),
+            (":k", ":k"),
+        ] {
+            let source = format!("def f({pattern}) -> Integer 1 end");
+            let statement = parse_def(&source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
+            assert_eq!(
+                statement.to_string(),
+                format!("def f({shown}) -> Integer\n  1\nend"),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_def_accepts_patterns_with_other_parameters() {
+        for (source, shown) in [
+            ("def f(0, 0) 1 end", "def f(0, 0)\n  1\nend"),
+            (
+                "def f(0, y: Integer) 1 end",
+                "def f(0, y: Integer)\n  1\nend",
+            ),
+            (
+                "def f(x: Integer, 0) 1 end",
+                "def f(x: Integer, 0)\n  1\nend",
+            ),
+            (
+                "def f(0, *rest: Any) 1 end",
+                "def f(0, *rest: Any)\n  1\nend",
+            ),
+            (
+                "def f(0, k: Integer = 1) 1 end",
+                "def f(0, k: Integer = 1)\n  1\nend",
+            ),
+            (
+                "def f(0, **opts: Any) 1 end",
+                "def f(0, **opts: Any)\n  1\nend",
+            ),
+        ] {
+            let statement = parse_def(source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
+            assert_eq!(statement.to_string(), shown, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_const_def_accepts_patterns() {
+        let statements = parse_statements("const def f(\"a\") 1 end").unwrap();
+        assert_eq!(statements[0].to_string(), "const def f(\"a\")\n  1\nend");
+    }
+
+    #[test]
+    fn test_parse_def_rejects_what_is_not_a_literal_pattern() {
+        for source in [
+            // A name without a type
+            "def f(x) 1 end",
+            // A name, a call and other expressions
+            "def f(MAX) 1 end",
+            "def f(twice(DEFAULT)) 1 end",
+            "def f(1 + 1) 1 end",
+            "def f([1]) 1 end",
+            "def f({a: 1}) 1 end",
+            // An interpolated string
+            "def f(\"a{x}\") 1 end",
+            // A pattern with a type
+            "def f(0: Integer) 1 end",
+            // A sign that is not a single minus before a number
+            "def f(-\"a\") 1 end",
+            "def f(-x) 1 end",
+            "def f(--1) 1 end",
+            "def f(-(1)) 1 end",
+            "def f(- 1) 1 end",
+        ] {
+            assert!(parse_def(source).is_err(), "{source:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_def_rejects_a_pattern_outside_a_positional_parameter() {
+        for source in [
+            // Variadic and rest keywords
+            "def f(*0) 1 end",
+            "def f(**0) 1 end",
+            "def f(*\"a\") 1 end",
+            // A keyword parameter
+            "def f(k: 0 = 0) 1 end",
+            "def f(0 = 0) 1 end",
+            // After a keyword parameter or the variadic parameter
+            "def f(k: Integer = 1, 0) 1 end",
+            "def f(*rest: Any, 0) 1 end",
+            "def f(**opts: Any, 0) 1 end",
+        ] {
+            assert!(parse_def(source).is_err(), "{source:?} should not parse");
+        }
     }
 }
