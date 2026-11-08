@@ -17,15 +17,12 @@ pub struct CliWorld {
 
 #[when(regex = r#"^the command `(.+)` is run$"#)]
 async fn the_command_is_run(world: &mut CliWorld, cmd: String) {
-    println!("the_command_is_run: {}", cmd);
     let parts = shell_words::split(&cmd).unwrap();
     assert!(!parts.is_empty(), "No command provided");
-    println!("run_command: {}", cmd);
-    let mut args: Vec<&str> = parts[1..].iter().map(String::as_str).collect();
+    let args: Vec<&str> = parts[1..].iter().map(String::as_str).collect();
+    // Run the built binary directly: `cargo run` costs about 200 ms a scenario
     let executable = if parts[0] == "flt" {
-        args.insert(0, "--");
-        args.insert(0, "run");
-        "cargo"
+        env!("CARGO_BIN_EXE_flt")
     } else {
         parts[0].as_str()
     };

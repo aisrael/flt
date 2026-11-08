@@ -1,3 +1,4 @@
+# Use -e for one-liners and a program file for file cases. tests/features.rs tests language behavior in-process.
 Feature: flt version
 
   Scenario: flt version
