@@ -310,9 +310,16 @@ Piping into anything other than a call or a name raises `Cannot pipe into <expr>
 
 ## Built-in Functions
 
-The runtime currently registers one built-in function, and it is [`const`](#const-functions):
+The runtime currently registers two built-in functions. `typeof` is [`const`](#const-functions), and `println` is not, because it has a side effect:
 
 - `typeof(value)` - returns the [`Type`](./types.md#types-as-values) of `value` as a first-class value, e.g. `typeof(42)` evaluates to `Integer`, `typeof(4.2)` to `Number`, `typeof({a: 1})` to `Map`, and `typeof(42) == Integer` is `true`. `typeof(None)` evaluates to `None`. Calling it with the wrong number of arguments raises a `Function typeof expected 1 argument(s), found <n>` error.
+- `println(s)` - prints the `String` `s` and a new line to standard output, and evaluates to `None`. It has the type `fn(String) -> None`. It accepts only a `String`, so `println(1)` raises `ArgumentTypeMismatch`. Use [string interpolation](./literals.md) to print another value, e.g. `println("x is {x}")`.
+
+```flt
+println("Hello, world!")  # prints Hello, world! and evaluates to None
+typeof(println)           # fn(String) -> None
+"Hello" |> println        # prints Hello
+```
 
 Built-ins are [native functions](./native-functions-and-values.md#native-functions) that the runtime registers in the global scope, so they're function values like any other. `typeof` has the type `const fn(Any) -> Type`:
 
@@ -425,6 +432,6 @@ The overload is chosen before an `Integer` is converted to a `Number`, so `f(1)`
 ## Current Semantics Note
 
 - Parsing for function calls (including keyword arguments) and pipe expressions is implemented.
-- Calling a [native function](./native-functions-and-values.md#native-functions), whether a built-in (currently just `typeof`) or one a host registered, evaluates it.
+- Calling a [native function](./native-functions-and-values.md#native-functions), whether a built-in (`typeof` or `println`) or one a host registered, evaluates it.
 - [Native values](./native-functions-and-values.md#native-types-and-values) pass through flt between native functions; flt source can't create them.
 - Pipes (`|>`) are evaluated. Multi-line pipes in the REPL (a line starting with `|>` continuing the previous one) are not supported yet.

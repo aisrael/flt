@@ -48,8 +48,7 @@ Save this as `hello.flt`:
 
 ```flt
 # hello.flt
-let x = 2
-x * 3
+println("Hello, world!")
 ```
 
 ```bash
@@ -59,8 +58,11 @@ cargo run -- hello.flt
 Expected output:
 
 ```text
-6
+Hello, world!
+None
 ```
+
+`println` prints its argument. `flt` then prints the value of the last statement, and `println` evaluates to `None`.
 
 A first line that starts with `#!` is a comment, so a program file can start with a shebang line, such as `#!/usr/bin/env flt`.
 

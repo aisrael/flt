@@ -23,7 +23,7 @@ Feature: flt version
   Scenario: flt runs a program file
     When the command `flt features/programs/hello.flt` is run
     Then it should exit with status code 0
-    And the output should contain "6"
+    And the output should contain "Hello, world!"
 
   Scenario: flt runs a program file with many statements
     When the command `flt features/programs/multi.flt` is run

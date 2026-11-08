@@ -490,6 +490,22 @@ fn register_builtins(global_scope: &mut GlobalScope) {
             builtin_typeof,
         ))
         .expect("a new global scope has no names in use");
+    global_scope
+        .register_function(NativeFunction::new(
+            FunctionDefinition::new(
+                "println",
+                Type::none(),
+                vec![Argument::new("s", Type::string())],
+            ),
+            builtin_println,
+        ))
+        .expect("a new global scope has no names in use");
+}
+
+/// `println(s)`: prints `s` and a new line to standard output.
+fn builtin_println(args: &Arguments) -> Result<Value, Error> {
+    println!("{s}", s = args.get::<&str>("s")?);
+    Ok(Value::None)
 }
 
 /// `typeof(v)`: the type of `v`. The runtime checks the number of arguments before calling it.
@@ -2003,6 +2019,34 @@ mod tests {
     fn test_builtin_typeof_returns_type() {
         let result = call_typeof(Value::Number(BigDecimal::from(42))).unwrap();
         assert_eq!(result, Value::Type(Type::number()));
+    }
+
+    #[test]
+    fn test_builtin_println_returns_none() {
+        let result = SimpleRuntime::default()
+            .get_function("println")
+            .expect("println is a built-in")
+            .call(&[Value::String("hi".into())])
+            .unwrap();
+        assert_eq!(result, Value::None);
+    }
+
+    #[test]
+    fn test_builtin_println_has_a_type() {
+        let mut runtime = SimpleRuntime::default();
+        let value = runtime.eval("typeof(println)").unwrap();
+        assert_eq!(value.to_string(), "fn(String) -> None");
+    }
+
+    #[test]
+    fn test_builtin_println_takes_only_a_string() {
+        let result = SimpleRuntime::default().eval("println(1)");
+        assert!(matches!(
+            result,
+            Err(Error::RuntimeError(
+                RuntimeError::ArgumentTypeMismatch { .. }
+            ))
+        ));
     }
 
     #[test]
