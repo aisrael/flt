@@ -42,7 +42,7 @@ A parse error or an evaluation error goes to standard error, and `flt` exits wit
 
 ## Run a Program File
 
-Give `flt` the path of a program file. By convention, the file name ends in `.flt`. `flt` reads the file, parses it, runs it, and prints the value of the last statement, like `-e`.
+Give `flt` the path of a program file. By convention, the file name ends in `.flt`. `flt` reads the file, parses it, and runs it. Unlike `-e`, it does not print the value of the last statement: use `println` to print.
 
 Save this as `hello.flt`:
 
@@ -59,10 +59,9 @@ Expected output:
 
 ```text
 Hello, world!
-None
 ```
 
-`println` prints its argument. `flt` then prints the value of the last statement, and `println` evaluates to `None`.
+`println` prints its argument. `flt` prints nothing else.
 
 A first line that starts with `#!` is a comment, so a program file can start with a shebang line, such as `#!/usr/bin/env flt`.
 

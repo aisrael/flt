@@ -60,6 +60,17 @@ async fn the_output_should_contain(world: &mut CliWorld, expected: String) {
     );
 }
 
+#[then(expr = r"the output should not contain {string}")]
+async fn the_output_should_not_contain(world: &mut CliWorld, unexpected: String) {
+    let output = world.output.as_ref().expect("No output");
+    assert!(
+        !output.contains(&unexpected),
+        "Output contains {}: {}",
+        unexpected,
+        output
+    );
+}
+
 #[then(expr = r"the error output should contain {string}")]
 async fn the_error_output_should_contain(world: &mut CliWorld, expected: String) {
     let error_output = world.error_output.as_ref().expect("No error output");

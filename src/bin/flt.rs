@@ -24,8 +24,8 @@ struct Cli {
     /// Evaluate PROGRAM as an flt program, print the value of its last statement, and exit
     #[arg(short = 'e', value_name = "PROGRAM")]
     eval: Option<String>,
-    /// Run the flt program in the file PROGRAM (by convention, a file that ends in `.flt`), print
-    /// the value of its last statement, and exit
+    /// Run the flt program in the file PROGRAM (by convention, a file that ends in `.flt`) and exit.
+    /// Unlike `-e`, it does not print the value of the last statement
     #[arg(value_name = "PROGRAM", conflicts_with = "eval")]
     program: Option<PathBuf>,
     #[command(subcommand)]

@@ -2,5 +2,6 @@
 let a = 1
 let b = a + 1; let c = b * 5
 
-# the last value is printed
+# the last value is not printed, so print it
+println("c + a is {c + a}")
 c + a

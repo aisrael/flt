@@ -24,16 +24,23 @@ Feature: flt version
     When the command `flt features/programs/hello.flt` is run
     Then it should exit with status code 0
     And the output should contain "Hello, world!"
+    And the output should not contain "None"
 
   Scenario: flt runs a program file with many statements
     When the command `flt features/programs/multi.flt` is run
     Then it should exit with status code 0
-    And the output should contain "11"
+    And the output should contain "c + a is 11"
+    And the output should not contain "None"
 
   Scenario: flt runs a program file that starts with a shebang
     When the command `flt features/programs/shebang.flt` is run
     Then it should exit with status code 0
-    And the output should contain "42"
+    And the output should contain "answer: 42"
+
+  Scenario: flt does not print the value of the last statement of a program file
+    When the command `flt features/programs/value.flt` is run
+    Then it should exit with status code 0
+    And the output should not contain "7"
 
   Scenario: flt fails on a program file that does not exist
     When the command `flt features/programs/missing.flt` is run
