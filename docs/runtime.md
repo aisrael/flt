@@ -24,7 +24,7 @@ A type in a `let` or a `def` declaration can be the name of a native type.
 
 ## Built-ins
 
-A runtime can register any number of built-in, native functions. The reference runtime registers only `typeof(Any) -> Type`, which is a [`const` function](#const-functions). It returns the type of its argument. Thus `typeof(1) == Integer` is `true`, and `typeof(x)` reports the type of the value of `x`, not the declared type of `x`.
+A runtime can register any number of built-in, native functions. The reference runtime registers `typeof(Any) -> Type` and `println(String) -> None`. `typeof` is a [`const` function](#const-functions). It returns the type of its argument. `println` is not `const`: it prints its argument and a new line to standard output, and returns `None`. Thus `typeof(1) == Integer` is `true`, and `typeof(x)` reports the type of the value of `x`, not the declared type of `x`.
 
 `Any` is the type of every value. It occurs only in signatures. For example, `typeof` is `const fn(Any) -> Type`.
 

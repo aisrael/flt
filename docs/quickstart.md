@@ -40,6 +40,42 @@ Expected output:
 
 A parse error or an evaluation error goes to standard error, and `flt` exits with status 1. Warnings go to standard error as `Warning: <message>`.
 
+## Run a Program File
+
+Give `flt` the path of a program file. By convention, the file name ends in `.flt`. `flt` reads the file, parses it, and runs it. Unlike `-e`, it does not print the value of the last statement: use `println` to print.
+
+Save this as `hello.flt`:
+
+```flt
+# hello.flt
+println("Hello, world!")
+```
+
+```bash
+cargo run -- hello.flt
+```
+
+Expected output:
+
+```text
+Hello, world!
+```
+
+`println` prints its argument. `flt` prints nothing else.
+
+A first line that starts with `#!` is a comment, so a program file can start with a shebang line, such as `#!/usr/bin/env flt`.
+
+If `flt` cannot read the file, or the program has a parse error or an evaluation error, the message goes to standard error and `flt` exits with status 1:
+
+```text
+Error: cannot read missing.flt: No such file or directory (os error 2)
+```
+
+Notes:
+
+- You cannot use `-e` and a program file together.
+- `version` is a command, so to run a file with that name, write `./version`.
+
 ## Start the REPL
 
 ```bash

@@ -1,0 +1,2 @@
+#!/usr/bin/env flt
+println("answer: {1 + 41}")
