@@ -656,7 +656,7 @@ mod tests {
 
     fn program_path(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("features/programs")
+            .join("fixtures/examples")
             .join(name)
     }
 
