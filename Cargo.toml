@@ -33,6 +33,10 @@ chrono = "0.4.45"
 shell-words = "1.1.1"
 
 [[test]]
+name = "cli"
+harness = false
+
+[[test]]
 name = "features"
 harness = false
 
