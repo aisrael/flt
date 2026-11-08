@@ -150,6 +150,12 @@ Evaluate a program, like `ruby -e`:
 cargo run -- -e 'let x = 2; x * 3'
 ```
 
+Run a program from a file (by convention, a file that ends in `.flt`):
+
+```bash
+cargo run -- hello.flt
+```
+
 See the [Quickstart](https://github.com/aisrael/flt/blob/main/docs/quickstart.md).
 
 The runtime evaluates expressions and statements: literals (including maps and arrays), identifiers, field access, unary/binary operators, `if` expressions, `let` and `const` bindings, function calls, and pipes. Bitwise operators and standalone keyword expressions are parsed but not yet evaluated. See [Runtime Behavior of the Reference Runtime](https://github.com/aisrael/flt/blob/main/docs/runtime.md).

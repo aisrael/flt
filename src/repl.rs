@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::path::Path;
 use std::path::PathBuf;
 
 use crate::ast::Expr;
@@ -181,6 +182,15 @@ pub fn run_program(source: &str) -> Result<(), String> {
     let value = result.map_err(|e| format!("{e}"))?;
     println!("{value}");
     Ok(())
+}
+
+/// Reads the file at `path` and runs it as an flt program, for `flt <program>`. Behaves like
+/// [`run_program`]. Returns the error message if the file cannot be read, does not parse, or
+/// fails to evaluate.
+pub fn run_file(path: &Path) -> Result<(), String> {
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {path}: {e}", path = path.display()))?;
+    run_program(&source)
 }
 
 /// The concrete implementation of the REPL context for `flt`, on any [`Runtime`]
@@ -634,5 +644,28 @@ mod tests {
     fn test_inspect_unbound_identifier() {
         let repl = FltRepl::new();
         assert_eq!(repl.inspect_identifier("nope"), "Unbound variable");
+    }
+
+    fn program_path(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("features/programs")
+            .join(name)
+    }
+
+    #[test]
+    fn run_file_runs_a_program() {
+        assert_eq!(run_file(&program_path("hello.flt")), Ok(()));
+        assert_eq!(run_file(&program_path("shebang.flt")), Ok(()));
+    }
+
+    #[test]
+    fn run_file_reports_a_missing_file() {
+        let err = run_file(&program_path("missing.flt")).unwrap_err();
+        assert!(err.starts_with("cannot read "), "{err}");
+    }
+
+    #[test]
+    fn run_file_reports_a_syntax_error() {
+        assert!(run_file(&program_path("syntax_error.flt")).is_err());
     }
 }

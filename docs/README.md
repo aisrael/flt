@@ -6,7 +6,7 @@ This folder contains initial documentation for the `flt` language as it exists i
 
 - [`spec.md`](spec.md) - One-page minimal language specification (grammar, types, operators, semantics).
 - [`runtime.md`](runtime.md) - What the reference runtime does where the spec leaves a choice: overloads, scopes, constants, `return`, warnings, native types, built-ins, name resolution, what evaluates today, and limitations.
-- [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL or with `-e`.
+- [`quickstart.md`](quickstart.md) - Running `flt` and trying expressions in the REPL, with `-e`, or from a program file.
 - [`syntax.md`](syntax.md) - Core expression forms, literals, comments, identifiers, reserved keywords, and statements.
 - [`literals.md`](literals.md) - Integers and numbers, strings and interpolation, booleans, `None`, symbols, arrays and maps.
 - [`types.md`](types.md) - Core flt types
