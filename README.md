@@ -12,7 +12,7 @@ A lightweight functional language with a parser, REPL, and a rudimentary interpr
 - a parser + AST (`flt::parser`, `flt::ast`)
 - a REPL (`flt::repl`) backed by a simple interpreter/runtime (`flt::runtime`)
 
-The language has literals (including arrays and maps), `let` and `const` bindings, `if` expressions, operators, string interpolation, comments, type-checked function calls with keyword and variadic arguments, and an Elixir-style pipe operator. Types are first-class values, and a Rust host can add its own functions and types.
+The language has literals (including arrays and maps), `let` and `const` bindings, `if` expressions, blocks, functions declared with `def` (including `const` functions and pattern matching in parameters), `return`, operators, string interpolation, comments, type-checked function calls with keyword and variadic arguments, and an Elixir-style pipe operator. Types are first-class values, and a Rust host can add its own functions and types.
 
 See the [documentation](https://github.com/aisrael/flt/blob/main/docs/README.md), starting with the one-page [language specification](https://github.com/aisrael/flt/blob/main/docs/spec.md).
 
@@ -20,7 +20,7 @@ See the [documentation](https://github.com/aisrael/flt/blob/main/docs/README.md)
 
 ```toml
 [dependencies]
-flt = "0.3.0"
+flt = "0.4.0"
 ```
 
 ## Quick start
